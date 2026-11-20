@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8">
+<title>Dia e visualizador</title>
+
+<style>x-dc{display:block} html,body{background:#F3F5F7}</style></head>
+<body>
+<x-dc>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Instrument+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{text-decoration:underline}
+input,textarea{font-family:inherit}
+</style>
+
+<div style="min-height: 1240px; background: #F3F5F7; color: #101828; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.45; box-sizing: border-box; padding: 28px 40px 56px; display: flex; flex-direction: column; gap: 24px">
+
+  <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <nav aria-label="Caminho" style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px; color: #596579">
+        <a href="inicio.html">Início</a><span aria-hidden="true">/</span>
+        <a href="calendario.html">Best Medical</a><span aria-hidden="true">/</span>
+        <a href="calendario.html">Calendário</a>
+      </nav>
+      <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 32px; letter-spacing: -0.02em">Sexta, 20 de novembro de 2026</h1>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+      <a href="#" aria-label="Dia anterior" style="width: 44px; height: 44px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-size: 20px">‹</a>
+      <a href="calendario.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-weight: 600">Voltar ao calendário</a>
+      <a href="#" aria-label="Próximo dia" style="width: 44px; height: 44px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-size: 20px">›</a>
+    </div>
+  </header>
+
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+    <span style="font-size: 13px; font-weight: 600; color: #596579">Posts do dia</span>
+    <a href="#" style="display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid #101828; background: #101828; color: #FFFFFF; font-weight: 600; font-size: 14px">Reels: plantão técnico 24h <span style="font-weight: 500; opacity: 0.85">Instagram e LinkedIn</span></a>
+    <a href="#" style="display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 20px; border: 1px dashed #8793A3; background: #FFFFFF; font-weight: 600; font-size: 14px; color: #3B4757">Adicionar outro post neste dia</a>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+
+    <div style="flex: 1 1 440px; max-width: 520px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+
+      <section aria-labelledby="midia" style="background: #FFFFFF; border: 1px solid #DCE1E8; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+        <h2 id="midia" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 20px">Mídia</h2>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="drive" style="font-weight: 600; font-size: 14px">Link do arquivo no Google Drive</label>
+          <div style="display: flex; gap: 8px">
+            <input id="drive" type="text" value="https://drive.google.com/file/d/…/view" style="flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            <a href="#" style="flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 8px; background: #101828; color: #FFFFFF; font-weight: 600">Carregar</a>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 12px; border: 1px solid #DCE1E8; border-radius: 10px; background: #FAFBFC">
+          <span style="flex: 0 0 48px; width: 48px; height: 64px; border-radius: 6px; background: repeating-linear-gradient(135deg, #2B3544, #2B3544 6px, #3A4658 6px, #3A4658 12px); display: inline-flex; align-items: center; justify-content: center; color: #FFFFFF; font-size: 16px" aria-hidden="true">▶</span>
+          <div style="display: flex; flex-direction: column; min-width: 0">
+            <span style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">plantao-24h-reels.mp4</span>
+            <span style="font-size: 13px; color: #596579">Vídeo vertical 9:16. Exemplo de metadados: duração e tamanho vêm do Drive.</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 1px solid #DCE1E8; border-radius: 10px; background: #FAFBFC">
+          <span style="font-weight: 600; font-size: 14px">Pasta deste post no Drive</span>
+          <span style="font-size: 13px; color: #3B4757">Best Medical / 2026 / 11 / 20 / Instagram / Reels</span>
+          <span style="font-size: 13px; color: #596579">Se o arquivo estiver fora daqui, o app avisa e mostra onde ele deveria estar.</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span style="font-weight: 600; font-size: 14px">Checagens por rede</span>
+          
+            <div style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px">
+              <span style="flex:0 0 74px;display:inline-flex;align-items:center;justify-content:center;height:24px;border-radius:12px;background:#E7F3EC;color:#1B4D2E;font-size:12px;font-weight:600">OK</span>
+              <span style="padding-top: 1px">Instagram: vídeo vertical 9:16, formato certo para Reels.</span>
+            </div>
+          
+            <div style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px">
+              <span style="flex:0 0 74px;display:inline-flex;align-items:center;justify-content:center;height:24px;border-radius:12px;background:#E7F3EC;color:#1B4D2E;font-size:12px;font-weight:600">OK</span>
+              <span style="padding-top: 1px">Instagram: legenda dentro do limite de 2.200 caracteres.</span>
+            </div>
+          
+            <div style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px">
+              <span style="flex:0 0 74px;display:inline-flex;align-items:center;justify-content:center;height:24px;border-radius:12px;background:#FFF1C2;color:#6B4A00;font-size:12px;font-weight:600">Atenção</span>
+              <span style="padding-top: 1px">LinkedIn: vídeo vertical aparece menor no feed. Considere uma versão 4:5 ou 1:1.</span>
+            </div>
+          
+            <div style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px">
+              <span style="flex:0 0 74px;display:inline-flex;align-items:center;justify-content:center;height:24px;border-radius:12px;background:#E7F3EC;color:#1B4D2E;font-size:12px;font-weight:600">OK</span>
+              <span style="padding-top: 1px">LinkedIn: legenda dentro do limite de 3.000 caracteres.</span>
+            </div>
+          
+        </div>
+      </section>
+
+      
+        <section style="background: #FFFFFF; border: 1px solid #DCE1E8; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+            <h2 style="margin: 0; display: inline-flex; align-items: center; gap: 10px; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 20px"><span style="width:10px;height:10px;border-radius:50%;background:#D62976"></span>Instagram</h2>
+            <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 14px; background: #FDEBDD; color: #8A2E07; font-size: 13px; font-weight: 600">Agendado para 10:00</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label for="leg-ig" style="font-weight: 600; font-size: 14px">Legenda</label>
+            <textarea id="leg-ig" rows="6" style="box-sizing: border-box; padding: 10px 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; line-height: 1.45; color: #101828; resize: vertical">Plantão técnico 24h: quando o equipamento para, o diagnóstico não pode esperar. Nossa equipe atende ressonância, tomografia, angiografia, raio-X e mamografia, com atenção ao que importa para a sua rotina de exames.
+
+Salve este post e chame o plantão quando precisar.
+
+#bestmedical #manutencaohospitalar #diagnosticoporimagem #engenhariaclinica #plantao24h</textarea>
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 13px; color: #596579">
+              <span style="font-variant-numeric: tabular-nums">355 de 2.200 caracteres</span>
+              <span>5 de 30 hashtags</span>
+            </div>
+          </div>
+        </section>
+      
+        <section style="background: #FFFFFF; border: 1px solid #DCE1E8; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+            <h2 style="margin: 0; display: inline-flex; align-items: center; gap: 10px; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 20px"><span style="width:10px;height:10px;border-radius:50%;background:#0A66C2"></span>LinkedIn</h2>
+            <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 14px; background: #FDEBDD; color: #8A2E07; font-size: 13px; font-weight: 600">Agendado para 12:00</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label for="leg-li" style="font-weight: 600; font-size: 14px">Legenda</label>
+            <textarea id="leg-li" rows="6" style="box-sizing: border-box; padding: 10px 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; line-height: 1.45; color: #101828; resize: vertical">Plantão técnico 24h para equipamentos de diagnóstico por imagem.
+
+Quando um equipamento para, a agenda de exames para junto. Por isso a Best Medical mantém atendimento técnico para ressonância, tomografia, angiografia, raio-X e mamografia.
+
+Se a sua instituição precisa de apoio na manutenção, fale com a nossa equipe pelo contato do perfil.</textarea>
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 13px; color: #596579">
+              <span style="font-variant-numeric: tabular-nums">341 de 3.000 caracteres</span>
+              <span>Aparece até "ver mais" nas primeiras linhas</span>
+            </div>
+          </div>
+        </section>
+      
+
+      <div style="display: flex; flex-wrap: wrap; gap: 12px">
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-weight: 600">Salvar rascunho</a>
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 8px; background: #C2410C; color: #FFFFFF; font-weight: 600">Agendar</a>
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-weight: 600">Copiar legenda</a>
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-weight: 600">Baixar mídia</a>
+      </div>
+    </div>
+
+    <section aria-labelledby="previa" style="flex: 2 1 600px; min-width: 0; background: #FFFFFF; border: 1px solid #DCE1E8; border-radius: 12px; padding: 20px 24px 28px; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+        <h2 id="previa" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 20px">Prévia lado a lado</h2>
+        <div style="display: inline-flex; border: 1px solid #B8C1CC; border-radius: 8px; overflow: hidden">
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; background: #101828; color: #FFFFFF; font-weight: 600; font-size: 14px">Instagram Reels</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; font-weight: 600; font-size: 14px">Instagram feed</a>
+        </div>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: #596579; max-width: 68ch">A prévia é uma aproximação. Os pontos de corte e os limites ficam numa configuração que você pode ajustar quando as redes mudarem.</p>
+
+      <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 32px">
+
+        <figure style="margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px">
+          <div style="width: 292px; height: 600px; box-sizing: border-box; border: 9px solid #101828; border-radius: 40px; background: #0B0F17; overflow: hidden; position: relative">
+            <div style="position: absolute; inset: 0; background: repeating-linear-gradient(135deg, #1B2331, #1B2331 14px, #232D3F 14px, #232D3F 28px)"></div>
+            <div style="position: absolute; top: 14px; left: 16px; right: 16px; display: flex; justify-content: space-between; color: #FFFFFF; font-weight: 600; font-size: 16px"><span>Reels</span><span aria-hidden="true">◎</span></div>
+            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.75); font-size: 13px; text-align: center; padding: 0 60px">Aqui aparece o vídeo do Drive</div>
+            <div style="position: absolute; right: 10px; bottom: 120px; display: flex; flex-direction: column; align-items: center; gap: 18px; color: #FFFFFF; font-size: 11px; font-weight: 600">
+              <span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="font-size: 22px" aria-hidden="true">♡</span>Curtir</span>
+              <span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="font-size: 22px" aria-hidden="true">💬</span>Comentar</span>
+              <span style="display: flex; flex-direction: column; align-items: center; gap: 2px"><span style="font-size: 22px" aria-hidden="true">➤</span>Enviar</span>
+            </div>
+            <div style="position: absolute; left: 14px; right: 62px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; color: #FFFFFF; font-size: 13px; line-height: 1.35">
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span style="width: 30px; height: 30px; border-radius: 50%; background: #FFFFFF; color: #101828; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px">BM</span>
+                <span style="font-weight: 600">bestmedical</span>
+                <span style="border: 1px solid #FFFFFF; border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 600">Seguir</span>
+              </div>
+              <span>Plantão técnico 24h: quando o equipamento para, o diagnóstico não pode esperar. Nossa equipe atende… <span style="font-weight: 600; opacity: 0.8">mais</span></span>
+            </div>
+          </div>
+          <figcaption style="font-weight: 600; font-size: 14px"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #D62976; margin-right: 8px"></span>Instagram Reels</figcaption>
+        </figure>
+
+        <figure style="margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px">
+          <div style="width: 292px; height: 600px; box-sizing: border-box; border: 9px solid #101828; border-radius: 40px; background: #F3F2EF; overflow: hidden; display: flex; flex-direction: column">
+            <div style="background: #FFFFFF; padding: 12px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #DCE1E8; font-size: 12px; color: #596579"><span style="font-weight: 700; color: #0A66C2; font-size: 15px">in</span><span>Início</span></div>
+            <div style="margin-top: 8px; background: #FFFFFF; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px">
+                <span style="width: 40px; height: 40px; border-radius: 50%; background: #101828; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px">BM</span>
+                <div style="display: flex; flex-direction: column; line-height: 1.25">
+                  <span style="font-weight: 600; font-size: 13px">Best Medical</span>
+                  <span style="font-size: 11px; color: #596579">Agendado para 12:00</span>
+                </div>
+              </div>
+              <p style="margin: 0; padding: 0 14px 8px; font-size: 12.5px; line-height: 1.4">Plantão técnico 24h para equipamentos de diagnóstico por imagem. Quando um equipamento para, a agenda de exames para junto. Por isso a Best Medical… <span style="color: #596579">…ver mais</span></p>
+              <div style="flex: 1 1 auto; min-height: 120px; background: repeating-linear-gradient(135deg, #E5E8EC, #E5E8EC 12px, #EEF0F3 12px, #EEF0F3 24px); display: flex; align-items: center; justify-content: center; color: #596579; font-size: 12px; text-align: center; padding: 0 28px">Aqui aparece o vídeo do Drive</div>
+              <div style="display: flex; justify-content: space-between; padding: 10px 14px; font-size: 11.5px; font-weight: 600; color: #3B4757; border-top: 1px solid #DCE1E8"><span>Gostei</span><span>Comentar</span><span>Compartilhar</span><span>Enviar</span></div>
+            </div>
+          </div>
+          <figcaption style="font-weight: 600; font-size: 14px"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0A66C2; margin-right: 8px"></span>LinkedIn</figcaption>
+        </figure>
+
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+
+
+
+</body></html>

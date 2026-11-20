@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8">
+<title>Calendário do cliente</title>
+
+<style>x-dc{display:block} html,body{background:#F3F5F7}</style></head>
+<body>
+<x-dc>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Instrument+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{text-decoration:underline}
+</style>
+
+<div style="min-height: 1040px; background: #F3F5F7; color: #101828; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.45; display: flex; flex-wrap: wrap; align-items: stretch">
+
+<nav aria-label="Menu principal" style="flex: 1 1 240px; max-width: 272px; box-sizing: border-box; background: #FFFFFF; border-right: 1px solid #DCE1E8; padding: 24px 16px; display: flex; flex-direction: column; gap: 28px">
+  <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 8px">
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 21px; letter-spacing: -0.01em">Social Media Manager</span>
+    <span style="font-size: 13px; color: #596579">Painel de clientes</span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <a href="inicio.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px">Início</a>
+    <a href="postar-hoje.html" style="display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0 12px; border-radius: 8px">Postar hoje <span style="min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 6px; border-radius: 11px; background: #C2410C; color: #FFFFFF; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center">3</span></a>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <span style="padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #596579">Clientes</span>
+    <a href="calendario.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; background: #FDEBDD; color: #8A2E07; font-weight: 600">Best Medical</a>
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px">Ebuks</a>
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px">Idepes</a>
+  </div>
+  <div style="margin-top: auto">
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: #596579">Configurações</a>
+  </div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 28px 40px 48px; display: flex; flex-direction: column; gap: 20px">
+
+  <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+    <div style="display: flex; align-items: center; gap: 16px">
+      <span style="width: 56px; height: 56px; border-radius: 12px; background: #101828; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 20px">BM</span>
+      <div style="display: flex; flex-direction: column">
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 30px; letter-spacing: -0.02em">Best Medical</h1>
+        <span style="color: #596579; font-size: 14px">Diagnóstico por imagem. Instagram, LinkedIn e Facebook.</span>
+      </div>
+    </div>
+    <a href="novo-post.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 8px; background: #C2410C; color: #FFFFFF; font-weight: 600">Novo post</a>
+  </header>
+
+  <nav aria-label="Seções do cliente" style="display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #DCE1E8">
+    <a href="calendario.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; font-weight: 600; border-bottom: 3px solid #C2410C; margin-bottom: -1px">Calendário</a>
+    <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; color: #596579">Posts</a>
+    <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; color: #596579">Redes</a>
+    <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; color: #596579">Configurações</a>
+  </nav>
+
+  <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <a href="#" aria-label="Mês anterior" style="width: 44px; height: 44px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-size: 20px">‹</a>
+      <span style="min-width: 168px; text-align: center; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 22px">Novembro de 2026</span>
+      <a href="#" aria-label="Próximo mês" style="width: 44px; height: 44px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-size: 20px">›</a>
+      <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-weight: 600; margin-left: 8px">Hoje</a>
+    </div>
+    <div style="display: inline-flex; border: 1px solid #B8C1CC; border-radius: 8px; overflow: hidden; background: #FFFFFF">
+      <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; background: #101828; color: #FFFFFF; font-weight: 600">Mês</a>
+      <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; font-weight: 600">Semana</a>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+      <span style="font-size: 13px; font-weight: 600; color: #596579">Rede</span>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #101828;background:#101828;color:#FFFFFF">Todas</a>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #B8C1CC;background:#FFFFFF;color:#101828">Instagram</a>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #B8C1CC;background:#FFFFFF;color:#101828">Facebook</a>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #B8C1CC;background:#FFFFFF;color:#101828">LinkedIn</a>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #B8C1CC;background:#FFFFFF;color:#101828">TikTok</a>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #B8C1CC;background:#FFFFFF;color:#101828">Kwai</a>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #B8C1CC;background:#FFFFFF;color:#101828">YouTube</a>
+      
+    </div>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+      <span style="font-size: 13px; font-weight: 600; color: #596579">Status</span>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #101828;background:#101828;color:#FFFFFF">Todos</a>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #B8C1CC;background:#FFFFFF;color:#101828">Rascunho</a>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #B8C1CC;background:#FFFFFF;color:#101828">Agendado</a>
+      
+        <a href="#" style="display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;border:1px solid #B8C1CC;background:#FFFFFF;color:#101828">Postado</a>
+      
+    </div>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; font-size: 13px; color: #3B4757">
+    <span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 22px; height: 14px; border-radius: 4px; border: 1px dashed #8793A3; background: #FFFFFF"></span>Rascunho</span>
+    <span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 22px; height: 14px; border-radius: 4px; border: 1px solid #F3C9A8; background: #FDEBDD"></span>Agendado</span>
+    <span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 22px; height: 14px; border-radius: 4px; border: 1px solid #B9DCC6; background: #E7F3EC"></span>Postado</span>
+    <span style="color: #596579">Clique em um dia para abrir o post e a prévia.</span>
+  </div>
+
+  <div style="overflow-x: auto; border: 1px solid #DCE1E8; border-radius: 12px; background: #FFFFFF">
+    <div style="min-width: 840px">
+      <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid #DCE1E8; background: #FAFBFC">
+        
+          <span style="padding: 10px 12px; font-size: 13px; font-weight: 600; color: #596579">Dom</span>
+        
+          <span style="padding: 10px 12px; font-size: 13px; font-weight: 600; color: #596579">Seg</span>
+        
+          <span style="padding: 10px 12px; font-size: 13px; font-weight: 600; color: #596579">Ter</span>
+        
+          <span style="padding: 10px 12px; font-size: 13px; font-weight: 600; color: #596579">Qua</span>
+        
+          <span style="padding: 10px 12px; font-size: 13px; font-weight: 600; color: #596579">Qui</span>
+        
+          <span style="padding: 10px 12px; font-size: 13px; font-weight: 600; color: #596579">Sex</span>
+        
+          <span style="padding: 10px 12px; font-size: 13px; font-weight: 600; color: #596579">Sáb</span>
+        
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr))">
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">1</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">2</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">3</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #B9DCC6;background:#E7F3EC;color:#1B4D2E"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#0A66C2"></span><span style="font-variant-numeric: tabular-nums">08:30</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Carrossel: manutenção preventiva</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">4</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">5</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #B9DCC6;background:#E7F3EC;color:#1B4D2E"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#D62976"></span><span style="font-variant-numeric: tabular-nums">10:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Reels: ressonância por dentro</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">6</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">7</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">8</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">9</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">10</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #B9DCC6;background:#E7F3EC;color:#1B4D2E"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#1877F2"></span><span style="font-variant-numeric: tabular-nums">09:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Equipe técnica em campo</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">11</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">12</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #B9DCC6;background:#E7F3EC;color:#1B4D2E"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#D62976"></span><span style="font-variant-numeric: tabular-nums">10:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Bastidores da calibração</span></span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #B9DCC6;background:#E7F3EC;color:#1B4D2E"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#0A66C2"></span><span style="font-variant-numeric: tabular-nums">12:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Artigo: rotina de manutenção</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">13</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">14</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">15</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">16</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">17</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #B9DCC6;background:#E7F3EC;color:#1B4D2E"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#0A66C2"></span><span style="font-variant-numeric: tabular-nums">08:30</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Tomografia: cuidados diários</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">18</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">19</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #B9DCC6;background:#E7F3EC;color:#1B4D2E"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#D62976"></span><span style="font-variant-numeric: tabular-nums">11:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Dica rápida de raio-X</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF;box-shadow:inset 0 0 0 2px #C2410C">
+            <span style="align-self:flex-start;min-width:26px;height:26px;box-sizing:border-box;padding:0 6px;border-radius:13px;background:#C2410C;color:#FFFFFF;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center">20</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #F3C9A8;background:#FDEBDD;color:#7A2A06"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#D62976"></span><span style="font-variant-numeric: tabular-nums">10:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Reels: plantão técnico 24h</span></span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #F3C9A8;background:#FDEBDD;color:#7A2A06"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#0A66C2"></span><span style="font-variant-numeric: tabular-nums">12:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Manutenção em ressonância</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">21</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">22</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">23</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">24</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px dashed #8793A3;background:#FFFFFF;color:#3B4757"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#0A66C2"></span><span style="font-variant-numeric: tabular-nums">08:30</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Artigo: planejar a manutenção</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">25</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">26</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #F3C9A8;background:#FDEBDD;color:#7A2A06"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#D62976"></span><span style="font-variant-numeric: tabular-nums">11:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Bastidores da equipe técnica</span></span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #F3C9A8;background:#FDEBDD;color:#7A2A06"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#0A66C2"></span><span style="font-variant-numeric: tabular-nums">11:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Bastidores da equipe técnica</span></span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #F3C9A8;background:#FDEBDD;color:#7A2A06"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#1877F2"></span><span style="font-variant-numeric: tabular-nums">11:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Bastidores da equipe técnica</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">27</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px solid #F3C9A8;background:#FDEBDD;color:#7A2A06"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#1877F2"></span><span style="font-variant-numeric: tabular-nums">09:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Aviso de atendimento</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">28</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">29</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#FFFFFF">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#101828">30</span>
+            
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;height:24px;box-sizing:border-box;padding:0 6px;border-radius:5px;font-size:12px;border:1px dashed #8793A3;background:#FFFFFF;color:#3B4757"><span style="flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:#D62976"></span><span style="font-variant-numeric: tabular-nums">10:00</span><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Retrospectiva do mês</span></span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#F6F7F9">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#6B7686">1 dez</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#F6F7F9">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#6B7686">2 dez</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#F6F7F9">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#6B7686">3 dez</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#F6F7F9">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#6B7686">4 dez</span>
+            
+          </a>
+        
+          <a href="dia-e-visualizador.html" style="display:flex;flex-direction:column;gap:4px;box-sizing:border-box;min-height:124px;padding:8px;border-right:1px solid #DCE1E8;border-bottom:1px solid #DCE1E8;text-decoration:none;color:#101828;background:#F6F7F9">
+            <span style="align-self:flex-start;height:26px;display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:#6B7686">5 dez</span>
+            
+          </a>
+        
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+</x-dc>
+
+
+
+</body></html>

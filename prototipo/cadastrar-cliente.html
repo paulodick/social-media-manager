@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8">
+<title>Cadastrar novo cliente</title>
+
+<style>x-dc{display:block} html,body{background:#F3F5F7}</style></head>
+<body>
+<x-dc>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Instrument+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{text-decoration:underline}
+input,textarea{font-family:inherit}
+</style>
+
+<div style="min-height: 1100px; background: #F3F5F7; color: #101828; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.45; display: flex; flex-wrap: wrap; align-items: stretch">
+
+<nav aria-label="Menu principal" style="flex: 1 1 240px; max-width: 272px; box-sizing: border-box; background: #FFFFFF; border-right: 1px solid #DCE1E8; padding: 24px 16px; display: flex; flex-direction: column; gap: 28px">
+  <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 8px">
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 21px; letter-spacing: -0.01em">Social Media Manager</span>
+    <span style="font-size: 13px; color: #596579">Painel de clientes</span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <a href="inicio.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px">Início</a>
+    <a href="postar-hoje.html" style="display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0 12px; border-radius: 8px">Postar hoje <span style="min-width: 22px; height: 22px; box-sizing: border-box; padding: 0 6px; border-radius: 11px; background: #C2410C; color: #FFFFFF; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center">3</span></a>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <span style="padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #596579">Clientes</span>
+    <a href="calendario.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px">Best Medical</a>
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px">Ebuks</a>
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px">Idepes</a>
+  </div>
+  <div style="margin-top: auto">
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: #596579">Configurações</a>
+  </div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 32px 40px 56px; display: flex; flex-direction: column; gap: 24px">
+
+  <header style="display: flex; flex-direction: column; gap: 6px; max-width: 880px">
+    <a href="inicio.html" style="font-size: 14px; color: #596579">← Voltar para o início</a>
+    <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 34px; letter-spacing: -0.02em">Cadastrar novo cliente</h1>
+    <p style="margin: 0; color: #596579; max-width: 62ch">Os dados do cliente e as redes dele ficam num lugar só. Dá para cadastrar agora e conectar a publicação automática depois.</p>
+  </header>
+
+  <section aria-labelledby="dados" style="max-width: 880px; background: #FFFFFF; border: 1px solid #DCE1E8; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px">
+    <h2 id="dados" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 21px">Dados do cliente</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="nome" style="font-weight: 600; font-size: 14px">Nome</label>
+        <input id="nome" type="text" value="Best Medical" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="segmento" style="font-weight: 600; font-size: 14px">Segmento</label>
+        <input id="segmento" type="text" value="Diagnóstico por imagem" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="site" style="font-weight: 600; font-size: 14px">Site</label>
+        <input id="site" type="text" placeholder="https://" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-weight: 600; font-size: 14px">Logo</span>
+        <div style="display: flex; align-items: center; gap: 12px; min-height: 44px">
+          <span style="width: 44px; height: 44px; border-radius: 10px; background: #101828; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700">BM</span>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid #B8C1CC; border-radius: 8px; font-weight: 600; background: #FFFFFF">Enviar logo</a>
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="tom" style="font-weight: 600; font-size: 14px">Tom de voz</label>
+      <textarea id="tom" rows="3" placeholder="Como o cliente fala com o público. Ex.: técnico, direto, sem exageros." style="box-sizing: border-box; padding: 10px 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828; resize: vertical"></textarea>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="obs" style="font-weight: 600; font-size: 14px">Observações</label>
+      <textarea id="obs" rows="3" placeholder="Regras da marca, assuntos a evitar, contatos de aprovação." style="box-sizing: border-box; padding: 10px 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828; resize: vertical"></textarea>
+    </div>
+  </section>
+
+  <section aria-labelledby="midia" style="max-width: 880px; background: #FFFFFF; border: 1px solid #DCE1E8; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 14px">
+    <h2 id="midia" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 21px">Mídia no Google Drive</h2>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <label for="pasta" style="font-weight: 600; font-size: 14px">Link da pasta de mídia do cliente</label>
+      <input id="pasta" type="text" placeholder="https://drive.google.com/drive/folders/…" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+    </div>
+    <p style="margin: 0; color: #596579; font-size: 14px; max-width: 70ch">Compartilhe a pasta, como Leitor, com o e-mail de acesso do app: <span style="font-weight: 600; color: #101828">[e-mail da conta de serviço]</span>. As imagens e os vídeos dessa pasta aparecem na hora de criar os posts.</p>
+    <div style="display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid #DCE1E8; border-radius: 10px; background: #FAFBFC">
+      <span style="font-weight: 600; font-size: 14px">Organização das pastas dentro da pasta do cliente</span>
+      <span style="font-size: 14px; color: #3B4757">Ano / Mês / Dia / Rede / Formato</span>
+      <span style="font-size: 14px; color: #596579">Exemplo: Best Medical / 2026 / 11 / 20 / Instagram / Reels / 2026-11-20_1000_plantao-24h.mp4</span>
+    </div>
+  </section>
+
+  <section aria-labelledby="redes" style="max-width: 880px; background: #FFFFFF; border: 1px solid #DCE1E8; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <h2 id="redes" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 21px">Redes sociais</h2>
+      <p style="margin: 0; color: #596579; font-size: 14px; max-width: 70ch">Informe o nome da conta e o endereço do perfil de cada rede. A conexão para publicar automaticamente chega numa próxima versão. Por enquanto você posta pela tela Postar hoje.</p>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      
+        <div style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid #DCE1E8; border-radius: 10px; background: #FAFBFC">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600"><span style="width:10px;height:10px;border-radius:50%;background:#D62976"></span>Instagram</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; background: #EAEDF1; color: #3B4757; font-size: 13px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; background: #8793A3"></span>Não conectada</span>
+          </div>
+          <span style="font-size: 13px; color: #596579">Formatos: Feed, Reels, Stories</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="conta-ig" style="font-weight: 600; font-size: 14px">Nome da conta</label>
+              <input id="conta-ig" type="text" placeholder="Nome do perfil" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="url-ig" style="font-weight: 600; font-size: 14px">Endereço do perfil</label>
+              <input id="url-ig" type="text" placeholder="https://www.instagram.com/…" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+          </div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid #DCE1E8; border-radius: 10px; background: #FAFBFC">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600"><span style="width:10px;height:10px;border-radius:50%;background:#1877F2"></span>Facebook</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; background: #EAEDF1; color: #3B4757; font-size: 13px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; background: #8793A3"></span>Não conectada</span>
+          </div>
+          <span style="font-size: 13px; color: #596579">Formatos: Feed, Reels, Stories</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="conta-fb" style="font-weight: 600; font-size: 14px">Nome da conta</label>
+              <input id="conta-fb" type="text" placeholder="Nome da página" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="url-fb" style="font-weight: 600; font-size: 14px">Endereço do perfil</label>
+              <input id="url-fb" type="text" placeholder="https://www.facebook.com/…" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+          </div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid #DCE1E8; border-radius: 10px; background: #FAFBFC">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600"><span style="width:10px;height:10px;border-radius:50%;background:#0A66C2"></span>LinkedIn</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; background: #EAEDF1; color: #3B4757; font-size: 13px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; background: #8793A3"></span>Não conectada</span>
+          </div>
+          <span style="font-size: 13px; color: #596579">Formatos: Feed, Vídeo, Documento</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="conta-li" style="font-weight: 600; font-size: 14px">Nome da conta</label>
+              <input id="conta-li" type="text" placeholder="Nome da página" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="url-li" style="font-weight: 600; font-size: 14px">Endereço do perfil</label>
+              <input id="url-li" type="text" placeholder="https://www.linkedin.com/company/…" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+          </div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid #DCE1E8; border-radius: 10px; background: #FAFBFC">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600"><span style="width:10px;height:10px;border-radius:50%;background:#111111"></span>TikTok</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; background: #EAEDF1; color: #3B4757; font-size: 13px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; background: #8793A3"></span>Não conectada</span>
+          </div>
+          <span style="font-size: 13px; color: #596579">Formatos: Vídeo, Fotos</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="conta-tt" style="font-weight: 600; font-size: 14px">Nome da conta</label>
+              <input id="conta-tt" type="text" placeholder="Nome do perfil" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="url-tt" style="font-weight: 600; font-size: 14px">Endereço do perfil</label>
+              <input id="url-tt" type="text" placeholder="https://www.tiktok.com/@…" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+          </div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid #DCE1E8; border-radius: 10px; background: #FAFBFC">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600"><span style="width:10px;height:10px;border-radius:50%;background:#FF6A00"></span>Kwai</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; background: #EAEDF1; color: #3B4757; font-size: 13px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; background: #8793A3"></span>Não conectada</span>
+          </div>
+          <span style="font-size: 13px; color: #596579">Formatos: Vídeo</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="conta-kw" style="font-weight: 600; font-size: 14px">Nome da conta</label>
+              <input id="conta-kw" type="text" placeholder="Nome do perfil" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="url-kw" style="font-weight: 600; font-size: 14px">Endereço do perfil</label>
+              <input id="url-kw" type="text" placeholder="https://www.kwai.com/…" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+          </div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid #DCE1E8; border-radius: 10px; background: #FAFBFC">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600"><span style="width:10px;height:10px;border-radius:50%;background:#D92D20"></span>YouTube</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; background: #EAEDF1; color: #3B4757; font-size: 13px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; background: #8793A3"></span>Não conectada</span>
+          </div>
+          <span style="font-size: 13px; color: #596579">Formatos: Shorts, Vídeo longo</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="conta-yt" style="font-weight: 600; font-size: 14px">Nome da conta</label>
+              <input id="conta-yt" type="text" placeholder="Nome do canal" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <label for="url-yt" style="font-weight: 600; font-size: 14px">Endereço do perfil</label>
+              <input id="url-yt" type="text" placeholder="https://www.youtube.com/@…" style="box-sizing: border-box; height: 44px; padding: 0 12px; border: 1px solid #B8C1CC; border-radius: 8px; background: #FFFFFF; font-size: 15px; color: #101828">
+            </div>
+          </div>
+        </div>
+      
+    </div>
+    <div>
+      <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px dashed #8793A3; border-radius: 8px; font-weight: 600; color: #3B4757">Adicionar outra rede</a>
+    </div>
+  </section>
+
+  <div style="max-width: 880px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px">
+    <a href="inicio.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border: 1px solid #B8C1CC; border-radius: 8px; font-weight: 600; background: #FFFFFF">Cancelar</a>
+    <a href="calendario.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 8px; background: #C2410C; color: #FFFFFF; font-weight: 600">Salvar cliente</a>
+  </div>
+
+</main>
+</div>
+</x-dc>
+
+
+
+</body></html>
