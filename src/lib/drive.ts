@@ -39,6 +39,12 @@ export function driveConfigured(): boolean {
   return creds() !== null;
 }
 
+/** "missing": variável vazia ou ausente. "invalid": tem texto, mas não é um JSON de conta de serviço (ssem client_email e private_key). */
+export function driveStatus(): "ok" | "missing" | "invalid" {
+  if (creds() !== null) return "ok";
+  return process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim() ? "invalid" : "missing";
+}
+
 export function serviceAccountEmail(): string | null {
   return creds()?.client_email ?? null;
 }

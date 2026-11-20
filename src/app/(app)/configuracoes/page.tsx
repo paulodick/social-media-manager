@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { hasPassword } from "@/lib/auth";
-import { driveConfigured, serviceAccountEmail } from "@/lib/drive";
+import { driveConfigured, driveStatus, serviceAccountEmail } from "@/lib/drive";
 
 async function dbOk(): Promise<boolean> {
   try {
@@ -41,7 +41,13 @@ export default async function Settings() {
         <Row
           ok={driveConfigured()}
           label="Google Drive"
-          detail={driveConfigured() ? `conta de serviço: ${serviceAccountEmail()}` : "variável GOOGLE_SERVICE_ACCOUNT_JSON ainda não definida."}
+          detail={
+            driveConfigured()
+              ? `conta de serviço: ${serviceAccountEmail()}`
+              : driveStatus() === "invalid"
+                ? "a variável GOOGLE_SERVICE_ACCOUNT_JSON existe, mas o conteúdo não é um JSON de conta de serviço completo (precisa de client_email e private_key). Cole o arquivo inteiro de novo."
+                : "variável GOOGLE_SERVICE_ACCOUNT_JSON ainda não definida."
+          }
         />
         <Row ok={!!process.env.ANTHROPIC_API_KEY} label="Legendas com IA" detail="variável ANTHROPIC_API_KEY (etapa 2)." />
       </section>
