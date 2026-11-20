@@ -48,6 +48,16 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       create index post_targets_post_idx on post_targets (post_id);
     `,
   },
+  {
+    version: 2,
+    sql: `
+      create table app_settings (
+        key text primary key,
+        value text not null,
+        updated_at timestamptz not null default now()
+      );
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

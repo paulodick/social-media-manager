@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
-import { isAuthed } from "@/lib/auth";
+import { hasPassword, isAuthed } from "@/lib/auth";
 import { login } from "@/lib/actions";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
   if (await isAuthed()) redirect("/");
+  if (!(await hasPassword())) redirect("/configurar");
   const { erro } = await searchParams;
   return (
     <main className="login">

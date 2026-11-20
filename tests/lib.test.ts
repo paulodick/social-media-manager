@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseDriveUrl } from "../src/lib/drive.ts";
 import { captionChecks, mediaChecks, countHashtags, cutCaption } from "../src/lib/checks.ts";
+import { hashPassword, verifyPassword, passwordProblem } from "../src/lib/password.ts";
 import { monthGrid, addMonths, dayLabel, isDay, isTime } from "../src/lib/dates.ts";
 
 test("parseDriveUrl", () => {
@@ -42,4 +43,16 @@ test("datas", () => {
   assert.equal(dayLabel("2026-11-20"), "Sexta, 20 de novembro de 2026");
   assert.equal(isDay("2026-02-30"), false);
   assert.equal(isTime("09:30"), true);
+});
+
+test("senha: hash, verificação e regras", () => {
+  const h = hashPassword("uma senha boa 123");
+  assert.ok(h.startsWith("scrypt$"));
+  assert.notEqual(h, hashPassword("uma senha boa 123"));
+  assert.equal(verifyPassword("uma senha boa 123", h), true);
+  assert.equal(verifyPassword("outra senha", h), false);
+  assert.equal(verifyPassword("x", "lixo"), false);
+  assert.equal(passwordProblem("curta", "curta") !== null, true);
+  assert.equal(passwordProblem("senha-longa-1", "senha-longa-2") !== null, true);
+  assert.equal(passwordProblem("senha-longa-1", "senha-longa-1"), null);
 });

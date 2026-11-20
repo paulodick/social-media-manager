@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { db } from "./db";
+import { verifyPassword } from "./password";
 
 const COOKIE = "smm_session";
 const MAX_AGE = 60 * 60 * 24 * 30;
@@ -21,10 +23,22 @@ function safeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(ha, hb);
 }
 
-export function checkPassword(input: string): boolean {
-  const expected = process.env.APP_PASSWORD;
-  if (!expected) return false;
-  return safeEqual(input, expected);
+// Se APP_PASSWORD estiver definida, ela vale (serve de recuperação). Senão vale a senha guardada no banco.
+async function storedHash(): Promise<string | null> {
+  const r = await (await db()).query<{ value: string }>("select value from app_settings where key = 'password_hash'");
+  return r.rows[0]?.value ?? null;
+}
+
+export async function hasPassword(): Promise<boolean> {
+  if (process.env.APP_PASSWORD) return true;
+  return (await storedHash()) !== null;
+}
+
+export async function checkPassword(input: string): Promise<boolean> {
+  const fromEnv = process.env.APP_PASSWORD;
+  if (fromEnv) return safeEqual(input, fromEnv);
+  const hash = await storedHash();
+  return hash !== null && verifyPassword(input, hash);
 }
 
 export async function createSession(): Promise<void> {

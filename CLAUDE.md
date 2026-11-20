@@ -18,9 +18,9 @@ App multi-cliente para planejar posts em várias redes sociais. Usuário único 
 
 ## Comandos
 - `npm run dev`, `npm run build`, `npm run typecheck`, `npm test`.
-- Para testar localmente é preciso um Postgres e as variáveis `DATABASE_URL`, `APP_PASSWORD` e `SESSION_SECRET`.
+- Para testar localmente é preciso um Postgres e as variáveis `DATABASE_URL` e `SESSION_SECRET`. A senha é definida na tela `/configurar` (hash scrypt na tabela `app_settings`). `APP_PASSWORD`, se definida, tem prioridade e serve de recuperação.
 
 ## Estado
-Etapa 1 pronta: clientes, calendário, novo post, dia com prévia, postar hoje, leitura do Drive.
+Etapa 1 pronta: primeiro acesso com definição de senha, clientes, calendário, novo post, dia com prévia, postar hoje, leitura do Drive.
 Ainda não feito: legendas com IA (`ANTHROPIC_API_KEY`), templates por rede, integração com o Canva, prévias de Facebook (Reels/Stories), TikTok, Kwai e YouTube, visão de semana, aprovação do cliente, lembretes.
 O protótipo visual aprovado está em `prototipo/`.

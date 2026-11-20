@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { hasPassword } from "@/lib/auth";
 import { driveConfigured, serviceAccountEmail } from "@/lib/drive";
 
 async function dbOk(): Promise<boolean> {
@@ -24,13 +25,18 @@ function Row({ ok, label, detail }: { ok: boolean; label: string; detail?: strin
 
 export default async function Settings() {
   const database = await dbOk();
+  const password = database && (await hasPassword());
   return (
     <main className="main narrow">
       <h1>Configurações</h1>
       <section className="card">
         <h2>Estado do app</h2>
         <Row ok={database} label="Banco de dados" detail={database ? "conectado." : "não conectou. Confira DATABASE_URL."} />
-        <Row ok={!!process.env.APP_PASSWORD} label="Senha de acesso" detail="variável APP_PASSWORD." />
+        <Row
+          ok={password}
+          label="Senha de acesso"
+          detail={process.env.APP_PASSWORD ? "definida pela variável APP_PASSWORD." : "guardada no banco, definida na primeira configuração."}
+        />
         <Row ok={(process.env.SESSION_SECRET?.length ?? 0) >= 16} label="Segredo da sessão" detail="variável SESSION_SECRET, com pelo menos 16 caracteres." />
         <Row
           ok={driveConfigured()}

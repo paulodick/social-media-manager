@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { checkPassword, createSession, destroySession, requireAuth } from "./auth";
+import { checkPassword, createSession, destroySession, hasPassword, requireAuth } from "./auth";
+import { hashPassword, passwordProblem } from "./password";
 import { db } from "./db";
 import { TZ, isDay, isTime } from "./dates";
 import { getFileMeta, parseDriveUrl } from "./drive";
@@ -24,11 +25,28 @@ function withParam(path: string, key: string, value: string): string {
 // ---------- acesso ----------
 
 export async function login(formData: FormData): Promise<void> {
-  const ok = checkPassword(text(formData, "senha", 200));
+  const ok = await checkPassword(text(formData, "senha", 200));
   if (!ok) {
     await new Promise((r) => setTimeout(r, 600));
     redirect("/login?erro=1");
   }
+  await createSession();
+  redirect("/");
+}
+
+// Primeira configuração: só funciona enquanto ainda não existe senha. O insert com
+// "on conflict do nothing" garante que, mesmo com dois envios ao mesmo tempo, só um vence.
+export async function setupPassword(formData: FormData): Promise<void> {
+  if (await hasPassword()) redirect("/login");
+  const senha = String(formData.get("senha") ?? "");
+  const confirma = String(formData.get("confirma") ?? "");
+  const problem = passwordProblem(senha, confirma);
+  if (problem) redirect(`/configurar?erro=${encodeURIComponent(problem)}`);
+  const r = await (await db()).query(
+    "insert into app_settings (key, value) values ('password_hash', $1) on conflict (key) do nothing",
+    [hashPassword(senha)],
+  );
+  if (r.rowCount === 0) redirect("/login");
   await createSession();
   redirect("/");
 }
