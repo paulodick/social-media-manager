@@ -2,7 +2,9 @@
 
 App multi-cliente para planejar, criar e acompanhar posts em várias redes sociais. O primeiro cliente é a Best Medical.
 
-**Estado atual:** protótipo das telas para aprovação visual. Ainda não há back-end. Todos os nomes, horários e textos das telas são exemplos.
+**Estado atual:** etapa 1 do app construída (clientes, calendário, novo post, dia com prévia, postar hoje, leitura de mídia do Drive). O protótipo visual aprovado continua em [`prototipo/`](prototipo/). Nas imagens abaixo, nomes, horários e textos são exemplos.
+
+Para rodar, publicar e ver o que falta, leia [`CLAUDE.md`](CLAUDE.md) e [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ## Telas do protótipo
 
@@ -53,7 +55,6 @@ As páginas HTML estáticas estão em [`prototipo/`](prototipo/). Para navegar e
 
 ## Próximos passos
 
-1. Aprovação visual das telas.
-2. Back-end: cadastro de clientes, calendário, leitura do Drive e prévias.
-3. Geração de legendas e templates por rede e formato.
-4. Prévias de TikTok, Kwai e YouTube, que ainda não foram desenhadas.
+1. Publicar a etapa 1 no Render e testar com a pasta real do Drive.
+2. Etapa 2: legendas com IA no tom de voz do cliente, prévias de TikTok, Kwai e YouTube.
+3. Etapa 3: templates por rede e formato, artes no Canva.
