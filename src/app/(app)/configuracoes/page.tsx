@@ -55,7 +55,7 @@ export default async function Settings() {
         <h2>Como liberar uma pasta do Drive</h2>
         <ol style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6 }}>
           <li>No Google Drive, clique com o botão direito na pasta do cliente e escolha Compartilhar.</li>
-          <li>Adicione o e-mail da conta de serviço acima, com a permissão de Leitor.</li>
+          <li>Adicione o e-mail da conta de serviço acima, com a permissão de Editor para o app criar as pastas do post (com Leitor ele só lê).</li>
           <li>Copie o link da pasta e cole no cadastro do cliente.</li>
         </ol>
       </section>

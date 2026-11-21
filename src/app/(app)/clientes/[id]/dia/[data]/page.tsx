@@ -12,7 +12,7 @@ export default async function DayPage({
   searchParams,
 }: {
   params: Promise<{ id: string; data: string }>;
-  searchParams: Promise<{ salvo?: string; erro?: string }>;
+  searchParams: Promise<{ salvo?: string; erro?: string; aviso?: string; pasta?: string }>;
 }) {
   const { id, data: day } = await params;
   const sp = await searchParams;
@@ -58,6 +58,8 @@ export default async function DayPage({
             profile={{ name: acc || client.name, handle: (acc || client.name).toLowerCase().replace(/\s+/g, "") }}
             expectedPath={`${client.name} / ${expected.join(" / ")}`}
             pathNote={pathNote}
+            folderId={t.post_folder_id}
+            canCreateFolder={!!client.drive_folder_id}
             volta={volta}
             saved={sp.salvo === t.id}
           />
@@ -82,7 +84,7 @@ export default async function DayPage({
           <Link href={`/clientes/${id}/dia/${addDays(day, 1)}`} className="btn" aria-label="Próximo dia" style={{ width: 44, padding: 0 }}>›</Link>
         </div>
       </header>
-      <Flash erro={sp.erro} />
+      <Flash erro={sp.erro} aviso={sp.aviso} ok={sp.pasta ? "Pasta do Drive pronta." : undefined} />
       {editors.length === 0 ? (
         <div className="card">
           <p>Nenhum post neste dia.</p>

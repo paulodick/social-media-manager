@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { NETWORKS, STATUS_LABEL, type NetworkId } from "@/config/networks";
 import { captionChecks, countHashtags, cutCaption, fmtNumber, mediaChecks, type Check, type MediaMeta } from "@/lib/checks";
-import { deleteTarget, saveTarget } from "@/lib/actions";
+import { deleteTarget, ensureTargetFolder, saveTarget } from "@/lib/actions";
 import CopyButton from "./CopyButton";
 
 export type EditorProps = {
@@ -22,6 +22,10 @@ export type EditorProps = {
   profile: { name: string; handle: string };
   expectedPath: string;
   pathNote: string | null;
+  /** Pasta deste destino no Drive, se já existe. */
+  folderId: string | null;
+  /** O cliente tem pasta no Drive, então dá para criar a deste destino. */
+  canCreateFolder: boolean;
   volta: string;
   saved: boolean;
 };
@@ -193,6 +197,15 @@ export default function TargetEditor(p: EditorProps) {
           <div className="row">
             <CopyButton text={caption} />
             {downloadable && <a className="btn" href={`/api/media/${p.fileId}?download=1`}>Baixar mídia</a>}
+            {p.folderId ? (
+              <a className="btn" href={`https://drive.google.com/drive/folders/${p.folderId}`} target="_blank" rel="noopener noreferrer">Abrir pasta no Drive</a>
+            ) : p.canCreateFolder ? (
+              <form action={ensureTargetFolder}>
+                <input type="hidden" name="id" value={p.id} />
+                <input type="hidden" name="volta" value={p.volta.split("#")[0].split("?")[0]} />
+                <button className="btn" type="submit">Criar pasta no Drive</button>
+              </form>
+            ) : null}
           </div>
           <form action={deleteTarget}>
             <input type="hidden" name="id" value={p.id} />

@@ -85,8 +85,13 @@ export function monthGrid(ym: string): Cell[] {
   return cells;
 }
 
-/** Pastas do Drive esperadas para um dia, a partir da pasta do cliente: AAAA/MM/DD */
+const MONTH_FOLDER_NAMES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+/** Pastas do Drive esperadas para um dia, a partir da pasta do cliente: "AAAA", "MM - Mês", "DD". Ex.: 2026 / 11 - Novembro / 21 */
 export function dayFolders(day: string): [string, string, string] {
   const [y, m, d] = day.split("-");
-  return [y, m, d];
+  return [y, `${m} - ${MONTH_FOLDER_NAMES[Number(m) - 1]}`, d];
 }

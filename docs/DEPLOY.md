@@ -20,11 +20,11 @@
 
 5. **Domínio**: adicione `app.ebuks.com.br` em Settings, Custom Domains, e crie no DNS do domínio o registro CNAME que o Render indicar.
 
-## Conta de serviço do Google (leitura do Drive)
+## Conta de serviço do Google (leitura e criação de pastas no Drive)
 1. No Google Cloud, crie um projeto e ative a API do Google Drive.
 2. Crie uma conta de serviço e gere uma chave JSON.
 3. Cole o JSON na variável `GOOGLE_SERVICE_ACCOUNT_JSON`.
-4. No Drive, compartilhe a pasta de cada cliente, como Leitor, com o e-mail da conta de serviço. Esse e-mail também aparece na tela Configurações do app.
+4. No Drive, compartilhe a pasta de cada cliente com o e-mail da conta de serviço. Como Editor, o app cria sozinho as pastas do post (dia, rede e formato). Como Leitor, ele só lê e avisa que não pôde criar as pastas. As pastas criadas pelo app pertencem à conta de serviço, e o dono do Drive não consegue apagá-las. Esse e-mail também aparece na tela Configurações do app.
 
 ## Conferência depois de publicar
 Abra `/configuracoes` no app: banco, senha, segredo da sessão e Drive devem aparecer como OK.

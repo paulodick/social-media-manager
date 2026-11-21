@@ -20,7 +20,10 @@ export type Target = {
   post_id: string;
   client_id: string;
   client_name: string;
+  /** Pasta do cliente no Drive (raiz). */
   drive_folder_id: string | null;
+  /** Pasta deste destino no Drive (dia / rede / formato), quando já foi criada ou encontrada. */
+  post_folder_id: string | null;
   title: string;
   idea: string;
   network: string;
@@ -36,7 +39,7 @@ export type Target = {
 };
 
 const TARGET_SELECT = `
-  select t.id, t.post_id, p.client_id, c.name as client_name, c.drive_folder_id,
+  select t.id, t.post_id, p.client_id, c.name as client_name, c.drive_folder_id, t.post_folder_id,
          p.title, p.idea, t.network, t.format,
          to_char(t.scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day,
          to_char(t.scheduled_at at time zone '${TZ}', 'HH24:MI') as time,

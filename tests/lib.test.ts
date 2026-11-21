@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseDriveUrl } from "../src/lib/drive.ts";
+import { parseDriveUrl, driveQuote, folderUrl } from "../src/lib/drive.ts";
 import { captionChecks, mediaChecks, countHashtags, cutCaption } from "../src/lib/checks.ts";
 import { hashPassword, verifyPassword, passwordProblem } from "../src/lib/password.ts";
-import { monthGrid, addMonths, dayLabel, isDay, isTime } from "../src/lib/dates.ts";
+import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders } from "../src/lib/dates.ts";
 
 test("parseDriveUrl", () => {
   assert.deepEqual(parseDriveUrl("https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing"), { id: "1AbCdEfGhIjKlMnOp", kind: "file" });
@@ -55,4 +55,17 @@ test("senha: hash, verificação e regras", () => {
   assert.equal(passwordProblem("curta", "curta") !== null, true);
   assert.equal(passwordProblem("senha-longa-1", "senha-longa-2") !== null, true);
   assert.equal(passwordProblem("senha-longa-1", "senha-longa-1"), null);
+});
+
+test("pastas do dia seguem o padrão do Drive", () => {
+  assert.deepEqual(dayFolders("2026-11-21"), ["2026", "11 - Novembro", "21"]);
+  assert.deepEqual(dayFolders("2027-03-05"), ["2027", "03 - Março", "05"]);
+  assert.deepEqual(dayFolders("2026-12-31"), ["2026", "12 - Dezembro", "31"]);
+});
+
+test("busca de pasta no Drive: escape e link", () => {
+  assert.equal(driveQuote("Vídeo longo"), "Vídeo longo");
+  assert.equal(driveQuote("d'Água"), "d\\'Água");
+  assert.equal(driveQuote("a\\b"), "a\\\\b");
+  assert.equal(folderUrl("abc123"), "https://drive.google.com/drive/folders/abc123");
 });

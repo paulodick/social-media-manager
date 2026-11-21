@@ -5,10 +5,10 @@ import { revalidatePath } from "next/cache";
 import { checkPassword, createSession, destroySession, hasPassword, requireAuth } from "./auth";
 import { hashPassword, passwordProblem } from "./password";
 import { db } from "./db";
-import { TZ, isDay, isTime } from "./dates";
-import { getFileMeta, parseDriveUrl } from "./drive";
+import { TZ, dayFolders, isDay, isTime } from "./dates";
+import { ensureFolderPath, getFileMeta, parseDriveUrl } from "./drive";
 import type { MediaMeta } from "./checks";
-import { NETWORK_IDS, isFormat, isNetwork } from "@/config/networks";
+import { NETWORKS, NETWORK_IDS, isFormat, isNetwork } from "@/config/networks";
 
 const text = (f: FormData, k: string, max = 5000): string => String(f.get(k) ?? "").trim().slice(0, max);
 
@@ -123,6 +123,13 @@ export async function saveClient(formData: FormData): Promise<void> {
 
 // ---------- posts ----------
 
+/** Nomes das pastas, a partir da pasta do cliente: AAAA / MM - Mês / DD / Rede / Formato. */
+function folderNames(day: string, network: string, format: string): string[] | null {
+  if (!isNetwork(network)) return null;
+  const cfg = NETWORKS[network];
+  return [...dayFolders(day), cfg.folder, cfg.formats[format]?.folder ?? format];
+}
+
 async function resolveDrive(url: string): Promise<{ fileId: string | null; meta: MediaMeta | null }> {
   const ref = parseDriveUrl(url);
   if (!url || !ref) return { fileId: null, meta: url ? { error: "o link não parece ser de um arquivo do Google Drive." } : null };
@@ -149,11 +156,34 @@ export async function createPost(formData: FormData): Promise<void> {
   if (!targets.length) redirect(withParam(back, "erro", "Escolha pelo menos uma rede e um formato."));
 
   const pool = await db();
-  const exists = await pool.query("select 1 from clients where id = $1", [clientId]).catch(() => ({ rowCount: 0 }));
-  if (!exists.rowCount) redirect("/");
+  const client = await pool
+    .query<{ drive_folder_id: string | null }>("select drive_folder_id from clients where id = $1", [clientId])
+    .catch(() => null);
+  if (!client?.rowCount) redirect("/");
+  const root = client.rows[0].drive_folder_id;
 
   const title = text(formData, "title", 120) || idea.split("\n")[0].slice(0, 80) || "Post sem título";
   const { fileId, meta } = await resolveDrive(driveUrl);
+
+  // Garante no Drive a pasta de cada destino (dia / rede / formato). Se falhar, o post é criado
+  // mesmo assim e a tela do dia avisa; a pasta pode ser criada depois com o botão do destino.
+  const folderCache = new Map<string, string>();
+  const folderIds: (string | null)[] = [];
+  let folderError: string | null = null;
+  for (const [network, format] of targets) {
+    const names = folderNames(day, network, format);
+    if (!root || !names || folderError) {
+      folderIds.push(null);
+      continue;
+    }
+    const res = await ensureFolderPath(root, names, folderCache);
+    if ("error" in res) {
+      folderError = res.error;
+      folderIds.push(null);
+    } else {
+      folderIds.push(res.id);
+    }
+  }
 
   const c = await pool.connect();
   try {
@@ -162,11 +192,11 @@ export async function createPost(formData: FormData): Promise<void> {
       "insert into posts (client_id, title, idea) values ($1,$2,$3) returning id",
       [clientId, title, idea],
     );
-    for (const [network, format] of targets) {
+    for (const [i, [network, format]] of targets.entries()) {
       await c.query(
-        `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta)
-         values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9)`,
-        [p.rows[0].id, network, format, day, time, idea, driveUrl, fileId, meta ? JSON.stringify(meta) : null],
+        `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id)
+         values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10)`,
+        [p.rows[0].id, network, format, day, time, idea, driveUrl, fileId, meta ? JSON.stringify(meta) : null, folderIds[i]],
       );
     }
     await c.query("commit");
@@ -177,7 +207,32 @@ export async function createPost(formData: FormData): Promise<void> {
     c.release();
   }
   revalidatePath("/", "layout");
-  redirect(`/clientes/${clientId}/dia/${day}`);
+  const dayPath = `/clientes/${clientId}/dia/${day}`;
+  redirect(folderError ? withParam(dayPath, "aviso", `O post foi criado, mas a pasta no Drive não: ${folderError}`) : dayPath);
+}
+
+/** Cria (ou encontra) no Drive a pasta de um destino que ainda não tem pasta. */
+export async function ensureTargetFolder(formData: FormData): Promise<void> {
+  await requireAuth();
+  const id = text(formData, "id", 40);
+  const back = safePath(text(formData, "volta", 300), "/");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) redirect("/");
+  const pool = await db();
+  const r = await pool.query<{ day: string; network: string; format: string; root: string | null }>(
+    `select to_char(t.scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day, t.network, t.format, c.drive_folder_id as root
+       from post_targets t join posts p on p.id = t.post_id join clients c on c.id = p.client_id
+      where t.id = $1`,
+    [id],
+  );
+  const row = r.rows[0];
+  if (!row) redirect("/");
+  const names = folderNames(row.day, row.network, row.format);
+  if (!row.root || !names) redirect(withParam(back, "erro", "Este cliente ainda não tem a pasta do Drive cadastrada."));
+  const res = await ensureFolderPath(row.root, names);
+  if ("error" in res) redirect(withParam(back, "erro", `Não foi possível criar a pasta: ${res.error}`));
+  await pool.query("update post_targets set post_folder_id = $1 where id = $2", [res.id, id]);
+  revalidatePath("/", "layout");
+  redirect(withParam(back, "pasta", id) + `#t-${id}`);
 }
 
 export async function saveTarget(formData: FormData): Promise<void> {
@@ -193,8 +248,9 @@ export async function saveTarget(formData: FormData): Promise<void> {
   if (!isTime(time) || !isDay(day)) redirect(withParam(back, "erro", "Informe uma data e um horário válidos."));
 
   const pool = await db();
-  const cur = await pool.query<{ drive_url: string; drive_file_id: string | null; drive_meta: MediaMeta | null }>(
-    "select drive_url, drive_file_id, drive_meta from post_targets where id = $1",
+  const cur = await pool.query<{ drive_url: string; drive_file_id: string | null; drive_meta: MediaMeta | null; day: string }>(
+    `select drive_url, drive_file_id, drive_meta, to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day
+       from post_targets where id = $1`,
     [id],
   );
   if (!cur.rows[0]) redirect("/");
@@ -208,6 +264,8 @@ export async function saveTarget(formData: FormData): Promise<void> {
         drive_url=$5, drive_file_id=$6, drive_meta=$7 where id=$8`,
     [caption, day, time, status, driveUrl, fileId, meta ? JSON.stringify(meta) : null, id],
   );
+  // Mudou o dia: a pasta guardada era a do dia antigo. Limpa para criar a do dia novo com o botão.
+  if (cur.rows[0].day !== day) await pool.query("update post_targets set post_folder_id = null where id = $1", [id]);
   revalidatePath("/", "layout");
   redirect(withParam(back, "salvo", id) + `#t-${id}`);
 }

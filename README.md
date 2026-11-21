@@ -46,7 +46,7 @@ As páginas HTML estáticas estão em [`prototipo/`](prototipo/). Para navegar e
 - **Formatos por rede:** Instagram e Facebook (Feed, Reels, Stories), LinkedIn (Feed, Vídeo, Documento), TikTok (Vídeo, Fotos), Kwai (Vídeo), YouTube (Shorts, Vídeo longo).
 - **Publicação:** manual na primeira versão (copiar legenda, baixar mídia, marcar como postado). Publicação automática depois, por uma ferramenta como Buffer, Metricool ou Zapier.
 - **Mídia no Google Drive**, em pastas `Cliente / Ano / Mês / Dia / Rede / Formato`. O app guarda o ID do arquivo no banco, então o caminho serve para organização e conferência, não para localizar o arquivo.
-- **Acesso ao Drive:** conta de serviço com permissão só de leitura, pasta compartilhada com o e-mail dela.
+- **Acesso ao Drive:** conta de serviço com a pasta do cliente compartilhada como Editor: o app lê arquivos e cria só as pastas do post (nunca envia, move nem apaga).
 - **Legendas com IA:** o app chama o Claude pela API, com o tom de voz do cliente, exemplos de posts aprovados e os limites de cada rede. Sempre com revisão humana.
 - **Artes:** kit de marca no Canva, em fase posterior.
 - **Pilha prevista:** Next.js e Postgres, hospedados no Render.

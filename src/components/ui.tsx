@@ -28,8 +28,9 @@ export function Initials({ name }: { name: string }) {
   return <span className="avatar">{i || "?"}</span>;
 }
 
-export function Flash({ erro, ok }: { erro?: string; ok?: string }) {
+export function Flash({ erro, ok, aviso }: { erro?: string; ok?: string; aviso?: string }) {
   if (erro) return <p className="alert err" role="alert">{erro}</p>;
+  if (aviso) return <p className="alert warn" role="status">{aviso}</p>;
   if (ok) return <p className="alert ok" role="status">{ok}</p>;
   return null;
 }

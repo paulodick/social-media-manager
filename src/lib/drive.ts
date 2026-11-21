@@ -2,7 +2,10 @@ import { JWT } from "google-auth-library";
 import type { MediaMeta } from "./checks.ts";
 
 const API = "https://www.googleapis.com/drive/v3";
-const SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+// Escopo completo porque o app precisa enxergar pastas que ele não criou e criar subpastas.
+// O alcance real é limitado pelo que foi compartilhado com a conta de serviço (a pasta do cliente).
+// O app só lê arquivos e cria pastas: não envia, move nem apaga nada.
+const SCOPE = "https://www.googleapis.com/auth/drive";
 
 export type DriveRef = { id: string; kind: "file" | "folder" | "unknown" };
 
@@ -39,7 +42,7 @@ export function driveConfigured(): boolean {
   return creds() !== null;
 }
 
-/** "missing": variável vazia ou ausente. "invalid": tem texto, mas não é um JSON de conta de serviço (ssem client_email e private_key). */
+/** "missing": variável vazia ou ausente. "invalid": tem texto, mas não é um JSON de conta de serviço (sem client_email e private_key). */
 export function driveStatus(): "ok" | "missing" | "invalid" {
   if (creds() !== null) return "ok";
   return process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim() ? "invalid" : "missing";
@@ -125,6 +128,73 @@ export async function folderPathFromRoot(fileId: string, rootId: string): Promis
     }
   } catch {}
   return null;
+}
+
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+const SAFE_ID = /^[A-Za-z0-9_-]{10,}$/;
+
+/** Escapa um nome para usar entre aspas simples na busca do Drive. */
+export function driveQuote(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+export function folderUrl(id: string): string {
+  return `https://drive.google.com/drive/folders/${id}`;
+}
+
+class DriveError extends Error {}
+
+async function findFolder(parentId: string, name: string): Promise<string | null> {
+  const q = `'${parentId}' in parents and name = '${driveQuote(name)}' and mimeType = '${FOLDER_MIME}' and trashed = false`;
+  const r = await api(`/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent("files(id)")}&pageSize=2&includeItemsFromAllDrives=true`);
+  if (r.status === 403 || r.status === 404) {
+    throw new DriveError("o app não enxerga a pasta do cliente. Confira se ela foi compartilhada com o e-mail de acesso do app.");
+  }
+  if (!r.ok) throw new DriveError(`o Google Drive respondeu com erro ${r.status}.`);
+  const j = (await r.json()) as { files?: { id: string }[] };
+  return j.files?.[0]?.id ?? null;
+}
+
+async function createFolder(parentId: string, name: string): Promise<string> {
+  const r = await api("/files?fields=id", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }),
+  });
+  if (r.status === 403 || r.status === 404) {
+    throw new DriveError("o app só tem permissão de leitura nessa pasta. Dê permissão de Editor ao e-mail de acesso do app.");
+  }
+  if (!r.ok) throw new DriveError(`o Google Drive respondeu com erro ${r.status} ao criar a pasta.`);
+  return ((await r.json()) as { id: string }).id;
+}
+
+export type FolderResult = { id: string } | { error: string };
+
+/**
+ * Garante a cadeia de pastas dentro de rootId (ex.: ["2026","11 - Novembro","21","Instagram","Reels"]).
+ * Procura cada nível e só cria o que falta. Devolve o ID da última pasta.
+ * `cache` evita criar a mesma pasta duas vezes quando vários destinos do mesmo post usam o mesmo dia
+ * (a busca do Drive pode demorar alguns segundos para enxergar uma pasta recém-criada).
+ */
+export async function ensureFolderPath(rootId: string, names: string[], cache: Map<string, string> = new Map()): Promise<FolderResult> {
+  if (!driveConfigured()) return { error: "o Google Drive ainda não está configurado no app." };
+  if (!SAFE_ID.test(rootId)) return { error: "o link da pasta do cliente não é válido." };
+  try {
+    let parent = rootId;
+    let key = rootId;
+    for (const name of names) {
+      key += "/" + name;
+      let id: string | null | undefined = cache.get(key);
+      if (!id) {
+        id = (await findFolder(parent, name)) ?? (await createFolder(parent, name));
+        cache.set(key, id);
+      }
+      parent = id;
+    }
+    return { id: parent };
+  } catch (e) {
+    return { error: e instanceof DriveError ? e.message : "não foi possível falar com o Google Drive agora." };
+  }
 }
 
 /** Abre o conteúdo do arquivo, repassando o cabeçalho Range (necessário para vídeo). */
