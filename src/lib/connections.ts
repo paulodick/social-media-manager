@@ -24,3 +24,21 @@ export async function removeMetaConnections(clientId: string): Promise<void> {
   const pool = await db();
   await pool.query("delete from network_connections where client_id = $1 and network in ('facebook','instagram')", [clientId]);
 }
+
+/** Guarda o perfil pessoal do LinkedIn. O acesso vale 60 dias (sem renovação automática): expires_at avisa antes. */
+export async function saveLinkedinConnection(clientId: string, m: { id: string; name: string; token: string; expiresAt: Date }): Promise<void> {
+  const pool = await db();
+  await pool.query(
+    `insert into network_connections (client_id, network, account_id, account_name, page_id, token_enc, expires_at)
+     values ($1, 'linkedin', $2, $3, null, $4, $5)
+     on conflict (client_id, network) do update
+       set account_id = excluded.account_id, account_name = excluded.account_name, token_enc = excluded.token_enc,
+           expires_at = excluded.expires_at, updated_at = now()`,
+    [clientId, m.id, m.name, encryptToken(m.token), m.expiresAt],
+  );
+}
+
+export async function removeLinkedinConnection(clientId: string): Promise<void> {
+  const pool = await db();
+  await pool.query("delete from network_connections where client_id = $1 and network = 'linkedin'", [clientId]);
+}

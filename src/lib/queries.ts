@@ -185,13 +185,13 @@ export async function getClientLogo(id: string): Promise<{ png: Buffer; v: numbe
   return r.rows[0] ?? null;
 }
 
-export type Connection = { account_id: string; account_name: string; page_id: string | null; token_enc: string };
+export type Connection = { account_id: string; account_name: string; page_id: string | null; token_enc: string; expires_at: Date | null };
 
 /** Conta conectada do cliente numa rede (ou null). O token vem criptografado: use decryptToken. */
 export async function getConnection(clientId: string, network: string): Promise<Connection | null> {
   const pool = await db();
   const r = await pool.query<Connection>(
-    "select account_id, account_name, page_id, token_enc from network_connections where client_id = $1 and network = $2",
+    "select account_id, account_name, page_id, token_enc, expires_at from network_connections where client_id = $1 and network = $2",
     [clientId, network],
   );
   return r.rows[0] ?? null;

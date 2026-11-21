@@ -1,5 +1,6 @@
 "use client";
 
+import BrandLogo from "./BrandLogo";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -23,10 +24,11 @@ export default function Sidebar({ clients, due }: { clients: C[]; due: number })
   const inClients = path.startsWith("/clientes") || on("/configuracoes");
   return (
     <>
-    <header className="topbar"><b>Social Media Manager</b></header>
+    <header className="topbar"><BrandLogo size={28} /><b>Social Media Manager</b></header>
     <aside className="side">
       <div className="brand">
-        <b>Social Media Manager</b>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-horizontal.svg" alt="Social Media Manager" className="brand-lockup" />
         <span className="muted small">Painel de clientes</span>
       </div>
       <nav className="nav" aria-label="Principal">

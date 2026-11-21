@@ -11,7 +11,7 @@ import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { generateText, type AiResult } from "./ai";
 import { buildCaptionPrompt } from "./prompt";
 import { startPublish } from "./publisher";
-import { removeMetaConnections, saveMetaConnections } from "./connections";
+import { removeMetaConnections, removeLinkedinConnection, saveMetaConnections } from "./connections";
 import { clearPending, readPending } from "./meta-pending";
 import { listPages } from "./publish/meta-oauth";
 import { fetchLogo } from "./logo";
@@ -608,6 +608,15 @@ export async function connectMetaPage(formData: FormData): Promise<void> {
   await clearPending();
   revalidatePath(back);
   redirect(withParam(back, msg.k, msg.v));
+}
+
+export async function disconnectLinkedin(formData: FormData): Promise<void> {
+  await requireAuth();
+  const clientId = text(formData, "clientId", 40);
+  if (!/^[0-9a-f-]{36}$/i.test(clientId)) redirect("/");
+  await removeLinkedinConnection(clientId);
+  revalidatePath(`/clientes/${clientId}/editar`);
+  redirect(withParam(`/clientes/${clientId}/editar`, "ok", "LinkedIn desconectado."));
 }
 
 export async function disconnectMeta(formData: FormData): Promise<void> {

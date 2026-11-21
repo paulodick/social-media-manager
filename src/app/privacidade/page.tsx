@@ -34,6 +34,10 @@ export default function Privacidade() {
           conta profissional do Instagram ligada a ela, e o token de acesso que a Meta entrega para publicar. O token fica
           criptografado no banco de dados e nunca é exibido nem registrado nos logs.
         </li>
+        <li>
+          <b>Conexão com o LinkedIn (quando a pessoa autoriza):</b> o nome e o identificador do perfil que fez o login e o token de
+          acesso que o LinkedIn entrega para publicar. O token fica criptografado, vale 60 dias e nunca é exibido nem registrado nos logs.
+        </li>
       </ul>
       <p>Não coletamos dados de seguidores, mensagens, comentários, anúncios nem informações pessoais de quem visita as páginas.</p>
 
@@ -47,6 +51,7 @@ export default function Privacidade() {
       <h2>Com quem os dados passam</h2>
       <ul>
         <li><b>Meta (Facebook e Instagram):</b> recebe o conteúdo do post e o token, para publicar na conta autorizada.</li>
+        <li><b>LinkedIn:</b> recebe o texto e a mídia do post e o token, para publicar no perfil autorizado.</li>
         <li><b>Google Drive:</b> lê os arquivos de mídia e cria as pastas dos posts, com a permissão dada pela empresa.</li>
         <li>
           <b>Anthropic (Claude):</b> se o recurso &quot;Gerar legenda&quot; estiver ligado, o texto do pedido (dados de marca do cliente, ideia do
@@ -64,6 +69,10 @@ export default function Privacidade() {
       <h2>Como excluir seus dados ou remover o acesso</h2>
       <ol>
         <li>
+          <b>Remover o acesso do LinkedIn:</b> no LinkedIn, abra Configurações › Privacidade dos dados › Serviços permitidos, escolha este
+          aplicativo e remova. No aplicativo, &quot;Desconectar&quot; em Editar cliente apaga o token guardado.
+        </li>
+        <li>
           <b>Remover o acesso da Meta:</b> no Facebook, abra Configurações › Integrações de negócios (ou Aplicativos e sites), escolha
           este aplicativo e remova. A Meta deixa de aceitar o acesso guardado.
         </li>
@@ -78,7 +87,7 @@ export default function Privacidade() {
 
       <h2>Segurança</h2>
       <p>
-        O acesso exige senha, a conexão é protegida por HTTPS e os tokens da Meta são guardados criptografados. Ninguém além de quem
+        O acesso exige senha, a conexão é protegida por HTTPS e os tokens da Meta e do LinkedIn são guardados criptografados. Ninguém além de quem
         administra o aplicativo tem acesso aos dados.
       </p>
 

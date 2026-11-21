@@ -1,3 +1,4 @@
+import BrandLogo from "@/components/BrandLogo";
 import { redirect } from "next/navigation";
 import { hasPassword, isAuthed } from "@/lib/auth";
 import { setupPassword } from "@/lib/actions";
@@ -11,6 +12,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
     <main id="conteudo" tabIndex={-1} className="login">
       <form action={setupPassword} className="card">
         <div className="col">
+          <BrandLogo size={64} />
           <h1>Primeiro acesso</h1>
           <p className="muted">
             Ainda não existe uma senha. Escolha a senha de acesso do app agora: quem abrir esta tela primeiro define a senha.

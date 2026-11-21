@@ -1,5 +1,6 @@
 import { decryptToken } from "./crypto";
 import { getConnection } from "./queries";
+import { linkedinHealthFrom } from "./publish/linkedin-health";
 import { checkMetaToken, type TokenHealth } from "./publish/meta-health";
 
 /**
@@ -16,4 +17,11 @@ export async function clientMetaHealth(clientId: string): Promise<TokenHealth | 
     return { state: "reconnect", message: "O acesso guardado não pode mais ser lido (a chave de criptografia mudou). Conecte de novo.", missing: [], expiresAt: null };
   }
   return checkMetaToken(token);
+}
+
+/** Saúde da conexão do LinkedIn: o acesso vale 60 dias e não se renova sozinho, então a data guardada diz tudo (sem chamar a rede). */
+export async function clientLinkedinHealth(clientId: string): Promise<TokenHealth | null> {
+  const conn = await getConnection(clientId, "linkedin");
+  if (!conn) return null;
+  return linkedinHealthFrom(conn.expires_at);
 }

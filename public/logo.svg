@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="t d">
+  <title id="t">Social Media Manager</title>
+  <desc id="d">Balão de publicação com uma grade de planejamento, um dos quadrados em destaque.</desc>
+  <defs>
+    <linearGradient id="fundo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1F4D"/>
+      <stop offset="1" stop-color="#3347D6"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#fundo)"/>
+  <path id="balao" fill="#FFFFFF" d="M152 96h208a56 56 0 0 1 56 56v144a56 56 0 0 1-56 56H252l-92 68v-68h-8a56 56 0 0 1-56-56V152a56 56 0 0 1 56-56z"/>
+  <g id="grade">
+    <rect x="184" y="152" width="64" height="64" rx="16" fill="#0B1F4D"/>
+    <rect x="264" y="152" width="64" height="64" rx="16" fill="#FF6B3D"/>
+    <rect x="184" y="232" width="64" height="64" rx="16" fill="#0B1F4D"/>
+    <rect x="264" y="232" width="64" height="64" rx="16" fill="#0B1F4D"/>
+  </g>
+</svg>

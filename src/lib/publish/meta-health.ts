@@ -24,7 +24,7 @@ type DebugData = {
 
 const DAY = 86_400_000;
 
-function fmtDate(ms: number): string {
+export function fmtDate(ms: number): string {
   return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(ms));
 }
 

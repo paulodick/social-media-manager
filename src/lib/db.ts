@@ -133,6 +133,13 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       alter table posts add column tones text[] not null default '{}';
     `,
   },
+  {
+    version: 10,
+    sql: `
+      -- Vencimento do acesso guardado (LinkedIn: 60 dias, sem renovação automática). Null = não vence (token da Página da Meta).
+      alter table network_connections add column expires_at timestamptz;
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

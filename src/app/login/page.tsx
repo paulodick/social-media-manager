@@ -10,7 +10,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <main id="conteudo" tabIndex={-1} className="login">
       <form action={login} className="card">
         <div className="col">
-          <h1>Social Media Manager</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-vertical.svg" alt="" className="login-lockup" />
+          <h1 className="sr-only">Social Media Manager</h1>
           <p className="muted">Entre com a senha de acesso.</p>
         </div>
         {erro && <p className="alert err" role="alert">Senha incorreta.</p>}
