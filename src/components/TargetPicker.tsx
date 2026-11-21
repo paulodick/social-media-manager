@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { NetDot } from "@/components/ui";
+import { buildCaptionPrompt, type PromptClient } from "@/lib/prompt";
+import type { NetworkId } from "@/config/networks";
 
 export type PickerOption = {
   key: string; // "rede:formato"
@@ -16,7 +18,7 @@ export type PickerOption = {
  * Uma linha por rede/formato. Ao marcar, aparecem a legenda e o link do vídeo daquele destino.
  * Os campos desmarcados ficam desabilitados (guardam o texto digitado, mas não são enviados).
  */
-export default function TargetPicker({ options }: { options: PickerOption[] }) {
+export default function TargetPicker({ options, client }: { options: PickerOption[]; client: PromptClient }) {
   const [on, setOn] = useState<Set<string>>(new Set());
   const toggle = (key: string) =>
     setOn((prev) => {
@@ -47,6 +49,9 @@ export default function TargetPicker({ options }: { options: PickerOption[] }) {
               <div className="col">
                 <label className="f" htmlFor={`cap-${i}`}>Legenda — {o.networkLabel} {o.formatLabel}</label>
                 <textarea id={`cap-${i}`} name={`caption__${o.key}`} rows={4} disabled={!checked} />
+                <div>
+                  <PromptButton client={client} option={o} captionId={`cap-${i}`} />
+                </div>
               </div>
               <div className="col">
                 <label className="f" htmlFor={`drv-${i}`}>Link do vídeo no Google Drive — {o.networkLabel} {o.formatLabel} (opcional)</label>
@@ -58,5 +63,31 @@ export default function TargetPicker({ options }: { options: PickerOption[] }) {
         );
       })}
     </div>
+  );
+}
+
+/** Monta o pedido na hora do clique, com o planejamento e a legenda como estão digitados. */
+function PromptButton({ client, option, captionId }: { client: PromptClient; option: PickerOption; captionId: string }) {
+  const [done, setDone] = useState(false);
+  const [network, format] = option.key.split(":");
+  return (
+    <button
+      type="button"
+      className="btn"
+      onClick={async () => {
+        const plan = (document.getElementById("note") as HTMLTextAreaElement | null)?.value ?? "";
+        const draft = (document.getElementById(captionId) as HTMLTextAreaElement | null)?.value ?? "";
+        const text = buildCaptionPrompt({ client, network: network as NetworkId, format, plan, captionDraft: draft });
+        try {
+          await navigator.clipboard.writeText(text);
+          setDone(true);
+          setTimeout(() => setDone(false), 2000);
+        } catch {
+          window.prompt("Copie o pedido:", text);
+        }
+      }}
+    >
+      {done ? "Copiado" : "Copiar pedido para a IA"}
+    </button>
   );
 }

@@ -64,6 +64,7 @@ export default async function DayPage({
             canCreateFolder={!!client.drive_folder_id}
             volta={volta}
             saved={sp.salvo === t.id}
+            ai={{ client: { name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }, plan: note }}
           />
         </div>
       );

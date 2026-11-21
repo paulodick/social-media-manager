@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { parseDriveUrl, driveQuote, folderUrl } from "../src/lib/drive.ts";
 import { captionChecks, mediaChecks, countHashtags, cutCaption } from "../src/lib/checks.ts";
 import { hashPassword, verifyPassword, passwordProblem } from "../src/lib/password.ts";
+import { buildCaptionPrompt } from "../src/lib/prompt.ts";
 import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders } from "../src/lib/dates.ts";
 
 test("parseDriveUrl", () => {
@@ -68,4 +69,19 @@ test("busca de pasta no Drive: escape e link", () => {
   assert.equal(driveQuote("d'Água"), "d\\'Água");
   assert.equal(driveQuote("a\\b"), "a\\\\b");
   assert.equal(folderUrl("abc123"), "https://drive.google.com/drive/folders/abc123");
+});
+
+test("buildCaptionPrompt reúne cliente, tom, plano e limites da rede", () => {
+  const client = { name: "Best Medical", segment: "Diagnóstico por imagem", site: "", tone: "Técnico e direto.", notes: "" };
+  const p = buildCaptionPrompt({ client, network: "instagram", format: "reels", plan: "Plantão 24h", captionDraft: "" });
+  assert.match(p, /Best Medical \(Diagnóstico por imagem\)/);
+  assert.match(p, /Instagram, formato Reels/);
+  assert.match(p, /Técnico e direto\./);
+  assert.match(p, /Plantão 24h/);
+  assert.match(p, /9:16/);
+  assert.doesNotMatch(p, /Rascunho atual/);
+  assert.doesNotMatch(p, /Site:/);
+  const q = buildCaptionPrompt({ client, network: "linkedin", format: "feed", plan: "", captionDraft: "Meu rascunho" });
+  assert.match(q, /não informado/);
+  assert.match(q, /Rascunho atual[^\n]*\nMeu rascunho/);
 });

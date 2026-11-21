@@ -4,6 +4,7 @@ import { useState } from "react";
 import { NETWORKS, STATUS_LABEL, type NetworkId } from "@/config/networks";
 import { captionChecks, countHashtags, cutCaption, fmtNumber, mediaChecks, type Check, type MediaMeta } from "@/lib/checks";
 import { deleteTarget, ensureTargetFolder, saveTarget } from "@/lib/actions";
+import { buildCaptionPrompt, type PromptClient } from "@/lib/prompt";
 import CopyButton from "./CopyButton";
 
 export type EditorProps = {
@@ -28,6 +29,8 @@ export type EditorProps = {
   canCreateFolder: boolean;
   volta: string;
   saved: boolean;
+  /** Dados do cliente e planejamento do dia, para montar o pedido de legenda para a IA. */
+  ai: { client: PromptClient; plan: string };
 };
 
 function Media({ fileId, meta, fit }: { fileId: string | null; meta: MediaMeta | null; fit?: "cover" }) {
@@ -196,6 +199,10 @@ export default function TargetEditor(p: EditorProps) {
           </form>
           <div className="row">
             <CopyButton text={caption} />
+            <CopyButton
+              text={buildCaptionPrompt({ client: p.ai.client, network: p.network, format: p.format, plan: p.ai.plan, captionDraft: caption })}
+              label="Copiar pedido para a IA"
+            />
             {downloadable && <a className="btn" href={`/api/media/${p.fileId}?download=1`}>Baixar mídia</a>}
             {p.folderId ? (
               <a className="btn" href={`https://drive.google.com/drive/folders/${p.folderId}`} target="_blank" rel="noopener noreferrer">Abrir pasta no Drive</a>

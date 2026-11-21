@@ -95,9 +95,10 @@ export default async function NewPost({
             <>
               <p className="muted small">
                 Marque cada rede e formato em que o post vai sair. Cada um ganha a sua legenda e o seu link de vídeo.
+                Em "Copiar pedido para a IA", o app monta o pedido com o tom de voz do cliente e o seu planejamento; você cola no Claude ou no Gemini e traz a legenda de volta.
                 A orientação ao lado é a medida ideal sugerida, não uma regra da rede.
               </p>
-              <TargetPicker options={options} />
+              <TargetPicker options={options} client={{ name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }} />
               <div className="col">
                 <label className="f" htmlFor="title">Título interno (opcional)</label>
                 <input id="title" name="title" type="text" maxLength={120} placeholder="Ex.: Reels do plantão técnico" />
