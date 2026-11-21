@@ -24,6 +24,8 @@ export default async function ClientCalendar({
   const mes = isMonth(sp.mes) ? sp.mes : monthOf(today);
   const rede = sp.rede && isNetwork(sp.rede) ? sp.rede : "";
   const status = sp.status && sp.status in STATUS_LABEL ? sp.status : "";
+  // Filtro de rede: só as redes cadastradas no cliente (mais a que estiver selecionada na URL, para poder limpar).
+  const filterNets = NETWORK_IDS.filter((n) => networks.some((x) => x.network === n) || n === rede);
   const cells = monthGrid(mes);
   const targets = await listTargets({
     clientId: id,
@@ -49,7 +51,7 @@ export default async function ClientCalendar({
   };
 
   return (
-    <main className="main">
+    <main id="conteudo" tabIndex={-1} className="main">
       <header className="row between">
         <div className="row" style={{ flexWrap: "nowrap" }}>
           <ClientAvatar client={client} size="lg" />
@@ -85,7 +87,7 @@ export default async function ClientCalendar({
         <div className="row" style={{ gap: 8 }}>
           <span className="muted small" style={{ fontWeight: 600 }}>Rede</span>
           <Link href={href({ rede: "" })} className={`filter ${rede === "" ? "on" : ""}`}>Todas</Link>
-          {NETWORK_IDS.map((n) => (
+          {filterNets.map((n) => (
             <Link key={n} href={href({ rede: n })} className={`filter ${rede === n ? "on" : ""}`}>{NETWORKS[n].label}</Link>
           ))}
         </div>

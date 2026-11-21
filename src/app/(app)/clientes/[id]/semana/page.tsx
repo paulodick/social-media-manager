@@ -79,7 +79,7 @@ export default async function ClientWeek({
   const toRolling = href(days.includes(today) ? today : start, false);
 
   return (
-    <main className="main">
+    <main id="conteudo" tabIndex={-1} className="main">
       <header className="row between">
         <div className="row" style={{ flexWrap: "nowrap" }}>
           <ClientAvatar client={client} size="lg" />

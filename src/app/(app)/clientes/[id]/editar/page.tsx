@@ -19,7 +19,7 @@ export default async function EditClient({
   const fb = connected.facebook;
   const ig = connected.instagram;
   return (
-    <main className="main narrow">
+    <main id="conteudo" tabIndex={-1} className="main narrow">
       <header className="col">
         <BackLink href={`/clientes/${id}`}>← Voltar para {data.client.name}</BackLink>
         <h1>Editar cliente</h1>

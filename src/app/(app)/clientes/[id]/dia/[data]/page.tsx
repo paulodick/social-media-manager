@@ -84,7 +84,7 @@ export default async function DayPage({
   );
 
   return (
-    <main className="main">
+    <main id="conteudo" tabIndex={-1} className="main">
       <header className="row between">
         <div className="col">
           <nav className="row small muted" aria-label="Caminho" style={{ gap: 8 }}>

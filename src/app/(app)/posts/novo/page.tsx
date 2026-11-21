@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import TargetPicker, { type PickerOption } from "@/components/TargetPicker";
 import { BackLink, ClientAvatar, Flash } from "@/components/ui";
 import { NETWORKS, captionLabel, isNetwork } from "@/config/networks";
@@ -17,8 +18,10 @@ export default async function NewPost({
 
   if (!found) {
     const clients = await listClients();
+    // Com um cliente só, não há o que escolher: vai direto para o formulário.
+    if (clients.length === 1) redirect(`/posts/novo?cliente=${clients[0].id}${isDay(sp.data) ? `&data=${sp.data}` : ""}`);
     return (
-      <main className="main narrow">
+      <main id="conteudo" tabIndex={-1} className="main narrow">
         <header className="col">
           <BackLink href="/">← Voltar para o início</BackLink>
           <h1>Novo post</h1>
@@ -65,7 +68,7 @@ export default async function NewPost({
       }));
     });
   return (
-    <main className="main narrow">
+    <main id="conteudo" tabIndex={-1} className="main narrow">
       <header className="col">
         <BackLink href={`/clientes/${client.id}`}>← {client.name}</BackLink>
         <h1>Novo post</h1>

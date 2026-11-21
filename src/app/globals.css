@@ -49,7 +49,7 @@ input, textarea, select, button { font: inherit; color: inherit; }
 label.f { font-weight: 600; font-size: 14px; }
 input[type=text], input[type=password], input[type=date], input[type=time], select, textarea { width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; }
 textarea { padding: 10px 12px; resize: vertical; line-height: 1.45; }
-input[type=checkbox] { width: 20px; height: 20px; margin: 0; }
+input[type=checkbox] { width: 24px; height: 24px; margin: 0; }
 .target { border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
 .target.on { border-color: var(--accent); background: #fff; }
 .target > label { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; min-height: 44px; padding: 6px 12px; cursor: pointer; }
@@ -171,3 +171,9 @@ input[type=checkbox] { width: 20px; height: 20px; margin: 0; }
 /* "Personalizar legenda": bloco recolhido sob a legenda */
 details.personalize { border-top: 1px dashed var(--line); padding-top: 6px; }
 details.personalize > summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--accent); width: fit-content; min-height: 32px; display: flex; align-items: center; }
+
+/* Acessibilidade: atalho para o conteúdo, alvos de toque de pelo menos 24 px */
+.skip { position: absolute; left: 8px; top: -60px; z-index: 100; background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 8px; font-weight: 600; }
+.skip:focus { top: 8px; }
+main:focus { outline: none; }
+a.small, a.muted.small { display: inline-flex; align-items: center; min-height: 24px; }

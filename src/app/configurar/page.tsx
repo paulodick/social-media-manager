@@ -8,7 +8,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   if (await hasPassword()) redirect("/login");
   const { erro } = await searchParams;
   return (
-    <main className="login">
+    <main id="conteudo" tabIndex={-1} className="login">
       <form action={setupPassword} className="card">
         <div className="col">
           <h1>Primeiro acesso</h1>

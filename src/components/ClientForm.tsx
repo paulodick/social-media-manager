@@ -107,7 +107,7 @@ export default async function ClientForm({ client, networks }: { client?: Client
         <div className="col">
           <h2 id="redes">Redes sociais</h2>
           <p className="muted small" style={{ maxWidth: "70ch" }}>
-            Marque as redes do cliente e informe a conta e o endereço do perfil. A publicação é manual nesta versão.
+            Marque as redes do cliente e informe a conta e o endereço do perfil. Instagram e Facebook publicam pelo app depois de conectados (em "Editar cliente"); as demais redes seguem manuais.
           </p>
         </div>
         {NETWORK_IDS.map((n) => {

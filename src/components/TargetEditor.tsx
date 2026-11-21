@@ -161,7 +161,7 @@ export default function TargetEditor(p: EditorProps) {
 
             <div className="row">
               <button className="btn" type="submit" name="status" value="draft">Salvar rascunho</button>
-              <button className="btn primary" type="submit" name="status" value="scheduled">Agendar</button>
+              <button className="btn primary" type="submit" name="status" value="scheduled" title="Só registra o status. A publicação automática por horário ainda não existe.">Marcar como agendado</button>
               {!posted && <button className="btn dark" type="submit" name="status" value="posted">Marcar como postado</button>}
               {posted && <button className="btn" type="submit" name="status" value="scheduled">Voltar para agendado</button>}
             </div>

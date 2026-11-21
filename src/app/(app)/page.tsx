@@ -9,7 +9,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
   const today = todaySP();
   const [clients, due] = await Promise.all([listClients(), listTargets({ dueUntil: today })]);
   return (
-    <main className="main">
+    <main id="conteudo" tabIndex={-1} className="main">
       <header className="row between">
         <h1>Início</h1>
         <div className="row">

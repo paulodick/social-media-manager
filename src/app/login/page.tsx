@@ -7,7 +7,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (!(await hasPassword())) redirect("/configurar");
   const { erro } = await searchParams;
   return (
-    <main className="login">
+    <main id="conteudo" tabIndex={-1} className="login">
       <form action={login} className="card">
         <div className="col">
           <h1>Social Media Manager</h1>

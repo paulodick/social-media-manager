@@ -22,7 +22,7 @@ export default async function ConectarMeta({ params }: { params: Promise<{ id: s
     erro = e instanceof Error ? e.message : "Não foi possível ler as Páginas.";
   }
   return (
-    <main className="main narrow">
+    <main id="conteudo" tabIndex={-1} className="main narrow">
       <header className="col">
         <BackLink href={`/clientes/${id}/editar`}>← Voltar para editar {data.client.name}</BackLink>
         <h1>Qual Página é de {data.client.name}?</h1>
