@@ -148,6 +148,13 @@ export default function NetworkRow({
   const thumbPlayable = existing && thumbUrl.trim() === existing.thumbUrl && existing.thumbUrl ? thumb.fileId : null;
 
   const capRef = useRef<HTMLTextAreaElement>(null);
+  // A caixa da legenda cresce com o texto (até 60% da altura da tela; depois rola por dentro).
+  useEffect(() => {
+    const el = capRef.current;
+    if (!el || !open) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.6))}px`;
+  }, [caption, open]);
   const withTitle = !!fmt?.title;
   const checks: Check[] = [
     ...mediaChecks(network, format, video.meta),
@@ -216,7 +223,7 @@ export default function NetworkRow({
 
         <div className="col">
           <label className="f" htmlFor={`${id}-c`}>{o.captionLabel} — {o.networkLabel} {o.formatLabel}</label>
-          <textarea id={`${id}-c`} ref={capRef} name={`caption__${k}`} rows={isNew ? 4 : 7} value={caption} disabled={off}
+          <textarea id={`${id}-c`} ref={capRef} name={`caption__${k}`} rows={isNew ? 4 : 7} className="auto-grow" value={caption} disabled={off}
             onChange={(e) => setCaption(e.target.value)} />
           <div className="row between small muted">
             <span style={{ fontVariantNumeric: "tabular-nums" }}>
@@ -253,48 +260,65 @@ export default function NetworkRow({
           </div>
         )}
 
-        {existing && (
-          <>
-            <div className="row">
-              {existing.status !== "draft" && <button className="btn" type="submit" name="status" value={`${existing.id}:draft`}>Salvar como rascunho</button>}
-              {existing.status !== "scheduled" && (
-                <button className="btn primary" type="submit" name="status" value={`${existing.id}:scheduled`} title="Só registra a situação. A publicação automática por horário ainda não existe.">
-                  {posted ? "Voltar para agendado" : "Marcar como agendado"}
-                </button>
+        {existing && (() => {
+          // Um botão principal por situação. Com a conta conectada, "Publicar agora" é a ação principal
+          // e as marcações de situação ficam no menu "Mais ações".
+          const publishMain = !!existing.publish?.connected && !posted && existing.publish.state !== "published";
+          const primary = publishMain ? null : existing.status === "draft" ? "scheduled" : existing.status === "scheduled" ? "posted" : null;
+          const LABEL: Record<string, string> = {
+            draft: "Voltar para rascunho",
+            scheduled: posted ? "Voltar para agendado" : "Marcar como agendado",
+            posted: "Marcar como postado",
+          };
+          const inMenu = (["scheduled", "posted", "draft"] as const).filter((st) => st !== existing.status && st !== primary);
+          return (
+            <>
+              {existing.publish && (
+                <PublishPanel
+                  id={existing.id}
+                  networkLabel={cfg.label}
+                  info={existing.publish}
+                  dirty={caption !== existing.caption || title !== existing.title}
+                  posted={posted}
+                />
               )}
-              {!posted && <button className="btn dark" type="submit" name="status" value={`${existing.id}:posted`}>Marcar como postado</button>}
-            </div>
-            {existing.publish && (
-              <PublishPanel
-                id={existing.id}
-                networkLabel={cfg.label}
-                info={existing.publish}
-                dirty={caption !== existing.caption || title !== existing.title}
-                posted={posted}
-              />
-            )}
-            <div className="row">
-              <CopyButton text={caption} />
-              {downloadable && <a className="btn" href={`/api/media/${video.fileId}?download=1`}>Baixar mídia</a>}
-              {existing.folderId ? (
-                <a className="btn" href={`https://drive.google.com/drive/folders/${existing.folderId}`} target="_blank" rel="noopener noreferrer">Abrir pasta no Drive</a>
-              ) : canCreateFolder ? (
-                <button className="btn" type="submit" formAction={ensureTargetFolder.bind(null, existing.id)} formNoValidate>Criar pasta no Drive</button>
-              ) : null}
-              <button
-                className="btn danger"
-                type="submit"
-                formAction={deleteTarget.bind(null, existing.id)}
-                formNoValidate
-                onClick={(e) => {
-                  if (!window.confirm(`Excluir o destino ${o.networkLabel} ${o.formatLabel} deste post? Não dá para desfazer.`)) e.preventDefault();
-                }}
-              >
-                Excluir este destino
-              </button>
-            </div>
-          </>
-        )}
+              <div className="row actions">
+                {primary && (
+                  <button className="btn primary" type="submit" name="status" value={`${existing.id}:${primary}`}
+                    title={primary === "scheduled" ? "Só registra a situação. A publicação automática por horário ainda não existe." : undefined}>
+                    {LABEL[primary]}
+                  </button>
+                )}
+                <CopyButton text={caption} />
+                {downloadable && <a className="btn" href={`/api/media/${video.fileId}?download=1`}>Baixar mídia</a>}
+                <details className="more">
+                  <summary className="btn">Mais ações</summary>
+                  <div className="menu">
+                    {inMenu.map((st) => (
+                      <button key={st} type="submit" name="status" value={`${existing.id}:${st}`}>{LABEL[st]}</button>
+                    ))}
+                    {existing.folderId ? (
+                      <a href={`https://drive.google.com/drive/folders/${existing.folderId}`} target="_blank" rel="noopener noreferrer">Abrir pasta no Drive</a>
+                    ) : canCreateFolder ? (
+                      <button type="submit" formAction={ensureTargetFolder.bind(null, existing.id)} formNoValidate>Criar pasta no Drive</button>
+                    ) : null}
+                    <button
+                      className="danger"
+                      type="submit"
+                      formAction={deleteTarget.bind(null, existing.id)}
+                      formNoValidate
+                      onClick={(e) => {
+                        if (!window.confirm(`Excluir o destino ${o.networkLabel} ${o.formatLabel} deste post? Não dá para desfazer.`)) e.preventDefault();
+                      }}
+                    >
+                      Excluir este destino
+                    </button>
+                  </div>
+                </details>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       <div className="col" style={{ minWidth: 0 }}>

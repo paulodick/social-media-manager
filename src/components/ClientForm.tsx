@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { NETWORKS, NETWORK_IDS } from "@/config/networks";
+import { NETWORK_IDS } from "@/config/networks";
 import { saveClient } from "@/lib/actions";
 import type { Client, ClientNetwork } from "@/lib/queries";
 import { serviceAccountEmail } from "@/lib/drive";
 import { getDriveRoot } from "@/lib/drive-root";
+import AutoTextarea from "./AutoTextarea";
+import ClientNetworkField from "./ClientNetworkField";
 import DriveFolderField from "./DriveFolderField";
-import { ClientAvatar, NetDot } from "./ui";
+import { ClientAvatar } from "./ui";
 
 const PH: Record<string, { acc: string; url: string }> = {
   instagram: { acc: "Nome do perfil", url: "https://www.instagram.com/…" },
@@ -44,12 +46,12 @@ export default async function ClientForm({ client, networks }: { client?: Client
         </div>
         <div className="col">
           <label className="f" htmlFor="tone">Tom de voz</label>
-          <textarea id="tone" name="tone" rows={4} placeholder="Como o cliente fala com o público. Ex.: técnico, direto, sem exageros." defaultValue={client?.tone ?? ""} />
+          <AutoTextarea id="tone" name="tone" rows={4} placeholder="Como o cliente fala com o público. Ex.: técnico, direto, sem exageros." defaultValue={client?.tone ?? ""} />
           <span className="muted small">Será usado na etapa de legendas com IA, junto com exemplos de posts aprovados.</span>
         </div>
         <div className="col">
           <label className="f" htmlFor="notes">Observações</label>
-          <textarea id="notes" name="notes" rows={3} placeholder="Regras da marca, assuntos a evitar, contatos de aprovação." defaultValue={client?.notes ?? ""} />
+          <AutoTextarea id="notes" name="notes" rows={4} placeholder="Regras da marca, assuntos a evitar, contatos de aprovação." defaultValue={client?.notes ?? ""} />
         </div>
       </section>
 
@@ -111,33 +113,14 @@ export default async function ClientForm({ client, networks }: { client?: Client
           </p>
         </div>
         {NETWORK_IDS.map((n) => {
-          const cfg = NETWORKS[n];
           const cur = byNet.get(n);
           return (
-            <fieldset key={n} style={{ margin: 0, padding: 16, border: "1px solid var(--line)", borderRadius: 10, background: "var(--soft)" }}>
-              <legend className="sr">{cfg.label}</legend>
-              <label className="row" style={{ gap: 10, marginBottom: 12, cursor: "pointer" }}>
-                <input type="checkbox" name={`net_${n}`} defaultChecked={!!cur} />
-                <NetDot network={n} />
-                <b>{cfg.label}</b>
-                <span className="muted small">Formatos: {Object.values(cfg.formats).map((f) => f.label).join(", ")}</span>
-              </label>
-              <div className="grid2">
-                <div className="col">
-                  <label className="f" htmlFor={`acc_${n}`}>Nome da conta</label>
-                  <input id={`acc_${n}`} name={`acc_${n}`} type="text" placeholder={PH[n].acc} defaultValue={cur?.account_name ?? ""} />
-                </div>
-                <div className="col">
-                  <label className="f" htmlFor={`url_${n}`}>Endereço do perfil</label>
-                  <input id={`url_${n}`} name={`url_${n}`} type="text" placeholder={PH[n].url} defaultValue={cur?.profile_url ?? ""} />
-                </div>
-              </div>
-            </fieldset>
+            <ClientNetworkField key={n} network={n} checked={!!cur} account={cur?.account_name ?? ""} url={cur?.profile_url ?? ""} placeholders={PH[n]} />
           );
         })}
       </section>
 
-      <div className="row" style={{ justifyContent: "flex-end" }}>
+      <div className="savebar">
         <Link href={client ? `/clientes/${client.id}` : "/"} className="btn">Cancelar</Link>
         <button type="submit" className="btn primary">Salvar cliente</button>
       </div>

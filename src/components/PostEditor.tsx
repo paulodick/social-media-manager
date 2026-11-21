@@ -186,7 +186,7 @@ export default function PostEditor({
         </div>
       </section>
 
-      <div className="row" style={{ justifyContent: "flex-end" }}>
+      <div className="savebar">
         {!editing && <Link href={`/clientes/${client.id}`} className="btn">Cancelar</Link>}
         <button type="submit" className="btn primary" data-save>Salvar</button>
       </div>

@@ -182,7 +182,7 @@ a.small, a.muted.small { display: inline-flex; align-items: center; min-height: 
 fieldset.tones { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 14px; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 fieldset.tones legend { font-weight: 600; padding: 0 6px; }
 .tones-hint { margin: 0; }
-.tone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.tone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 8px; }
 .tone { position: relative; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; overflow-wrap: anywhere; }
 .tone:hover { background: var(--bg); }
 .tone.on { border-color: var(--accent); background: var(--bg); }
@@ -197,3 +197,44 @@ fieldset.tones legend { font-weight: 600; padding: 0 6px; }
 .target-split { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 28px; align-items: start; }
 @media (max-width: 900px) { .target-split { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
 .target.existing .target-head { padding: 10px 12px; }
+
+/* Ações do destino: um botão principal, o resto em "Mais ações" */
+details.more { position: relative; }
+details.more > summary { list-style: none; cursor: pointer; user-select: none; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::after { content: "▾"; margin-left: 8px; font-size: 12px; }
+details.more[open] > summary { background: var(--bg); }
+details.more .menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 240px; background: var(--card); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 8px 24px rgba(20, 30, 45, 0.14); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+details.more .menu button, details.more .menu a { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: none; text-align: left; cursor: pointer; width: 100%; color: var(--ink); text-decoration: none; }
+details.more .menu button:hover, details.more .menu a:hover { background: var(--bg); }
+details.more .menu .danger { color: var(--bad-ink); }
+textarea.auto-grow { resize: vertical; min-height: 7.5em; }
+
+/* Menu: fixo no desktop; barra de abas embaixo no celular */
+.side { position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto; }
+.topbar, .tabbar, .sheet-back { display: none; }
+@media (max-width: 900px) {
+  .side { display: none; }
+  .shell { display: block; }
+  .main { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .topbar { display: flex; align-items: center; min-height: 48px; padding: 0 16px; background: var(--card); border-bottom: 1px solid var(--line); }
+  .topbar b { font-family: "Bricolage Grotesque", sans-serif; font-size: 18px; letter-spacing: -0.01em; }
+  .tabbar { display: grid; grid-template-columns: repeat(4, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--card); border-top: 1px solid var(--line-strong); padding-bottom: env(safe-area-inset-bottom); }
+  .tabbar a, .tabbar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 60px; padding: 6px 4px; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer; }
+  .tabbar .ico { position: relative; font-size: 20px; line-height: 1; }
+  .tabbar .dot { position: absolute; top: -2px; right: -8px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+  .tabbar .on { color: var(--accent-ink); }
+  .tabbar .on .ico { background: var(--accent-soft); border-radius: 10px; padding: 2px 14px; }
+  .sheet-back { display: block; position: fixed; inset: 0; z-index: 60; background: rgba(16, 24, 40, 0.45); }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 80vh; overflow-y: auto; background: var(--card); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .tabs a { padding: 0 12px; white-space: nowrap; flex: 0 0 auto; }
+}
+
+/* Cadastro do cliente: rede com campos que abrem ao marcar; barra de Salvar fixa no rodapé */
+fieldset.netfield { margin: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); min-width: 0; }
+fieldset.netfield.on { background: var(--card); border-color: var(--line-strong); }
+.savebar { position: sticky; bottom: 0; z-index: 10; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; padding: 12px 0; margin-top: 4px; background: linear-gradient(to top, var(--bg) 70%, rgba(243, 245, 247, 0)); }
+@media (max-width: 900px) { .savebar { bottom: calc(60px + env(safe-area-inset-bottom)); padding: 10px 0; } }
+
+[hidden] { display: none !important; }

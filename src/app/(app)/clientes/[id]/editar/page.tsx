@@ -25,7 +25,6 @@ export default async function EditClient({
         <h1>Editar cliente</h1>
       </header>
       <Flash erro={erro} ok={ok} aviso={aviso} />
-      <ClientForm client={data.client} networks={data.networks} />
       <section className="card" aria-labelledby="contas-meta">
         <h2 id="contas-meta">Contas conectadas (Facebook e Instagram)</h2>
         <p className="muted small">
@@ -46,6 +45,7 @@ export default async function EditClient({
           )}
         </div>
       </section>
+      <ClientForm client={data.client} networks={data.networks} />
     </main>
   );
 }
