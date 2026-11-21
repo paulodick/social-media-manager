@@ -18,7 +18,7 @@ const server = http.createServer(async (req, res) => {
   let body = {}; if (req.headers["content-type"]?.includes("json")) { try { body = JSON.parse(raw); } catch {} }
   const form = req.headers["content-type"]?.includes("x-www-form-urlencoded") ? Object.fromEntries(new URLSearchParams(raw)) : {};
   if (path === "/_pages" && req.method === "POST") { state.pages = body; return json(res, 200, {}); }
-  seen.push({ method: req.method, path, auth: req.headers.authorization, offset: req.headers.offset, file_size: req.headers.file_size, bytes, body, form, query: Object.fromEntries(url.searchParams) });
+  seen.push({ method: req.method, path, auth: req.headers.authorization, offset: req.headers.offset, file_size: req.headers.file_size, content_length: req.headers["content-length"], entity_length: req.headers["x-entity-length"], bytes, body, form, query: Object.fromEntries(url.searchParams) });
   const token = (req.headers.authorization || "").replace(/^(Bearer|OAuth) /, "");
   if (token === "TOKEN_EXPIRADO") return json(res, 400, { error: { message: "Error validating access token: Session has expired", code: 190 } });
   if (token === "TOKEN_SEM_PERMISSAO") return json(res, 403, { error: { message: "(#200) Requires pages_manage_posts permission", code: 200 } });

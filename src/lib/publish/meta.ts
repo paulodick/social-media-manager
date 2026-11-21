@@ -97,7 +97,14 @@ async function uploadFile(uploadUrl: string, token: string, media: MediaSource):
   try {
     res = await fetch(uploadUrl, {
       method: "POST",
-      headers: { Authorization: `OAuth ${token}`, offset: "0", file_size: String(media.size) },
+      // A Meta exige os dois cabeçalhos de tamanho juntos (ou Transfer-Encoding sozinho).
+      headers: {
+        Authorization: `OAuth ${token}`,
+        offset: "0",
+        file_size: String(media.size),
+        "Content-Length": String(media.size),
+        "X-Entity-Length": String(media.size),
+      },
       body: src.body,
       // Node exige `duplex` para enviar um corpo em fluxo.
       duplex: "half",

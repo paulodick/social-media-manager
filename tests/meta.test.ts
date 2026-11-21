@@ -55,6 +55,8 @@ test("publica no Instagram e no Facebook contra o servidor de mentira", async ()
     assert.equal(up.auth, "OAuth TK");
     assert.equal(up.offset, "0");
     assert.equal(up.file_size, "2048");
+    assert.equal(up.content_length, "2048");
+    assert.equal(up.entity_length, "2048");
     assert.equal(up.bytes, 2048);
     const create = m.seen.find((s: { path: string; body: { upload_type?: string } }) => s.path.endsWith("/IG1/media") && s.body.upload_type);
     assert.deepEqual(create.body, { media_type: "REELS", upload_type: "resumable", caption: "Legenda #um" });
