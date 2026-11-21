@@ -3,7 +3,7 @@ import { isAuthed } from "@/lib/auth";
 import { saveMetaConnections } from "@/lib/connections";
 import { setPending, takeNonce } from "@/lib/meta-pending";
 import { publicOrigin } from "@/lib/signed-url";
-import { exchangeCode, listPages, metaConfig, verifyState } from "@/lib/publish/meta-oauth";
+import { diagnoseGrant, exchangeCode, listPages, metaConfig, verifyState } from "@/lib/publish/meta-oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +29,10 @@ export async function GET(req: Request): Promise<Response> {
 
   try {
     const userToken = await exchangeCode(cfg, code);
-    const pages = await listPages(userToken);
+    const pages = await listPages(userToken, cfg);
     if (pages.length === 0) {
-      return edit("erro", "A Meta não liberou nenhuma Página. Na janela de login, marque a Página do cliente e o Instagram dela.");
+      const why = await diagnoseGrant(userToken, cfg).catch(() => "");
+      return edit("erro", "A Meta não liberou nenhuma Página. Na janela de login, marque a Página do cliente e o Instagram dela." + (why ? ` (Diagnóstico: ${why})` : ""));
     }
     if (pages.length > 1) {
       await setPending(st.clientId, userToken);

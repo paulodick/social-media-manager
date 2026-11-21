@@ -113,22 +113,78 @@ export async function exchangeCode(cfg: MetaConfig, code: string): Promise<strin
   return tokenRequest({ grant_type: "fb_exchange_token", client_id: cfg.appId, client_secret: cfg.secret, fb_exchange_token: short });
 }
 
+const PAGE_FIELDS = "id,name,access_token,instagram_business_account%7Bid,username%7D";
+
+function toPage(p: Json): MetaPage | null {
+  if (typeof p.id !== "string" || typeof p.access_token !== "string") return null;
+  const ig = p.instagram_business_account as { id?: unknown; username?: unknown } | undefined;
+  return {
+    id: p.id,
+    name: typeof p.name === "string" ? p.name : p.id,
+    token: p.access_token,
+    ig: ig && typeof ig.id === "string" ? { id: ig.id, username: typeof ig.username === "string" ? ig.username : "" } : null,
+  };
+}
+
 /** Páginas que a pessoa liberou no login, cada uma com o token da Página e o Instagram profissional ligado. */
-export async function listPages(userToken: string): Promise<MetaPage[]> {
-  const body = await graph("me/accounts?fields=id,name,access_token,instagram_business_account%7Bid,username%7D&limit=100", {
+export async function listPages(userToken: string, cfg?: MetaConfig): Promise<MetaPage[]> {
+  const body = await graph(`me/accounts?fields=${PAGE_FIELDS}&limit=100`, {
     headers: { authorization: `Bearer ${userToken}` },
   });
   const data = Array.isArray(body.data) ? (body.data as Json[]) : [];
+  const pages = data.map(toPage).filter((x): x is MetaPage => x !== null);
+  if (pages.length > 0 || !cfg) return pages;
+  return pagesFromGrant(userToken, cfg).catch(() => []);
+}
+
+/**
+ * Plano B: com Página dentro de portfólio empresarial, /me/accounts pode vir vazio mesmo com a Página liberada.
+ * O debug_token mostra os IDs liberados (granular_scopes); cada Página é lida direto.
+ */
+async function pagesFromGrant(userToken: string, cfg: MetaConfig): Promise<MetaPage[]> {
+  const dbg = await graph(`debug_token?input_token=${encodeURIComponent(userToken)}`, {
+    headers: { authorization: `Bearer ${cfg.appId}|${cfg.secret}` },
+  });
+  const info = (dbg.data ?? {}) as { granular_scopes?: Array<{ scope?: string; target_ids?: unknown }> };
+  const ids = new Set<string>();
+  for (const g of info.granular_scopes ?? []) {
+    if (g.scope === "pages_show_list" || g.scope === "pages_manage_posts" || g.scope === "pages_read_engagement") {
+      for (const id of Array.isArray(g.target_ids) ? g.target_ids : []) if (typeof id === "string" && /^\d+$/.test(id)) ids.add(id);
+    }
+  }
   const pages: MetaPage[] = [];
-  for (const p of data) {
-    if (typeof p.id !== "string" || typeof p.access_token !== "string") continue;
-    const ig = p.instagram_business_account as { id?: unknown; username?: unknown } | undefined;
-    pages.push({
-      id: p.id,
-      name: typeof p.name === "string" ? p.name : p.id,
-      token: p.access_token,
-      ig: ig && typeof ig.id === "string" ? { id: ig.id, username: typeof ig.username === "string" ? ig.username : "" } : null,
-    });
+  for (const id of ids) {
+    try {
+      const one = await graph(`${id}?fields=${PAGE_FIELDS}`, { headers: { authorization: `Bearer ${userToken}` } });
+      const pg = toPage(one);
+      if (pg) pages.push(pg);
+    } catch {
+      /* Página não acessível com este token: ignora */
+    }
   }
   return pages;
+}
+
+/** Texto curto (sem segredos) do que a Meta liberou, para explicar por que não veio nenhuma Página. */
+export async function diagnoseGrant(userToken: string, cfg: MetaConfig): Promise<string> {
+  const parts: string[] = [];
+  try {
+    const dbg = await graph(`debug_token?input_token=${encodeURIComponent(userToken)}`, {
+      headers: { authorization: `Bearer ${cfg.appId}|${cfg.secret}` },
+    });
+    const d = (dbg.data ?? {}) as { type?: string; scopes?: string[]; granular_scopes?: Array<{ scope?: string; target_ids?: unknown[] }> };
+    parts.push(`tipo=${d.type ?? "?"}`);
+    parts.push(`permissões=${(d.scopes ?? []).join("|") || "nenhuma"}`);
+    for (const g of d.granular_scopes ?? []) parts.push(`${g.scope}:${(g.target_ids ?? []).length} alvo(s)`);
+  } catch (e) {
+    parts.push("debug_token falhou: " + (e instanceof Error ? e.message : "erro"));
+  }
+  try {
+    const acc = await graph("me/accounts?limit=100", { headers: { authorization: `Bearer ${userToken}` } });
+    const n = Array.isArray(acc.data) ? acc.data.length : 0;
+    parts.push(`me/accounts=${n}`);
+  } catch (e) {
+    parts.push("me/accounts falhou: " + (e instanceof Error ? e.message : "erro"));
+  }
+  return parts.join("; ");
 }
