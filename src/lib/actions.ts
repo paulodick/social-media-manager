@@ -7,6 +7,9 @@ import { hashPassword, passwordProblem } from "./password";
 import { db } from "./db";
 import { TZ, dayFolders, isDay, isTime } from "./dates";
 import { ensureFolderPath, getFileMeta, parseDriveUrl } from "./drive";
+import { generateText, type AiResult } from "./ai";
+import { buildCaptionPrompt } from "./prompt";
+import { fetchLogo } from "./logo";
 import type { MediaMeta } from "./checks";
 import { NETWORKS, NETWORK_IDS, isFormat, isNetwork } from "@/config/networks";
 
@@ -57,6 +60,28 @@ export async function logout(): Promise<void> {
 }
 
 // ---------- clientes ----------
+
+/**
+ * Mantém o logo do cliente de acordo com o link informado. Devolve um erro em português se não deu,
+ * e nesse caso o logo anterior (se houver) continua valendo. Link vazio remove o logo.
+ */
+async function syncLogo(clientId: string, logoUrl: string): Promise<string | null> {
+  const pool = await db();
+  if (!logoUrl) {
+    await pool.query("delete from client_logos where client_id = $1", [clientId]);
+    return null;
+  }
+  const ref = parseDriveUrl(logoUrl);
+  if (!ref || ref.kind === "folder") return "o link do logotipo precisa ser de um arquivo do Google Drive, não de uma pasta.";
+  const res = await fetchLogo(ref.id);
+  if ("error" in res) return res.error;
+  await pool.query(
+    `insert into client_logos (client_id, file_id, png) values ($1,$2,$3)
+     on conflict (client_id) do update set file_id = excluded.file_id, png = excluded.png, updated_at = now()`,
+    [clientId, ref.id, res.png],
+  );
+  return null;
+}
 
 export async function saveClient(formData: FormData): Promise<void> {
   await requireAuth();
@@ -117,8 +142,13 @@ export async function saveClient(formData: FormData): Promise<void> {
   } finally {
     c.release();
   }
+  const logoError = await syncLogo(clientId, text(formData, "logo_url", 500));
   revalidatePath("/", "layout");
-  redirect(`/clientes/${clientId}`);
+  redirect(
+    logoError
+      ? withParam(`/clientes/${clientId}`, "aviso", `O cliente foi salvo, mas o logotipo não: ${logoError}`)
+      : `/clientes/${clientId}`,
+  );
 }
 
 // ---------- posts ----------
@@ -355,4 +385,36 @@ export async function deleteTarget(formData: FormData): Promise<void> {
   }
   revalidatePath("/", "layout");
   redirect(back);
+}
+
+/**
+ * Gera a legenda de um destino pela API. Chamada direto do navegador (botão "Gerar legenda").
+ * O tom de voz vem do banco, não do navegador. Só o planejamento e o rascunho vêm da tela.
+ */
+export async function generateCaption(input: {
+  clientId: string;
+  network: string;
+  format: string;
+  plan: string;
+  draft: string;
+}): Promise<AiResult> {
+  await requireAuth();
+  const network = String(input.network);
+  const format = String(input.format);
+  if (!isNetwork(network) || !isFormat(network, format)) return { error: "rede ou formato inválido." };
+  if (!/^[0-9a-f-]{36}$/i.test(String(input.clientId))) return { error: "cliente inválido." };
+  const pool = await db();
+  const r = await pool.query<{ name: string; segment: string; site: string; tone: string; notes: string }>(
+    "select name, segment, site, tone, notes from clients where id = $1",
+    [input.clientId],
+  );
+  if (!r.rows[0]) return { error: "cliente não encontrado." };
+  const prompt = buildCaptionPrompt({
+    client: r.rows[0],
+    network,
+    format,
+    plan: String(input.plan ?? "").slice(0, 4000),
+    captionDraft: String(input.draft ?? "").slice(0, 4000),
+  });
+  return generateText(prompt);
 }

@@ -49,7 +49,7 @@ export default async function Settings() {
                 : "variável GOOGLE_SERVICE_ACCOUNT_JSON ainda não definida."
           }
         />
-        <Row ok={!!process.env.ANTHROPIC_API_KEY} label="Legendas com IA" detail="variável ANTHROPIC_API_KEY (etapa 2)." />
+        <Row ok={!!process.env.ANTHROPIC_API_KEY} label="Legendas com IA" detail="variável ANTHROPIC_API_KEY (liga o botão Gerar legenda)." />
       </section>
       <section className="card">
         <h2>Como liberar uma pasta do Drive</h2>

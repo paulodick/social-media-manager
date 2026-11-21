@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { NetDot } from "@/components/ui";
 import { buildCaptionPrompt, type PromptClient } from "@/lib/prompt";
+import GenerateButton from "./GenerateButton";
 import type { NetworkId } from "@/config/networks";
 
 export type PickerOption = {
@@ -18,7 +19,17 @@ export type PickerOption = {
  * Uma linha por rede/formato. Ao marcar, aparecem a legenda e o link do vídeo daquele destino.
  * Os campos desmarcados ficam desabilitados (guardam o texto digitado, mas não são enviados).
  */
-export default function TargetPicker({ options, client }: { options: PickerOption[]; client: PromptClient }) {
+export default function TargetPicker({
+  options,
+  client,
+  clientId,
+  aiEnabled,
+}: {
+  options: PickerOption[];
+  client: PromptClient;
+  clientId: string;
+  aiEnabled: boolean;
+}) {
   const [on, setOn] = useState<Set<string>>(new Set());
   const toggle = (key: string) =>
     setOn((prev) => {
@@ -49,8 +60,21 @@ export default function TargetPicker({ options, client }: { options: PickerOptio
               <div className="col">
                 <label className="f" htmlFor={`cap-${i}`}>Legenda — {o.networkLabel} {o.formatLabel}</label>
                 <textarea id={`cap-${i}`} name={`caption__${o.key}`} rows={4} disabled={!checked} />
-                <div>
+                <div className="row" style={{ gap: 8 }}>
                   <PromptButton client={client} option={o} captionId={`cap-${i}`} />
+                  {aiEnabled && (
+                    <GenerateButton
+                      clientId={clientId}
+                      network={o.key.split(":")[0]}
+                      format={o.key.split(":")[1]}
+                      getPlan={() => (document.getElementById("note") as HTMLTextAreaElement | null)?.value ?? ""}
+                      getDraft={() => (document.getElementById(`cap-${i}`) as HTMLTextAreaElement | null)?.value ?? ""}
+                      onText={(t) => {
+                        const el = document.getElementById(`cap-${i}`) as HTMLTextAreaElement | null;
+                        if (el) el.value = t;
+                      }}
+                    />
+                  )}
                 </div>
               </div>
               <div className="col">

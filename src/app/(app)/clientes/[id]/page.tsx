@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Initials, NetDot } from "@/components/ui";
+import { ClientAvatar, Flash, NetDot } from "@/components/ui";
 import { NETWORKS, NETWORK_IDS, STATUS_LABEL, isNetwork } from "@/config/networks";
 import { addMonths, isMonth, monthGrid, monthLabel, monthOf, todaySP } from "@/lib/dates";
 import { getClient, listDayNotes, listTargets, type Target } from "@/lib/queries";
@@ -12,7 +12,7 @@ export default async function ClientCalendar({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ mes?: string; rede?: string; status?: string }>;
+  searchParams: Promise<{ mes?: string; rede?: string; status?: string; aviso?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -52,7 +52,7 @@ export default async function ClientCalendar({
     <main className="main">
       <header className="row between">
         <div className="row" style={{ flexWrap: "nowrap" }}>
-          <Initials name={client.name} />
+          <ClientAvatar client={client} size="lg" />
           <div className="col" style={{ gap: 0 }}>
             <h1>{client.name}</h1>
             <span className="muted small">
@@ -63,6 +63,8 @@ export default async function ClientCalendar({
         </div>
         <Link href={`/posts/novo?cliente=${id}`} className="btn primary">Novo post</Link>
       </header>
+
+      <Flash aviso={sp.aviso} />
 
       <nav className="tabs" aria-label="Seções do cliente">
         <Link href={`/clientes/${id}`} className="on">Calendário</Link>

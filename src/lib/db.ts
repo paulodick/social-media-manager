@@ -76,6 +76,17 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 5,
+    sql: `
+      create table client_logos (
+        client_id uuid primary key references clients(id) on delete cascade,
+        file_id text not null,
+        png bytea not null,
+        updated_at timestamptz not null default now()
+      );
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

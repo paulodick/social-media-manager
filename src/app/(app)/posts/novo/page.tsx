@@ -1,7 +1,8 @@
 import Link from "next/link";
 import TargetPicker, { type PickerOption } from "@/components/TargetPicker";
-import { BackLink, Flash } from "@/components/ui";
+import { BackLink, ClientAvatar, Flash } from "@/components/ui";
 import { NETWORKS, isNetwork } from "@/config/networks";
+import { aiConfigured } from "@/lib/ai";
 import { createPost } from "@/lib/actions";
 import { isDay, todaySP } from "@/lib/dates";
 import { getClient, listClients } from "@/lib/queries";
@@ -26,8 +27,13 @@ export default async function NewPost({
         <div className="grid3">
           {clients.map((c) => (
             <Link key={c.id} href={`/posts/novo?cliente=${c.id}${sp.data ? `&data=${sp.data}` : ""}`} className="card" style={{ textDecoration: "none" }}>
-              <h2>{c.name}</h2>
-              <span className="muted small">{c.segment || "Sem segmento"}</span>
+              <div className="row" style={{ flexWrap: "nowrap" }}>
+                <ClientAvatar client={c} />
+                <div className="col" style={{ gap: 0, minWidth: 0 }}>
+                  <h2>{c.name}</h2>
+                  <span className="muted small">{c.segment || "Sem segmento"}</span>
+                </div>
+              </div>
             </Link>
           ))}
         </div>
@@ -98,7 +104,7 @@ export default async function NewPost({
                 Em "Copiar pedido para a IA", o app monta o pedido com o tom de voz do cliente e o seu planejamento; você cola no Claude ou no Gemini e traz a legenda de volta.
                 A orientação ao lado é a medida ideal sugerida, não uma regra da rede.
               </p>
-              <TargetPicker options={options} client={{ name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }} />
+              <TargetPicker options={options} clientId={client.id} aiEnabled={aiConfigured()} client={{ name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }} />
               <div className="col">
                 <label className="f" htmlFor="title">Título interno (opcional)</label>
                 <input id="title" name="title" type="text" maxLength={120} placeholder="Ex.: Reels do plantão técnico" />

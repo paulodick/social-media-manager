@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/lib/actions";
+import { ClientAvatar } from "@/components/ui";
 
-type C = { id: string; name: string };
+type C = { id: string; name: string; logo_v: number | null };
 
 export default function Sidebar({ clients, due }: { clients: C[]; due: number }) {
   const path = usePathname();
@@ -26,7 +27,10 @@ export default function Sidebar({ clients, due }: { clients: C[]; due: number })
         <span className="label">Clientes</span>
         {clients.map((c) => (
           <Link key={c.id} href={`/clientes/${c.id}`} className={on(`/clientes/${c.id}`) ? "on" : ""}>
-            {c.name}
+            <span className="who">
+              <ClientAvatar client={c} size="sm" />
+              {c.name}
+            </span>
           </Link>
         ))}
         <Link href="/clientes/novo" className={on("/clientes/novo") ? "on" : ""}>+ Cadastrar cliente</Link>

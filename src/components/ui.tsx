@@ -28,6 +28,26 @@ export function Initials({ name }: { name: string }) {
   return <span className="avatar">{i || "?"}</span>;
 }
 
+/** Logo do cliente, ou as iniciais quando não há logo. */
+export function ClientAvatar({
+  client,
+  size = "md",
+}: {
+  client: { id: string; name: string; logo_v?: number | null };
+  size?: "sm" | "md" | "lg";
+}) {
+  if (client.logo_v == null) {
+    const i = client.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+    return <span className={`avatar ${size}`} aria-hidden="true">{i || "?"}</span>;
+  }
+  return (
+    <span className={`avatar logo ${size}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={`/api/clientes/${client.id}/logo?v=${client.logo_v}`} alt={`Logotipo de ${client.name}`} />
+    </span>
+  );
+}
+
 export function Flash({ erro, ok, aviso }: { erro?: string; ok?: string; aviso?: string }) {
   if (erro) return <p className="alert err" role="alert">{erro}</p>;
   if (aviso) return <p className="alert warn" role="status">{aviso}</p>;

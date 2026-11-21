@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { parseDriveUrl, driveQuote, folderUrl } from "../src/lib/drive.ts";
 import { captionChecks, mediaChecks, countHashtags, cutCaption } from "../src/lib/checks.ts";
 import { hashPassword, verifyPassword, passwordProblem } from "../src/lib/password.ts";
+import sharp from "sharp";
+import { processLogo } from "../src/lib/logo-image.ts";
+import { explainAiError } from "../src/lib/ai.ts";
 import { buildCaptionPrompt } from "../src/lib/prompt.ts";
 import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders } from "../src/lib/dates.ts";
 
@@ -84,4 +87,27 @@ test("buildCaptionPrompt reúne cliente, tom, plano e limites da rede", () => {
   const q = buildCaptionPrompt({ client, network: "linkedin", format: "feed", plan: "", captionDraft: "Meu rascunho" });
   assert.match(q, /não informado/);
   assert.match(q, /Rascunho atual[^\n]*\nMeu rascunho/);
+});
+
+test("explainAiError traduz os erros da API", () => {
+  assert.match(explainAiError(401, ""), /chave da API foi recusada/);
+  assert.match(explainAiError(400, "Your credit balance is too low to access the API"), /sem saldo/);
+  assert.match(explainAiError(429, ""), /limite de uso/);
+  assert.match(explainAiError(529, ""), /sobrecarregada/);
+  assert.match(explainAiError(418, ""), /código 418/);
+});
+
+test("processLogo reduz para 512 px e mantém a transparência", async () => {
+  const big = await sharp({ create: { width: 2000, height: 1000, channels: 4, background: { r: 200, g: 30, b: 30, alpha: 0 } } })
+    .png()
+    .toBuffer();
+  const out = await processLogo(big);
+  const meta = await sharp(out).metadata();
+  assert.equal(meta.format, "png");
+  assert.equal(meta.width, 512);
+  assert.equal(meta.height, 256);
+  assert.equal(meta.hasAlpha, true);
+  const small = await sharp({ create: { width: 100, height: 80, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } } }).png().toBuffer();
+  assert.equal((await sharp(await processLogo(small)).metadata()).width, 100);
+  await assert.rejects(() => processLogo(Buffer.from("isto não é uma imagem")));
 });

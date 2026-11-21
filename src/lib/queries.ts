@@ -11,6 +11,10 @@ export type Client = {
   notes: string;
   drive_folder_url: string;
   drive_folder_id: string | null;
+  /** Versão do logo guardado (segundos), ou null se o cliente não tem logo. Usada só para renovar o cache. */
+  logo_v: number | null;
+  /** Arquivo do logo no Drive (o app guarda só uma cópia reduzida). */
+  logo_file_id: string | null;
 };
 
 export type ClientNetwork = { network: string; account_name: string; profile_url: string };
@@ -53,6 +57,7 @@ export async function listClients(): Promise<(Client & { networks: string[]; upc
   const pool = await db();
   const r = await pool.query(
     `select c.*,
+        (select extract(epoch from l.updated_at)::int from client_logos l where l.client_id = c.id) as logo_v,
         coalesce((select array_agg(n.network order by n.network) from client_networks n where n.client_id = c.id), '{}') as networks,
         (select count(*)::int from post_targets t join posts p on p.id = t.post_id
           where p.client_id = c.id and t.status <> 'posted'
@@ -65,7 +70,11 @@ export async function listClients(): Promise<(Client & { networks: string[]; upc
 export async function getClient(id: string): Promise<{ client: Client; networks: ClientNetwork[] } | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const pool = await db();
-  const c = await pool.query<Client>("select * from clients where id = $1", [id]);
+  const c = await pool.query<Client>(
+    `select c.*, extract(epoch from l.updated_at)::int as logo_v, l.file_id as logo_file_id
+       from clients c left join client_logos l on l.client_id = c.id where c.id = $1`,
+    [id],
+  );
   if (!c.rows[0]) return null;
   const n = await pool.query<ClientNetwork>(
     "select network, account_name, profile_url from client_networks where client_id = $1 order by network",
@@ -138,4 +147,14 @@ export async function listDayNotes(clientId: string, from: string, to: string): 
     [clientId, from, to],
   );
   return Object.fromEntries(r.rows.map((x) => [x.day, x.body]));
+}
+
+export async function getClientLogo(id: string): Promise<{ png: Buffer; v: number } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const pool = await db();
+  const r = await pool.query<{ png: Buffer; v: number }>(
+    "select png, extract(epoch from updated_at)::int as v from client_logos where client_id = $1",
+    [id],
+  );
+  return r.rows[0] ?? null;
 }

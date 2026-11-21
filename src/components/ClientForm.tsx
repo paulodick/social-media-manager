@@ -3,7 +3,7 @@ import { NETWORKS, NETWORK_IDS } from "@/config/networks";
 import { saveClient } from "@/lib/actions";
 import type { Client, ClientNetwork } from "@/lib/queries";
 import { serviceAccountEmail } from "@/lib/drive";
-import { NetDot } from "./ui";
+import { ClientAvatar, NetDot } from "./ui";
 
 const PH: Record<string, { acc: string; url: string }> = {
   instagram: { acc: "Nome do perfil", url: "https://www.instagram.com/…" },
@@ -48,6 +48,28 @@ export default function ClientForm({ client, networks }: { client?: Client; netw
         </div>
       </section>
 
+      <section className="card" aria-labelledby="logo">
+        <h2 id="logo">Logotipo</h2>
+        <div className="row" style={{ flexWrap: "nowrap", alignItems: "flex-start", gap: 16 }}>
+          {client && <ClientAvatar client={client} size="lg" />}
+          <div className="col" style={{ flex: 1 }}>
+            <label className="f" htmlFor="logo_url">Link do arquivo do logotipo no Google Drive</label>
+            <input
+              id="logo_url"
+              name="logo_url"
+              type="text"
+              placeholder="https://drive.google.com/file/d/…/view"
+              defaultValue={client?.logo_file_id ? `https://drive.google.com/file/d/${client.logo_file_id}/view` : ""}
+            />
+            <span className="muted small" style={{ maxWidth: "70ch" }}>
+              Use o arquivo da pasta <b>Logotipo</b> do cliente (PNG em alta definição, fundo transparente). O app guarda uma cópia
+              reduzida só para mostrar na tela; o original continua no Drive e é o que você usa no Canva. Para trocar, cole outro link.
+              Para tirar o logo, apague o link e salve.
+            </span>
+          </div>
+        </div>
+      </section>
+
       <section className="card" aria-labelledby="midia">
         <h2 id="midia">Mídia no Google Drive</h2>
         <div className="col">
@@ -55,13 +77,13 @@ export default function ClientForm({ client, networks }: { client?: Client; netw
           <input id="drive_folder_url" name="drive_folder_url" type="text" placeholder="https://drive.google.com/drive/folders/…" defaultValue={client?.drive_folder_url ?? ""} />
         </div>
         <p className="muted small" style={{ maxWidth: "70ch" }}>
-          Compartilhe a pasta, como Leitor, com o e-mail de acesso do app:{" "}
+          Compartilhe a pasta, como Editor, com o e-mail de acesso do app (o app só lê arquivos e cria as pastas dos posts):{" "}
           <b style={{ color: "var(--ink)" }}>{email ?? "[configure a conta de serviço em Configurações]"}</b>.
         </p>
         <div className="col" style={{ padding: "14px 16px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--soft)" }}>
           <b className="small">Organização das pastas dentro da pasta do cliente</b>
-          <span className="small">Ano / Mês / Dia / Rede / Formato</span>
-          <span className="muted small">Exemplo: 2026 / 11 / 20 / Instagram / Reels / 2026-11-20_1000_plantao-24h.mp4</span>
+          <span className="small">Ano / Mês / Dia / Rede / Formato (criadas pelo app ao criar o post)</span>
+          <span className="muted small">Exemplo: 2026 / 11 - Novembro / 20 / Instagram / Reels / 2026-11-20_1000_plantao-24h.mp4</span>
         </div>
       </section>
 

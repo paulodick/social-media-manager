@@ -10,7 +10,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const [clients, due] = await Promise.all([listClients(), countDue(todaySP())]);
   return (
     <div className="shell">
-      <Sidebar clients={clients.map((c) => ({ id: c.id, name: c.name }))} due={due} />
+      <Sidebar clients={clients.map((c) => ({ id: c.id, name: c.name, logo_v: c.logo_v }))} due={due} />
       {children}
     </div>
   );

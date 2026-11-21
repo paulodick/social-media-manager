@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { NetChip, Initials, StatusPill } from "@/components/ui";
+import { NetChip, ClientAvatar, StatusPill } from "@/components/ui";
 import { isNetwork } from "@/config/networks";
 import { dayLabel, todaySP } from "@/lib/dates";
 import { listClients, listTargets } from "@/lib/queries";
@@ -56,7 +56,7 @@ export default async function Home() {
             {clients.map((c) => (
               <Link key={c.id} href={`/clientes/${c.id}`} className="card" style={{ textDecoration: "none" }}>
                 <div className="row" style={{ flexWrap: "nowrap" }}>
-                  <Initials name={c.name} />
+                  <ClientAvatar client={c} />
                   <div className="col" style={{ gap: 0, minWidth: 0 }}>
                     <h2 style={{ fontSize: 19 }}>{c.name}</h2>
                     <span className="muted small">{c.segment || "Sem segmento"}</span>

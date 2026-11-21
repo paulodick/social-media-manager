@@ -6,6 +6,7 @@ import { captionChecks, countHashtags, cutCaption, fmtNumber, mediaChecks, type 
 import { deleteTarget, ensureTargetFolder, saveTarget } from "@/lib/actions";
 import { buildCaptionPrompt, type PromptClient } from "@/lib/prompt";
 import CopyButton from "./CopyButton";
+import GenerateButton from "./GenerateButton";
 
 export type EditorProps = {
   id: string;
@@ -30,7 +31,7 @@ export type EditorProps = {
   volta: string;
   saved: boolean;
   /** Dados do cliente e planejamento do dia, para montar o pedido de legenda para a IA. */
-  ai: { client: PromptClient; plan: string };
+  ai: { client: PromptClient; plan: string; clientId: string; enabled: boolean };
 };
 
 function Media({ fileId, meta, fit }: { fileId: string | null; meta: MediaMeta | null; fit?: "cover" }) {
@@ -203,6 +204,16 @@ export default function TargetEditor(p: EditorProps) {
               text={buildCaptionPrompt({ client: p.ai.client, network: p.network, format: p.format, plan: p.ai.plan, captionDraft: caption })}
               label="Copiar pedido para a IA"
             />
+            {p.ai.enabled && (
+              <GenerateButton
+                clientId={p.ai.clientId}
+                network={p.network}
+                format={p.format}
+                getPlan={() => p.ai.plan}
+                getDraft={() => caption}
+                onText={setCaption}
+              />
+            )}
             {downloadable && <a className="btn" href={`/api/media/${p.fileId}?download=1`}>Baixar mídia</a>}
             {p.folderId ? (
               <a className="btn" href={`https://drive.google.com/drive/folders/${p.folderId}`} target="_blank" rel="noopener noreferrer">Abrir pasta no Drive</a>
