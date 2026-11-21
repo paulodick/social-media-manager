@@ -167,12 +167,35 @@ export async function publishInstagram(i: MetaPublishInput): Promise<MetaPublish
   let container: string;
   if (media.kind === "video") {
     // Feed com vídeo é publicado como Reels (regra do Instagram desde 2023).
-    const body: Record<string, unknown> = { media_type: stories ? "STORIES" : "REELS", upload_type: "resumable" };
-    if (!stories && i.caption) body.caption = i.caption;
-    const c = (await graph(`${accountId}/media`, token, { body })) as { id?: string; uri?: string };
-    if (!c.id || !c.uri) throw new PublishError("O Instagram não devolveu o endereço de envio do vídeo.");
-    await uploadFile(c.uri, token, media);
-    container = c.id;
+    const type = stories ? "STORIES" : "REELS";
+    let id = "";
+    let primeiro = "";
+    // 1º caminho: a Meta baixa o vídeo pelo endereço assinado do app. Se o vídeo tiver problema, o status do contêiner diz qual.
+    if (media.publicUrl) {
+      try {
+        const body: Record<string, unknown> = { media_type: type, video_url: media.publicUrl };
+        if (!stories && i.caption) body.caption = i.caption;
+        const c = (await graph(`${accountId}/media`, token, { body })) as { id?: string };
+        id = c.id ?? "";
+      } catch (e) {
+        primeiro = e instanceof Error ? e.message : String(e);
+      }
+    }
+    // Reserva: envio resumível (upload do arquivo). Criar contêiner que falhou não publica nada.
+    if (!id) {
+      try {
+        const body: Record<string, unknown> = { media_type: type, upload_type: "resumable" };
+        if (!stories && i.caption) body.caption = i.caption;
+        const c = (await graph(`${accountId}/media`, token, { body })) as { id?: string; uri?: string };
+        if (!c.id || !c.uri) throw new PublishError("O Instagram não devolveu o endereço de envio do vídeo.");
+        await uploadFile(c.uri, token, media);
+        id = c.id;
+      } catch (e) {
+        if (e instanceof PublishError && primeiro) throw new PublishError(`${e.message} Antes, pelo endereço do vídeo: ${primeiro}`);
+        throw e;
+      }
+    }
+    container = id;
   } else {
     const body: Record<string, unknown> = { image_url: needUrl(media) };
     if (stories) body.media_type = "STORIES";

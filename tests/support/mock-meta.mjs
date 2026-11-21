@@ -42,6 +42,7 @@ const server = http.createServer(async (req, res) => {
   }
   // Instagram
   if (edge === "media" && req.method === "POST") {
+    if (String(body.video_url || "").includes("REJEITAR")) return json(res, 400, { error: { message: "Invalid parameter", code: 100 } });
     const cid = `C${++n}`;
     state.containers[cid] = { polls: 0, type: body.media_type, image: body.image_url };
     const out = { id: cid };
