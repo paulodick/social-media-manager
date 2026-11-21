@@ -184,3 +184,17 @@ test("troca o code por token de longa duração e lista as Páginas com o Instag
     await m.close();
   }
 });
+
+import { publicOrigin } from "../src/lib/signed-url.ts";
+
+test("endereço público para redirecionar: usa APP_URL ou o que o proxy repassa, nunca o localhost interno", () => {
+  const old = process.env.APP_URL;
+  delete process.env.APP_URL;
+  const req = (headers: Record<string, string>) => new Request("https://localhost:10000/api/meta/conectar", { headers });
+  assert.equal(publicOrigin(req({ "x-forwarded-host": "app.ebuks.com.br", "x-forwarded-proto": "https" })), "https://app.ebuks.com.br");
+  assert.equal(publicOrigin(req({ "x-forwarded-host": "app.ebuks.com.br, interno", "x-forwarded-proto": "https, http" })), "https://app.ebuks.com.br");
+  assert.equal(publicOrigin(req({})), "https://localhost:10000");
+  process.env.APP_URL = "https://app.ebuks.com.br/";
+  assert.equal(publicOrigin(req({ "x-forwarded-host": "outro.com" })), "https://app.ebuks.com.br");
+  if (old === undefined) delete process.env.APP_URL; else process.env.APP_URL = old;
+});

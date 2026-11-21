@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/auth";
 import { saveMetaConnections } from "@/lib/connections";
 import { setPending, takeNonce } from "@/lib/meta-pending";
+import { publicOrigin } from "@/lib/signed-url";
 import { exchangeCode, listPages, metaConfig, verifyState } from "@/lib/publish/meta-oauth";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 // Volta da Meta. Confere o state (assinado, 10 min, mesmo navegador), troca o code e conecta a Página.
 export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const origin = (process.env.APP_URL?.trim().replace(/\/+$/, "")) || url.origin;
+  const origin = publicOrigin(req);
   const go = (path: string) => NextResponse.redirect(new URL(path, origin));
   if (!(await isAuthed())) return go("/login");
 

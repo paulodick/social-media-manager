@@ -41,3 +41,14 @@ export function signedMediaUrl(fileId: string, ttlSeconds = 3600): string | null
   const base = appUrl();
   return base ? `${base}/api/pub/${signMediaToken(fileId, ttlSeconds)}` : null;
 }
+
+/** Endereço público para redirecionar: APP_URL, senão o que o proxy repassa (o Render entrega localhost:10000 em req.url). */
+export function publicOrigin(req: Request): string {
+  const env = appUrl();
+  if (env) return env;
+  const h = req.headers;
+  const u = new URL(req.url);
+  const host = h.get("x-forwarded-host")?.split(",")[0].trim() || h.get("host") || u.host;
+  const proto = h.get("x-forwarded-proto")?.split(",")[0].trim() || u.protocol.replace(":", "");
+  return `${proto}://${host}`;
+}
