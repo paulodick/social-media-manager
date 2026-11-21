@@ -212,6 +212,7 @@ function Feed({ p, kind }: { p: PreviewProps; kind: "linkedin" | "instagram" | "
           </p>
         )}
         <div className="li-media"><Media fileId={p.fileId} meta={p.meta} /></div>
+        {kind === "linkedin" && p.title.trim() && <b style={{ padding: "8px 14px 0", fontSize: 12.5 }}>{p.title}</b>}
         {kind !== "linkedin" && (
           <p style={{ padding: "8px 14px", fontSize: 12.5, lineHeight: 1.4 }}>
             <b>{p.profile.handle}</b> {cutCaption(p.caption, cut)} {p.caption.length > cut && <span className="muted">{more}</span>}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import TargetPicker, { type PickerOption } from "@/components/TargetPicker";
 import { BackLink, ClientAvatar, Flash } from "@/components/ui";
-import { NETWORKS, isNetwork } from "@/config/networks";
+import { NETWORKS, captionLabel, isNetwork } from "@/config/networks";
 import { aiConfigured } from "@/lib/ai";
 import { createPost } from "@/lib/actions";
 import { isDay, todaySP } from "@/lib/dates";
@@ -58,6 +58,9 @@ export default async function NewPost({
         size: f.guide?.size,
         length: f.guide?.length,
         thumbGuide: f.thumb?.guide,
+        hasTitle: !!f.title,
+        titleLimit: f.title ? cfg.titleLimit : undefined,
+        captionLabel: captionLabel(n.network, fid),
       }));
     });
   return (
@@ -66,7 +69,7 @@ export default async function NewPost({
         <BackLink href={`/clientes/${client.id}`}>← {client.name}</BackLink>
         <h1>Novo post</h1>
         <p className="muted" style={{ maxWidth: "70ch" }}>
-          Anote o planejamento da data e, quando já souber, escolha onde vai sair e cole a legenda e o link do vídeo de cada rede.
+          Anote a ideia do post, dê um nome para achá-lo depois e descreva o que quer na legenda. Quando já souber, escolha onde vai sair e gere ou cole a legenda e o link do vídeo de cada rede.
         </p>
       </header>
       <Flash erro={sp.erro} />
@@ -74,9 +77,9 @@ export default async function NewPost({
         <input type="hidden" name="client_id" value={client.id} />
 
         <section className="card" aria-labelledby="s1">
-          <h2 id="s1">1. Planejamento e comentários</h2>
+          <h2 id="s1">1. Ideia do post e planejamento</h2>
           <div className="col">
-            <label className="f" htmlFor="note">O que está planejado para esta data</label>
+            <label className="f" htmlFor="note">A ideia do post / o que está planejado para esta data</label>
             <textarea id="note" name="note" rows={4} placeholder="Ex.: Reels sobre o plantão 24h. Pedir depoimento ao cliente." />
             <span className="muted small">
               Aparece no calendário. Dá para salvar só o texto, sem escolher rede, e voltar depois para subir mídia e legendas.
@@ -95,22 +98,39 @@ export default async function NewPost({
         </section>
 
         <section className="card" aria-labelledby="s2">
-          <h2 id="s2">2. Redes, legendas e vídeos (opcional agora)</h2>
+          <h2 id="s2">2. Nome do post e descrição da legenda</h2>
+          <div className="col">
+            <label className="f" htmlFor="post_name">Nome do post (opcional)</label>
+            <input id="post_name" name="post_name" type="text" maxLength={120} placeholder="Ex.: Reels do plantão técnico" />
+            <span className="muted small">Só para você achar o post depois (calendário, semana, listas). Não vai para a rede.</span>
+          </div>
+          <div className="col">
+            <label className="f" htmlFor="caption_brief">Descrição da legenda</label>
+            <textarea
+              id="caption_brief"
+              name="caption_brief"
+              rows={4}
+              placeholder="Ex.: Falar do plantão 24h, dizer que atendemos clínicas e hospitais e fechar chamando para o WhatsApp."
+            />
+            <span className="muted small" style={{ maxWidth: "70ch" }}>
+              Escreva o que quer na legenda, nem que seja um rascunho. Ao gerar a legenda de cada rede, o app usa este texto junto com a
+              ideia do item 1, o tom de voz e as observações do cadastro do cliente.
+            </span>
+          </div>
+        </section>
+
+        <section className="card" aria-labelledby="s3">
+          <h2 id="s3">3. Redes, legendas e vídeos (opcional agora)</h2>
           {networks.length === 0 ? (
             <p className="alert err">Este cliente ainda não tem redes. <Link href={`/clientes/${client.id}/editar`} style={{ textDecoration: "underline" }}>Cadastre as redes</Link>.</p>
           ) : (
             <>
-              <p className="muted small">
-                Marque cada rede e formato em que o post vai sair. Cada um ganha a sua legenda e o seu link de vídeo.
-                Em "Copiar pedido para a IA", o app monta o pedido com o tom de voz do cliente e o seu planejamento; você cola no Claude ou no Gemini e traz a legenda de volta.
+              <p className="muted small" style={{ maxWidth: "70ch" }}>
+                Marque cada rede e formato em que o post vai sair. Cada um ganha a sua legenda (e o seu título, nas redes que têm) e o seu link de vídeo.
+                Em "Gerar legenda", o app usa os itens 1 e 2 e o cadastro do cliente. Em "Personalizar legenda" você pede ajustes e gera uma nova.
                 A orientação ao lado é a medida ideal sugerida, não uma regra da rede.
               </p>
               <TargetPicker options={options} clientId={client.id} aiEnabled={aiConfigured()} client={{ name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }} />
-              <div className="col">
-                <label className="f" htmlFor="title">Título do post (opcional)</label>
-                <input id="title" name="title" type="text" maxLength={120} placeholder="Ex.: Reels do plantão técnico" />
-                <span className="muted small">Serve para você achar o post. No YouTube, é também o título do vídeo (até 100 caracteres).</span>
-              </div>
             </>
           )}
         </section>

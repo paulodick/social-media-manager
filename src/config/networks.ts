@@ -26,6 +26,8 @@ export type FormatCfg = {
    * Shorts 9:16, recomendado 2160×3840, altura mínima 640 px; JPG ou PNG; até 2 MB pelo celular e 50 MB pelo computador.
    */
   thumb?: { ratio: "16:9" | "9:16"; minSide: number; side: "width" | "height"; guide: string };
+  /** Este formato tem um campo de título separado da legenda (YouTube, documento do LinkedIn). Ligado = a tela mostra o campo Título. */
+  title?: boolean;
   /** Substitui o `cutAt` da rede nesta prévia (ex.: legenda sobre o vídeo vertical, que corta antes do feed). Só aparência. */
   cutAt?: number;
 };
@@ -81,7 +83,7 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     formats: {
       feed: { label: "Feed", folder: "Feed", media: "any", guide: { size: "1:1 ou 4:5 · 1080×1080 ou 1080×1350 px", length: "vídeo de 3 s a 10 min · ideal de 30 a 90 s" } },
       video: { label: "Vídeo", folder: "Video", media: "video", guide: { size: "16:9 · 1920×1080 px (ou 1:1)", length: "3 s a 10 min (15 min no computador) · ideal de 30 a 90 s" } },
-      documento: { label: "Documento", folder: "Documento", media: "document", guide: { size: "PDF · 1080×1080 ou 1080×1350 px por página", length: "até 300 páginas e 100 MB" } },
+      documento: { label: "Documento", folder: "Documento", media: "document", title: true, guide: { size: "PDF · 1080×1080 ou 1080×1350 px por página", length: "até 300 páginas e 100 MB" } },
     },
   },
   tiktok: {
@@ -117,12 +119,12 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     cutAt: 100,
     formats: {
       shorts: {
-        label: "Shorts", folder: "Shorts", ratio: "9:16", media: "video",
+        label: "Shorts", folder: "Shorts", ratio: "9:16", media: "video", title: true,
         guide: { size: "9:16 · 1080×1920 px", length: "até 3 min · ideal de 15 a 60 s" },
         thumb: { ratio: "9:16", minSide: 640, side: "height", guide: "9:16 · 2160×3840 px (altura mínima 640 px) · JPG ou PNG · só no Studio, pelo computador" },
       },
       longo: {
-        label: "Vídeo longo", folder: "Video longo", ratio: "16:9", media: "video",
+        label: "Vídeo longo", folder: "Video longo", ratio: "16:9", media: "video", title: true,
         guide: { size: "16:9 · 1920×1080 px", length: "até 15 min (12 h em canais verificados)" },
         thumb: { ratio: "16:9", minSide: 640, side: "width", guide: "16:9 · 3840×2160 px (largura mínima 640 px) · JPG ou PNG · até 2 MB pelo celular, 50 MB pelo computador" },
       },
@@ -138,6 +140,16 @@ export function isNetwork(v: string): v is NetworkId {
 
 export function isFormat(network: NetworkId, v: string): boolean {
   return v in NETWORKS[network].formats;
+}
+
+/** O formato tem campo de título próprio, separado da legenda. */
+export function hasTitle(network: string, format: string): boolean {
+  return isNetwork(network) && !!NETWORKS[network].formats[format]?.title;
+}
+
+/** Nome do campo de texto longo: o YouTube vídeo longo chama a legenda de Descrição. */
+export function captionLabel(network: string, format: string): string {
+  return network === "youtube" && format === "longo" ? "Descrição" : "Legenda";
 }
 
 export const STATUS_LABEL: Record<string, string> = {

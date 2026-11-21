@@ -62,7 +62,8 @@ export default async function DayPage({
             thumbUrl={t.thumb_url}
             thumbFileId={t.thumb_file_id}
             thumbMeta={t.thumb_meta}
-            title={t.title}
+            name={t.title}
+            title={t.target_title}
             profile={{ name: acc || client.name, handle: (acc || client.name).toLowerCase().replace(/\s+/g, "") }}
             expectedPath={`${client.name} / ${expected.join(" / ")}`}
             pathNote={pathNote}
@@ -75,7 +76,7 @@ export default async function DayPage({
                 ? { connected: connected[t.network] ?? null, state: t.publish_state, url: t.external_url, error: t.publish_error }
                 : undefined
             }
-            ai={{ client: { name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }, plan: note, clientId: id, enabled: aiConfigured() }}
+            ai={{ client: { name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }, plan: note, brief: t.idea, clientId: id, enabled: aiConfigured() }}
           />
         </div>
       );

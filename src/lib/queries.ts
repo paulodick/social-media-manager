@@ -28,8 +28,12 @@ export type Target = {
   drive_folder_id: string | null;
   /** Pasta deste destino no Drive (dia / rede / formato), quando já foi criada ou encontrada. */
   post_folder_id: string | null;
+  /** Nome interno do post (só para achar o post; não vai para a rede). */
   title: string;
+  /** Descrição da legenda: o rascunho/pontos que a pessoa quer na legenda. */
   idea: string;
+  /** Título do destino na rede (YouTube, documento do LinkedIn). Vazio nos formatos sem título. */
+  target_title: string;
   network: string;
   format: string;
   day: string;
@@ -51,7 +55,7 @@ export type Target = {
 
 const TARGET_SELECT = `
   select t.id, t.post_id, p.client_id, c.name as client_name, c.drive_folder_id, t.post_folder_id,
-         p.title, p.idea, t.network, t.format,
+         p.title, p.idea, t.title as target_title, t.network, t.format,
          to_char(t.scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day,
          to_char(t.scheduled_at at time zone '${TZ}', 'HH24:MI') as time,
          t.caption, t.status, t.drive_url, t.drive_file_id, t.drive_meta,

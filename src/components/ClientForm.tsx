@@ -3,6 +3,8 @@ import { NETWORKS, NETWORK_IDS } from "@/config/networks";
 import { saveClient } from "@/lib/actions";
 import type { Client, ClientNetwork } from "@/lib/queries";
 import { serviceAccountEmail } from "@/lib/drive";
+import { getDriveRoot } from "@/lib/drive-root";
+import DriveFolderField from "./DriveFolderField";
 import { ClientAvatar, NetDot } from "./ui";
 
 const PH: Record<string, { acc: string; url: string }> = {
@@ -14,20 +16,23 @@ const PH: Record<string, { acc: string; url: string }> = {
   youtube: { acc: "Nome do canal", url: "https://www.youtube.com/@…" },
 };
 
-export default function ClientForm({ client, networks }: { client?: Client; networks?: ClientNetwork[] }) {
+export default async function ClientForm({ client, networks }: { client?: Client; networks?: ClientNetwork[] }) {
   const byNet = new Map((networks ?? []).map((n) => [n.network, n]));
   const email = serviceAccountEmail();
+  const rootReady = !!(await getDriveRoot().catch(() => null));
   return (
     <form action={saveClient} className="col" style={{ gap: 20 }}>
       {client && <input type="hidden" name="id" value={client.id} />}
 
       <section className="card" aria-labelledby="dados">
         <h2 id="dados">Dados do cliente</h2>
+        <div className="col">
+          <label className="f" htmlFor="name">Nome</label>
+          <DriveFolderField nameId="name" urlId="drive_folder_url" hasFolder={!!client?.drive_folder_url} rootReady={rootReady}>
+            <input id="name" name="name" type="text" required defaultValue={client?.name ?? ""} style={{ flex: 1 }} />
+          </DriveFolderField>
+        </div>
         <div className="grid2">
-          <div className="col">
-            <label className="f" htmlFor="name">Nome</label>
-            <input id="name" name="name" type="text" required defaultValue={client?.name ?? ""} />
-          </div>
           <div className="col">
             <label className="f" htmlFor="segment">Segmento</label>
             <input id="segment" name="segment" type="text" defaultValue={client?.segment ?? ""} />
@@ -52,7 +57,7 @@ export default function ClientForm({ client, networks }: { client?: Client; netw
         <h2 id="logo">Logotipo</h2>
         <div className="row" style={{ flexWrap: "nowrap", alignItems: "flex-start", gap: 16 }}>
           {client && <ClientAvatar client={client} size="lg" />}
-          <div className="col" style={{ flex: 1 }}>
+          <div className="col" style={{ flex: "1 1 320px", minWidth: 0 }}>
             <label className="f" htmlFor="logo_url">Link do arquivo do logotipo no Google Drive</label>
             <input
               id="logo_url"
@@ -67,6 +72,17 @@ export default function ClientForm({ client, networks }: { client?: Client; netw
               Para tirar o logo, apague o link e salve.
             </span>
           </div>
+          <aside
+            className="col"
+            aria-label="Tamanho recomendado do logotipo"
+            style={{ flex: "0 1 280px", gap: 4, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--soft)" }}
+          >
+            <b className="small">Tamanho recomendado</b>
+            <span className="small">Quadrado, <b>1000 × 1000 px</b> (mínimo 512 × 512), PNG com fundo transparente.</span>
+            <span className="muted small">
+              Deixe uma margem de uns 15% ao redor do desenho: as redes cortam a foto do perfil em círculo e o texto das pontas some.
+            </span>
+          </aside>
         </div>
       </section>
 

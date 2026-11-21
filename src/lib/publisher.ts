@@ -63,7 +63,7 @@ async function runPublish(t: Target, conn: Connection): Promise<void> {
       accountId: conn.account_id,
       token,
       caption: t.caption,
-      title: t.title,
+      title: t.target_title,
       media,
     });
     await pool.query(

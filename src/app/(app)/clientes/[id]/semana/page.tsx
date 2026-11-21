@@ -42,7 +42,7 @@ export default async function ClientWeek({
             format: t.format,
             status: t.status,
             caption: t.caption,
-            title: t.title,
+            title: t.target_title,
             drive_meta: t.drive_meta,
             thumb_meta: t.thumb_meta,
           })

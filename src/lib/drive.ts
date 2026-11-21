@@ -206,3 +206,43 @@ export async function openMedia(id: string, range: string | null): Promise<Respo
   if (range) headers.Range = range;
   return api(`/files/${id}?alt=media`, { headers });
 }
+
+/** Nome de pasta seguro para o Drive: sem barras nem caracteres de controle, espaços simples, até 120 caracteres. */
+export function cleanFolderName(name: string): string {
+  // eslint-disable-next-line no-control-regex
+  return name.replace(/[\/\\\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+/** Nome da pasta, ou erro em português se o app não a enxerga (confere o compartilhamento). */
+export async function getFolderName(id: string): Promise<{ name: string } | { error: string }> {
+  if (!driveConfigured()) return { error: "o Google Drive ainda não está configurado no app." };
+  if (!SAFE_ID.test(id)) return { error: "o link da pasta não é válido." };
+  try {
+    const r = await api(`/files/${id}?fields=${encodeURIComponent("id,name,mimeType")}`);
+    if (r.status === 403 || r.status === 404) {
+      return { error: "o app não enxerga essa pasta. Compartilhe-a, como Editor, com o e-mail de acesso do app." };
+    }
+    if (!r.ok) return { error: `o Google Drive respondeu com erro ${r.status}.` };
+    const f = (await r.json()) as { name: string; mimeType: string };
+    if (f.mimeType !== FOLDER_MIME) return { error: "esse link é de um arquivo, não de uma pasta." };
+    return { name: f.name };
+  } catch {
+    return { error: "não foi possível falar com o Google Drive agora." };
+  }
+}
+
+export type ClientFolders = { folderId: string; logoFolderId: string } | { error: string };
+
+/**
+ * Cria (ou encontra, se já existe) a pasta do cliente dentro da pasta raiz e a subpasta "Logotipo".
+ * Roda de novo sem duplicar: serve também para reabrir a pasta de um cliente que já tem.
+ */
+export async function ensureClientFolders(rootId: string, clientName: string): Promise<ClientFolders> {
+  const name = cleanFolderName(clientName);
+  if (!name) return { error: "informe o nome do cliente antes de criar a pasta." };
+  const client = await ensureFolderPath(rootId, [name]);
+  if ("error" in client) return client;
+  const logo = await ensureFolderPath(client.id, ["Logotipo"]);
+  if ("error" in logo) return logo;
+  return { folderId: client.id, logoFolderId: logo.id };
+}

@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseDriveUrl, driveQuote, folderUrl } from "../src/lib/drive.ts";
+import { parseDriveUrl, driveQuote, folderUrl, cleanFolderName } from "../src/lib/drive.ts";
+import { hasTitle, captionLabel } from "../src/config/networks.ts";
 import { captionChecks, mediaChecks, thumbChecks, titleChecks, readiness, countHashtags, cutCaption } from "../src/lib/checks.ts";
 import { hashPassword, verifyPassword, passwordProblem } from "../src/lib/password.ts";
 import sharp from "sharp";
 import { processLogo } from "../src/lib/logo-image.ts";
 import { explainAiError } from "../src/lib/ai.ts";
-import { buildCaptionPrompt } from "../src/lib/prompt.ts";
+import { buildCaptionPrompt, splitGenerated } from "../src/lib/prompt.ts";
 import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders, weekStart, weekDays, weekLabel, weekdayShort } from "../src/lib/dates.ts";
 
 test("parseDriveUrl", () => {
@@ -102,19 +103,83 @@ test("busca de pasta no Drive: escape e link", () => {
   assert.equal(folderUrl("abc123"), "https://drive.google.com/drive/folders/abc123");
 });
 
-test("buildCaptionPrompt reúne cliente, tom, plano e limites da rede", () => {
-  const client = { name: "Best Medical", segment: "Diagnóstico por imagem", site: "", tone: "Técnico e direto.", notes: "" };
+test("buildCaptionPrompt reúne cliente, tom, ideia, descrição, ajustes e limites da rede", () => {
+  const client = { name: "Best Medical", segment: "Diagnóstico por imagem", site: "", tone: "Técnico e direto.", notes: "Evitar promessas de prazo." };
   const p = buildCaptionPrompt({ client, network: "instagram", format: "reels", plan: "Plantão 24h", captionDraft: "" });
   assert.match(p, /Best Medical \(Diagnóstico por imagem\)/);
   assert.match(p, /Instagram, formato Reels/);
   assert.match(p, /Técnico e direto\./);
-  assert.match(p, /Plantão 24h/);
+  assert.match(p, /Evitar promessas de prazo\./);
+  assert.match(p, /Ideia do post[^\n]*\nPlantão 24h/);
   assert.match(p, /9:16/);
-  assert.doesNotMatch(p, /Rascunho atual/);
+  assert.doesNotMatch(p, /Descrição da legenda/);
+  assert.doesNotMatch(p, /Legenda atual/);
+  assert.doesNotMatch(p, /Ajustes pedidos/);
   assert.doesNotMatch(p, /Site:/);
-  const q = buildCaptionPrompt({ client, network: "linkedin", format: "feed", plan: "", captionDraft: "Meu rascunho" });
+  assert.doesNotMatch(p, /Título:/);
+
+  const q = buildCaptionPrompt({ client, network: "linkedin", format: "feed", plan: "", captionDraft: "Minha legenda" });
   assert.match(q, /não informado/);
-  assert.match(q, /Rascunho atual[^\n]*\nMeu rascunho/);
+  assert.match(q, /Legenda atual[^\n]*\nMinha legenda/);
+
+  const r = buildCaptionPrompt({
+    client, network: "instagram", format: "feed", plan: "Ideia X", brief: "Falar do plantão e chamar no WhatsApp", captionDraft: "Versão antiga", custom: "Mais curta, sem tom de propaganda",
+  });
+  assert.match(r, /Ideia do post[^\n]*\nIdeia X/);
+  assert.match(r, /Descrição da legenda[^\n]*\nFalar do plantão e chamar no WhatsApp/);
+  assert.match(r, /Legenda atual[^\n]*\nVersão antiga/);
+  assert.match(r, /Ajustes pedidos[^\n]*\nMais curta, sem tom de propaganda/);
+
+  // só a descrição, sem ideia do dia: não pede o tema
+  const only = buildCaptionPrompt({ client, network: "instagram", format: "feed", plan: "", brief: "Só a descrição" });
+  assert.doesNotMatch(only, /não informado/);
+  assert.match(only, /Só a descrição/);
+});
+
+test("buildCaptionPrompt pede título e legenda nos formatos com título", () => {
+  const client = { name: "Best", segment: "", site: "", tone: "", notes: "" };
+  const yt = buildCaptionPrompt({ client, network: "youtube", format: "longo", plan: "x" });
+  assert.match(yt, /título separado da legenda \(até 100 caracteres\)/);
+  assert.match(yt, /"Título:"/);
+  assert.match(yt, /"Legenda:"/);
+  const li = buildCaptionPrompt({ client, network: "linkedin", format: "documento", plan: "x" });
+  assert.match(li, /título separado da legenda\./);
+  assert.doesNotMatch(buildCaptionPrompt({ client, network: "linkedin", format: "feed", plan: "x" }), /Título:/);
+});
+
+test("splitGenerated separa título e legenda só quando o formato tem título", () => {
+  assert.deepEqual(splitGenerated("Título: Plantão 24h\n\nLegenda: Texto da legenda\ncom duas linhas", true), {
+    title: "Plantão 24h",
+    caption: "Texto da legenda\ncom duas linhas",
+  });
+  assert.deepEqual(splitGenerated('título: "Reparar antes de trocar"\nDescrição: Vídeo explicando.', true), {
+    title: "Reparar antes de trocar",
+    caption: "Vídeo explicando.",
+  });
+  // fora do formato esperado: tudo vira legenda
+  assert.deepEqual(splitGenerated("Só um texto solto", true), { title: "", caption: "Só um texto solto" });
+  // formato sem título: não mexe no texto
+  assert.deepEqual(splitGenerated("Título: não é título aqui\n\nLegenda: x", false), { title: "", caption: "Título: não é título aqui\n\nLegenda: x" });
+});
+
+test("cleanFolderName tira barras e caracteres de controle e limita o tamanho", () => {
+  assert.equal(cleanFolderName("  Best   Medical  "), "Best Medical");
+  assert.equal(cleanFolderName("Clínica A/B\\C"), "Clínica A B C");
+  assert.equal(cleanFolderName("a\u0000b\nc"), "a b c");
+  assert.equal(cleanFolderName("   "), "");
+  assert.equal(cleanFolderName("x".repeat(300)).length, 120);
+});
+
+test("hasTitle e captionLabel seguem a configuração dos formatos", () => {
+  assert.equal(hasTitle("youtube", "shorts"), true);
+  assert.equal(hasTitle("youtube", "longo"), true);
+  assert.equal(hasTitle("linkedin", "documento"), true);
+  assert.equal(hasTitle("instagram", "reels"), false);
+  assert.equal(hasTitle("linkedin", "feed"), false);
+  assert.equal(hasTitle("nao-existe", "x"), false);
+  assert.equal(captionLabel("youtube", "longo"), "Descrição");
+  assert.equal(captionLabel("youtube", "shorts"), "Legenda");
+  assert.equal(captionLabel("instagram", "feed"), "Legenda");
 });
 
 test("explainAiError traduz os erros da API", () => {

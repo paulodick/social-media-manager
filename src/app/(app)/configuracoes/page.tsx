@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import { hasPassword } from "@/lib/auth";
-import { driveConfigured, driveStatus, serviceAccountEmail } from "@/lib/drive";
+import { driveConfigured, driveStatus, folderUrl, getFolderName, serviceAccountEmail } from "@/lib/drive";
+import { getDriveRoot } from "@/lib/drive-root";
+import { saveDriveRoot } from "@/lib/actions";
+import { Flash } from "@/components/ui";
 
 async function dbOk(): Promise<boolean> {
   try {
@@ -23,12 +26,16 @@ function Row({ ok, label, detail }: { ok: boolean; label: string; detail?: strin
   );
 }
 
-export default async function Settings() {
+export default async function Settings({ searchParams }: { searchParams: Promise<{ ok?: string; erro?: string }> }) {
+  const sp = await searchParams;
   const database = await dbOk();
   const password = database && (await hasPassword());
+  const rootId = database ? await getDriveRoot().catch(() => null) : null;
+  const root = rootId && driveConfigured() ? await getFolderName(rootId) : null;
   return (
     <main className="main narrow">
       <h1>Configurações</h1>
+      <Flash erro={sp.erro} ok={sp.ok} />
       <section className="card">
         <h2>Estado do app</h2>
         <Row ok={database} label="Banco de dados" detail={database ? "conectado." : "não conectou. Confira DATABASE_URL."} />
@@ -50,6 +57,24 @@ export default async function Settings() {
           }
         />
         <Row ok={!!process.env.ANTHROPIC_API_KEY} label="Legendas com IA" detail="variável ANTHROPIC_API_KEY (liga o botão Gerar legenda)." />
+      </section>
+      <section className="card" aria-labelledby="raiz">
+        <h2 id="raiz">Pasta dos clientes no Drive</h2>
+        <p className="muted small" style={{ maxWidth: "70ch" }}>
+          É a pasta que guarda as pastas de todos os clientes. O botão <b>Criar diretório</b>, no cadastro do cliente, cria a pasta
+          do cliente (com a subpasta Logotipo) aqui dentro. Compartilhe esta pasta, como Editor, com o e-mail de acesso do app:{" "}
+          <b style={{ color: "var(--ink)" }}>{serviceAccountEmail() ?? "[configure a conta de serviço]"}</b>.
+        </p>
+        <form action={saveDriveRoot} className="col" style={{ gap: 10 }}>
+          <label className="f" htmlFor="drive_root_url">Link da pasta</label>
+          <input id="drive_root_url" name="drive_root_url" type="text" placeholder="https://drive.google.com/drive/folders/…" defaultValue={rootId ? folderUrl(rootId) : ""} />
+          {root && ("name" in root ? (
+            <span className="small"><span className="tag ok">OK</span> O app enxerga a pasta <b>{root.name}</b>.</span>
+          ) : (
+            <span className="small"><span className="tag warn">Falta</span> {root.error}</span>
+          ))}
+          <div><button type="submit" className="btn primary">Salvar pasta</button></div>
+        </form>
       </section>
       <section className="card">
         <h2>Como liberar uma pasta do Drive</h2>

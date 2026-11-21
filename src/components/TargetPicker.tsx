@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NetDot } from "@/components/ui";
-import { buildCaptionPrompt, type PromptClient } from "@/lib/prompt";
-import GenerateButton from "./GenerateButton";
-import type { NetworkId } from "@/config/networks";
+import type { PromptClient } from "@/lib/prompt";
+import CaptionTools from "./CaptionTools";
 
 export type PickerOption = {
   key: string; // "rede:formato"
@@ -15,10 +14,16 @@ export type PickerOption = {
   length?: string;
   /** Formatos com miniatura própria: orientação de tamanho. Presente = mostra o campo do link da miniatura. */
   thumbGuide?: string;
+  /** Formato com título separado da legenda (YouTube, documento do LinkedIn): mostra o campo Título. */
+  hasTitle?: boolean;
+  /** Limite de caracteres do título, quando a rede tem um conferido. */
+  titleLimit?: number;
+  /** "Legenda", ou "Descrição" no YouTube vídeo longo. */
+  captionLabel: string;
 };
 
 /**
- * Uma linha por rede/formato. Ao marcar, aparecem a legenda e o link do vídeo daquele destino.
+ * Uma linha por rede/formato. Ao marcar, aparecem o título (onde existe), a legenda e o link do vídeo daquele destino.
  * Os campos desmarcados ficam desabilitados (guardam o texto digitado, mas não são enviados).
  */
 export default function TargetPicker({
@@ -43,84 +48,95 @@ export default function TargetPicker({
 
   return (
     <div className="col" style={{ gap: 10 }}>
-      {options.map((o, i) => {
-        const checked = on.has(o.key);
-        return (
-          <div key={o.key} className={`target ${checked ? "on" : ""}`}>
-            <label>
-              <input type="checkbox" name="target" value={o.key} checked={checked} onChange={() => toggle(o.key)} />
-              <NetDot network={o.network} />
-              <b>{o.networkLabel}</b>
-              <span className="muted">{o.formatLabel}</span>
-              {(o.size || o.length) && (
-                <span className="guide muted small">
-                  {[o.size, o.length].filter(Boolean).join(" · ")}
-                </span>
-              )}
-            </label>
-            <div className="target-fields" hidden={!checked}>
-              <div className="col">
-                <label className="f" htmlFor={`cap-${i}`}>{o.key === "youtube:longo" ? "Descrição" : "Legenda"} — {o.networkLabel} {o.formatLabel}</label>
-                <textarea id={`cap-${i}`} name={`caption__${o.key}`} rows={4} disabled={!checked} />
-                <div className="row" style={{ gap: 8 }}>
-                  <PromptButton client={client} option={o} captionId={`cap-${i}`} />
-                  {aiEnabled && (
-                    <GenerateButton
-                      clientId={clientId}
-                      network={o.key.split(":")[0]}
-                      format={o.key.split(":")[1]}
-                      getPlan={() => (document.getElementById("note") as HTMLTextAreaElement | null)?.value ?? ""}
-                      getDraft={() => (document.getElementById(`cap-${i}`) as HTMLTextAreaElement | null)?.value ?? ""}
-                      onText={(t) => {
-                        const el = document.getElementById(`cap-${i}`) as HTMLTextAreaElement | null;
-                        if (el) el.value = t;
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-              <div className="col">
-                <label className="f" htmlFor={`drv-${i}`}>Link do vídeo no Google Drive — {o.networkLabel} {o.formatLabel} (opcional)</label>
-                <input id={`drv-${i}`} name={`drive__${o.key}`} type="text" placeholder="https://drive.google.com/file/d/…/view" disabled={!checked} />
-                <span className="muted small">Pode ficar em branco agora e ser preenchido depois, na tela do dia.</span>
-              </div>
-              {o.thumbGuide && (
-                <div className="col">
-                  <label className="f" htmlFor={`thb-${i}`}>Link da miniatura no Google Drive — {o.networkLabel} {o.formatLabel} (opcional)</label>
-                  <input id={`thb-${i}`} name={`thumb__${o.key}`} type="text" placeholder="https://drive.google.com/file/d/…/view" disabled={!checked} />
-                  <span className="muted small">{o.thumbGuide}. Na tela do dia você vê como a miniatura aparece na lista do YouTube.</span>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
+      {options.map((o, i) => (
+        <TargetRow key={o.key} o={o} i={i} checked={on.has(o.key)} onToggle={() => toggle(o.key)} client={client} clientId={clientId} aiEnabled={aiEnabled} />
+      ))}
     </div>
   );
 }
 
-/** Monta o pedido na hora do clique, com o planejamento e a legenda como estão digitados. */
-function PromptButton({ client, option, captionId }: { client: PromptClient; option: PickerOption; captionId: string }) {
-  const [done, setDone] = useState(false);
-  const [network, format] = option.key.split(":");
+const valueOf = (id: string) => (document.getElementById(id) as HTMLTextAreaElement | HTMLInputElement | null)?.value ?? "";
+
+function TargetRow({
+  o,
+  i,
+  checked,
+  onToggle,
+  client,
+  clientId,
+  aiEnabled,
+}: {
+  o: PickerOption;
+  i: number;
+  checked: boolean;
+  onToggle: () => void;
+  client: PromptClient;
+  clientId: string;
+  aiEnabled: boolean;
+}) {
+  const capRef = useRef<HTMLTextAreaElement>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const [network, format] = o.key.split(":");
+
   return (
-    <button
-      type="button"
-      className="btn"
-      onClick={async () => {
-        const plan = (document.getElementById("note") as HTMLTextAreaElement | null)?.value ?? "";
-        const draft = (document.getElementById(captionId) as HTMLTextAreaElement | null)?.value ?? "";
-        const text = buildCaptionPrompt({ client, network: network as NetworkId, format, plan, captionDraft: draft });
-        try {
-          await navigator.clipboard.writeText(text);
-          setDone(true);
-          setTimeout(() => setDone(false), 2000);
-        } catch {
-          window.prompt("Copie o pedido:", text);
-        }
-      }}
-    >
-      {done ? "Copiado" : "Copiar pedido para a IA"}
-    </button>
+    <div className={`target ${checked ? "on" : ""}`}>
+      <label>
+        <input type="checkbox" name="target" value={o.key} checked={checked} onChange={onToggle} />
+        <NetDot network={o.network} />
+        <b>{o.networkLabel}</b>
+        <span className="muted">{o.formatLabel}</span>
+        {(o.size || o.length) && <span className="guide muted small">{[o.size, o.length].filter(Boolean).join(" · ")}</span>}
+      </label>
+      <div className="target-fields" hidden={!checked}>
+        {o.hasTitle && (
+          <div className="col">
+            <label className="f" htmlFor={`ttl-${i}`}>Título — {o.networkLabel} {o.formatLabel}</label>
+            <input
+              id={`ttl-${i}`}
+              ref={titleRef}
+              name={`title__${o.key}`}
+              type="text"
+              maxLength={200}
+              disabled={!checked}
+              placeholder="Título que aparece na rede"
+              style={{ fontWeight: 600 }}
+            />
+            <span className="muted small">
+              Esta rede tem título separado da legenda{o.titleLimit ? ` (até ${o.titleLimit} caracteres)` : ""}.
+            </span>
+          </div>
+        )}
+        <div className="col">
+          <label className="f" htmlFor={`cap-${i}`}>{o.captionLabel} — {o.networkLabel} {o.formatLabel}</label>
+          <textarea id={`cap-${i}`} ref={capRef} name={`caption__${o.key}`} rows={4} disabled={!checked} />
+          <CaptionTools
+            client={client}
+            clientId={clientId}
+            network={network}
+            format={format}
+            aiEnabled={aiEnabled}
+            getPlan={() => valueOf("note")}
+            getBrief={() => valueOf("caption_brief")}
+            getCaption={() => capRef.current?.value ?? ""}
+            onResult={({ title, caption }) => {
+              if (capRef.current) capRef.current.value = caption;
+              if (title && titleRef.current) titleRef.current.value = title;
+            }}
+          />
+        </div>
+        <div className="col">
+          <label className="f" htmlFor={`drv-${i}`}>Link do vídeo no Google Drive — {o.networkLabel} {o.formatLabel} (opcional)</label>
+          <input id={`drv-${i}`} name={`drive__${o.key}`} type="text" placeholder="https://drive.google.com/file/d/…/view" disabled={!checked} />
+          <span className="muted small">Pode ficar em branco agora e ser preenchido depois, na tela do dia.</span>
+        </div>
+        {o.thumbGuide && (
+          <div className="col">
+            <label className="f" htmlFor={`thb-${i}`}>Link da miniatura no Google Drive — {o.networkLabel} {o.formatLabel} (opcional)</label>
+            <input id={`thb-${i}`} name={`thumb__${o.key}`} type="text" placeholder="https://drive.google.com/file/d/…/view" disabled={!checked} />
+            <span className="muted small">{o.thumbGuide}. Na tela do dia você vê como a miniatura aparece na lista do YouTube.</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

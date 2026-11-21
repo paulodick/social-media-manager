@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { NETWORKS, STATUS_LABEL, type NetworkId } from "@/config/networks";
+import { NETWORKS, STATUS_LABEL, captionLabel, hasTitle, type NetworkId } from "@/config/networks";
 import { captionChecks, countHashtags, fmtNumber, mediaChecks, thumbChecks, titleChecks, type Check, type MediaMeta } from "@/lib/checks";
 import { deleteTarget, ensureTargetFolder, saveTarget } from "@/lib/actions";
-import { buildCaptionPrompt, type PromptClient } from "@/lib/prompt";
+import type { PromptClient } from "@/lib/prompt";
+import CaptionTools from "./CaptionTools";
 import CopyButton from "./CopyButton";
-import GenerateButton from "./GenerateButton";
 import PostPreview from "./Previews";
 import PublishPanel, { type PublishInfo } from "./PublishPanel";
 
@@ -26,6 +26,9 @@ export type EditorProps = {
   thumbUrl: string;
   thumbFileId: string | null;
   thumbMeta: MediaMeta | null;
+  /** Nome interno do post (só para achar o post; não vai para a rede). */
+  name: string;
+  /** Título deste destino na rede (YouTube, documento do LinkedIn). Vazio nos formatos sem título. */
   title: string;
   profile: { name: string; handle: string };
   expectedPath: string;
@@ -39,17 +42,19 @@ export type EditorProps = {
   /** Publicação pelo app (só Instagram e Facebook, por enquanto). Ausente = a rede é manual. */
   publish?: PublishInfo;
   /** Dados do cliente e planejamento do dia, para montar o pedido de legenda para a IA. */
-  ai: { client: PromptClient; plan: string; clientId: string; enabled: boolean };
+  ai: { client: PromptClient; plan: string; brief: string; clientId: string; enabled: boolean };
 };
 
 export default function TargetEditor(p: EditorProps) {
   const [caption, setCaption] = useState(p.caption);
+  const [title, setTitle] = useState(p.title);
+  const withTitle = hasTitle(p.network, p.format);
   const cfg = NETWORKS[p.network];
   const fmt = cfg.formats[p.format];
   const checks: Check[] = [
     ...mediaChecks(p.network, p.format, p.meta),
     ...thumbChecks(p.network, p.format, p.thumbMeta),
-    ...titleChecks(p.network, p.title),
+    ...(withTitle ? titleChecks(p.network, title) : []),
     ...captionChecks(p.network, caption),
   ];
   if (p.pathNote) checks.push({ level: "warn", text: p.pathNote });
@@ -66,7 +71,7 @@ export default function TargetEditor(p: EditorProps) {
         </h2>
         <span className={`pill ${p.late ? "late" : p.status}`}>{p.late ? "Atrasado" : STATUS_LABEL[p.status]} · {p.time}</span>
       </div>
-      <p className="muted small">{p.title}</p>
+      <p className="muted small">{p.name}</p>
       {p.saved && <p className="alert ok" role="status">Salvo.</p>}
 
       <div className="row" style={{ alignItems: "flex-start", gap: 28 }}>
@@ -104,8 +109,23 @@ export default function TargetEditor(p: EditorProps) {
                 </span>
               </div>
             )}
+            {withTitle && (
+              <div className="col">
+                <label className="f" htmlFor={`ti-${p.id}`}>Título</label>
+                <input
+                  id={`ti-${p.id}`}
+                  name="title"
+                  type="text"
+                  maxLength={200}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Título que aparece na rede"
+                  style={{ fontWeight: 600 }}
+                />
+              </div>
+            )}
             <div className="col">
-              <label className="f" htmlFor={`c-${p.id}`}>{p.network === "youtube" && p.format === "longo" ? "Descrição" : "Legenda"}</label>
+              <label className="f" htmlFor={`c-${p.id}`}>{captionLabel(p.network, p.format)}</label>
               <textarea id={`c-${p.id}`} name="caption" rows={7} value={caption} onChange={(e) => setCaption(e.target.value)} />
               <div className="row between small muted">
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>
@@ -113,6 +133,20 @@ export default function TargetEditor(p: EditorProps) {
                 </span>
                 {cfg.hashtagLimit != null && <span>{tags} de {cfg.hashtagLimit} hashtags</span>}
               </div>
+              <CaptionTools
+                client={p.ai.client}
+                clientId={p.ai.clientId}
+                network={p.network}
+                format={p.format}
+                aiEnabled={p.ai.enabled}
+                getPlan={() => p.ai.plan}
+                getBrief={() => p.ai.brief}
+                getCaption={() => caption}
+                onResult={(r) => {
+                  setCaption(r.caption);
+                  if (r.title) setTitle(r.title);
+                }}
+              />
             </div>
 
             <div className="col">
@@ -138,26 +172,12 @@ export default function TargetEditor(p: EditorProps) {
               networkLabel={cfg.label}
               volta={p.volta}
               info={p.publish}
-              dirty={caption !== p.caption}
+              dirty={caption !== p.caption || title !== p.title}
               posted={posted}
             />
           )}
           <div className="row">
             <CopyButton text={caption} />
-            <CopyButton
-              text={buildCaptionPrompt({ client: p.ai.client, network: p.network, format: p.format, plan: p.ai.plan, captionDraft: caption })}
-              label="Copiar pedido para a IA"
-            />
-            {p.ai.enabled && (
-              <GenerateButton
-                clientId={p.ai.clientId}
-                network={p.network}
-                format={p.format}
-                getPlan={() => p.ai.plan}
-                getDraft={() => caption}
-                onText={setCaption}
-              />
-            )}
             {downloadable && <a className="btn" href={`/api/media/${p.fileId}?download=1`}>Baixar mídia</a>}
             {p.folderId ? (
               <a className="btn" href={`https://drive.google.com/drive/folders/${p.folderId}`} target="_blank" rel="noopener noreferrer">Abrir pasta no Drive</a>
@@ -187,7 +207,7 @@ export default function TargetEditor(p: EditorProps) {
             meta={p.meta}
             thumbFileId={p.thumbFileId}
             thumbMeta={p.thumbMeta}
-            title={p.title}
+            title={title}
             profile={p.profile}
             caption={caption}
           />

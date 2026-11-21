@@ -167,3 +167,7 @@ input[type=checkbox] { width: 20px; height: 20px; margin: 0; }
   .wk-title { min-width: 0; flex: 1 1 120px; font-size: 17px; }
   .wadd { min-height: 44px; }
 }
+
+/* "Personalizar legenda": bloco recolhido sob a legenda */
+details.personalize { border-top: 1px dashed var(--line); padding-top: 6px; }
+details.personalize > summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--accent); width: fit-content; min-height: 32px; display: flex; align-items: center; }

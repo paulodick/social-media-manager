@@ -6,7 +6,8 @@ import { checkPassword, createSession, destroySession, hasPassword, requireAuth 
 import { hashPassword, passwordProblem } from "./password";
 import { db } from "./db";
 import { TZ, dayFolders, isDay, isTime } from "./dates";
-import { ensureFolderPath, getFileMeta, parseDriveUrl } from "./drive";
+import { ensureClientFolders, ensureFolderPath, folderUrl, getFileMeta, getFolderName, parseDriveUrl } from "./drive";
+import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { generateText, type AiResult } from "./ai";
 import { buildCaptionPrompt } from "./prompt";
 import { startPublish } from "./publisher";
@@ -15,7 +16,7 @@ import { clearPending, readPending } from "./meta-pending";
 import { listPages } from "./publish/meta-oauth";
 import { fetchLogo } from "./logo";
 import type { MediaMeta } from "./checks";
-import { NETWORKS, NETWORK_IDS, isFormat, isNetwork } from "@/config/networks";
+import { NETWORKS, NETWORK_IDS, hasTitle, isFormat, isNetwork } from "@/config/networks";
 
 const text = (f: FormData, k: string, max = 5000): string => String(f.get(k) ?? "").trim().slice(0, max);
 
@@ -155,6 +156,42 @@ export async function saveClient(formData: FormData): Promise<void> {
   );
 }
 
+export type ClientFolderResult = { url: string; logoUrl: string } | { error: string };
+
+/**
+ * Botão "Criar diretório" do cadastro: cria no Drive a pasta do cliente (com a subpasta Logotipo) dentro da pasta
+ * raiz dos clientes e devolve os endereços. Se a pasta já existe, só a reencontra. Não grava nada no banco:
+ * o link volta para o campo do formulário e vale quando a pessoa salva o cliente.
+ */
+export async function createClientFolder(input: { name: string }): Promise<ClientFolderResult> {
+  await requireAuth();
+  const root = await getDriveRoot();
+  if (!root) {
+    return { error: "a pasta raiz dos clientes ainda não foi definida. Cole o link dela em Configurações, em \"Pasta dos clientes no Drive\"." };
+  }
+  const r = await ensureClientFolders(root, String(input.name ?? ""));
+  if ("error" in r) return { error: r.error };
+  return { url: folderUrl(r.folderId), logoUrl: folderUrl(r.logoFolderId) };
+}
+
+/** Guarda a pasta raiz dos clientes (onde o botão "Criar diretório" cria as pastas). Link vazio remove. */
+export async function saveDriveRoot(formData: FormData): Promise<void> {
+  await requireAuth();
+  const url = text(formData, "drive_root_url", 500);
+  if (!url) {
+    await setDriveRoot(null);
+    revalidatePath("/configuracoes");
+    redirect("/configuracoes?ok=" + encodeURIComponent("Pasta raiz removida."));
+  }
+  const ref = parseDriveUrl(url);
+  if (!ref || ref.kind === "file") redirect("/configuracoes?erro=" + encodeURIComponent("O link precisa ser de uma pasta do Google Drive."));
+  const f = await getFolderName(ref.id);
+  if ("error" in f) redirect("/configuracoes?erro=" + encodeURIComponent(`Não foi possível usar essa pasta: ${f.error}`));
+  await setDriveRoot(ref.id);
+  revalidatePath("/configuracoes");
+  redirect("/configuracoes?ok=" + encodeURIComponent(`Pasta raiz definida: ${f.name}.`));
+}
+
 // ---------- posts ----------
 
 /** Nomes das pastas, a partir da pasta do cliente: AAAA / MM - Mês / DD / Rede / Formato. */
@@ -247,11 +284,14 @@ export async function createPost(formData: FormData): Promise<void> {
       // Miniatura só existe nos formatos que a pedem (config `thumb`); nos outros o campo é ignorado.
       const thumbUrl = isNetwork(network) && NETWORKS[network].formats[format]?.thumb ? text(formData, `thumb__${key}`, 500) : "";
       const thumb = await resolveDrive(thumbUrl);
-      return { network, format, caption, driveUrl, ...(await resolveDrive(driveUrl)), thumbUrl, thumbFileId: thumb.fileId, thumbMeta: thumb.meta };
+      // Título próprio só existe nos formatos que o pedem (YouTube, documento do LinkedIn); nos outros o campo é ignorado.
+      const title = hasTitle(network, format) ? text(formData, `title__${key}`, 200) : "";
+      return { network, format, caption, title, driveUrl, ...(await resolveDrive(driveUrl)), thumbUrl, thumbFileId: thumb.fileId, thumbMeta: thumb.meta };
     }),
   );
+  // Nome interno do post: serve só para achar o post, não vai para nenhuma rede.
   const title =
-    text(formData, "title", 120) ||
+    text(formData, "post_name", 120) ||
     (per.find((p) => p.caption)?.caption.split("\n")[0].slice(0, 80) ?? "") ||
     note.split("\n")[0].slice(0, 80) ||
     "Post sem título";
@@ -280,17 +320,17 @@ export async function createPost(formData: FormData): Promise<void> {
   try {
     await c.query("begin");
     const p = await c.query<{ id: string }>(
-      "insert into posts (client_id, title, idea) values ($1,$2,'') returning id",
-      [clientId, title],
+      "insert into posts (client_id, title, idea) values ($1,$2,$3) returning id",
+      [clientId, title, text(formData, "caption_brief", 4000)],
     );
     for (const [i, t] of per.entries()) {
       await c.query(
         `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id,
-                                   thumb_url, thumb_file_id, thumb_meta)
-         values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10,$11,$12,$13)`,
+                                   thumb_url, thumb_file_id, thumb_meta, title)
+         values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
           p.rows[0].id, t.network, t.format, day, time, t.caption, t.driveUrl, t.fileId, t.meta ? JSON.stringify(t.meta) : null, folderIds[i],
-          t.thumbUrl, t.thumbFileId, t.thumbMeta ? JSON.stringify(t.thumbMeta) : null,
+          t.thumbUrl, t.thumbFileId, t.thumbMeta ? JSON.stringify(t.thumbMeta) : null, t.title,
         ],
       );
     }
@@ -354,10 +394,11 @@ export async function saveTarget(formData: FormData): Promise<void> {
 
   const pool = await db();
   const cur = await pool.query<{
+    network: string; format: string;
     drive_url: string; drive_file_id: string | null; drive_meta: MediaMeta | null;
     thumb_url: string; thumb_file_id: string | null; thumb_meta: MediaMeta | null; day: string;
   }>(
-    `select drive_url, drive_file_id, drive_meta, thumb_url, thumb_file_id, thumb_meta,
+    `select network, format, drive_url, drive_file_id, drive_meta, thumb_url, thumb_file_id, thumb_meta,
             to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day
        from post_targets where id = $1`,
     [id],
@@ -373,11 +414,12 @@ export async function saveTarget(formData: FormData): Promise<void> {
     thumbFileId = t.fileId;
     thumbMeta = t.meta;
   }
+  const title = hasTitle(cur.rows[0].network, cur.rows[0].format) ? text(formData, "title", 200) : "";
   await pool.query(
     `update post_targets set caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
         status=$4, posted_at = case when $4='posted' then coalesce(posted_at, now()) else null end,
-        drive_url=$5, drive_file_id=$6, drive_meta=$7, thumb_url=$8, thumb_file_id=$9, thumb_meta=$10 where id=$11`,
-    [caption, day, time, status, driveUrl, fileId, meta ? JSON.stringify(meta) : null, thumbUrl, thumbFileId, thumbMeta ? JSON.stringify(thumbMeta) : null, id],
+        drive_url=$5, drive_file_id=$6, drive_meta=$7, thumb_url=$8, thumb_file_id=$9, thumb_meta=$10, title=$11 where id=$12`,
+    [caption, day, time, status, driveUrl, fileId, meta ? JSON.stringify(meta) : null, thumbUrl, thumbFileId, thumbMeta ? JSON.stringify(thumbMeta) : null, title, id],
   );
   // Mudou o dia: a pasta guardada era a do dia antigo. Limpa para criar a do dia novo com o botão.
   if (cur.rows[0].day !== day) await pool.query("update post_targets set post_folder_id = null where id = $1", [id]);
@@ -427,8 +469,14 @@ export async function generateCaption(input: {
   clientId: string;
   network: string;
   format: string;
+  /** Planejamento do dia (item 1 do novo post). */
   plan: string;
+  /** Descrição da legenda: o que a pessoa quer na legenda (item 2). */
+  brief?: string;
+  /** Legenda que já está no campo, para melhorar ou refazer. */
   draft: string;
+  /** "Personalizar legenda": pedidos de ajuste (tom, tamanho, o que mudar). */
+  custom?: string;
 }): Promise<AiResult> {
   await requireAuth();
   const network = String(input.network);
@@ -446,7 +494,9 @@ export async function generateCaption(input: {
     network,
     format,
     plan: String(input.plan ?? "").slice(0, 4000),
+    brief: String(input.brief ?? "").slice(0, 4000),
     captionDraft: String(input.draft ?? "").slice(0, 4000),
+    custom: String(input.custom ?? "").slice(0, 2000),
   });
   return generateText(prompt);
 }

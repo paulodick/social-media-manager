@@ -118,6 +118,14 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       alter table post_targets add column publish_error text not null default '';
     `,
   },
+  {
+    version: 8,
+    sql: `
+      -- Título próprio de cada destino (YouTube, documento do LinkedIn...). posts.title passa a ser só o nome interno do post.
+      alter table post_targets add column title text not null default '';
+      update post_targets t set title = p.title from posts p where p.id = t.post_id and t.network = 'youtube';
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };
