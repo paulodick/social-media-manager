@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import TargetEditor from "@/components/TargetEditor";
 import { BackLink, Flash } from "@/components/ui";
 import { NETWORKS, isNetwork } from "@/config/networks";
-import { addDays, dayFolders, dayLabel, isDay, monthOf } from "@/lib/dates";
+import { addDays, dayFolders, dayLabel, isDay, monthOf, weekStart } from "@/lib/dates";
 import { folderPathFromRoot } from "@/lib/drive";
 import { aiConfigured } from "@/lib/ai";
 import { saveDayNote } from "@/lib/actions";
@@ -81,7 +81,8 @@ export default async function DayPage({
         <div className="col">
           <nav className="row small muted" aria-label="Caminho" style={{ gap: 8 }}>
             <Link href="/">Início</Link>/<Link href={`/clientes/${id}`}>{client.name}</Link>/
-            <Link href={`/clientes/${id}?mes=${monthOf(day)}`}>Calendário</Link>
+            <Link href={`/clientes/${id}?mes=${monthOf(day)}`}>Calendário</Link>/
+            <Link href={`/clientes/${id}/semana?modo=calendario&semana=${weekStart(day)}`}>Semana</Link>
           </nav>
           <h1>{dayLabel(day)}</h1>
         </div>

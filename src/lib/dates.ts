@@ -35,6 +35,39 @@ export function addDays(day: string, delta: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Segunda-feira da semana que contém o dia (a visão da semana vai de segunda a domingo). */
+export function weekStart(day: string): string {
+  const dow = new Date(day + "T00:00:00Z").getUTCDay(); // 0 = domingo
+  return addDays(day, -((dow + 6) % 7));
+}
+
+/** Os sete dias da semana que começa em `start` (uma segunda-feira). */
+export function weekDays(start: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+}
+
+/** Ex.: "16 a 22 de novembro de 2026", "30 de novembro a 6 de dezembro de 2026". */
+export function weekLabel(start: string): string {
+  const end = addDays(start, 6);
+  const parts = (d: string) => {
+    const x = new Date(d + "T00:00:00Z");
+    const month = new Intl.DateTimeFormat("pt-BR", { month: "long", timeZone: "UTC" }).format(x);
+    return { n: x.getUTCDate(), month, year: x.getUTCFullYear() };
+  };
+  const a = parts(start);
+  const b = parts(end);
+  if (a.year !== b.year) return `${a.n} de ${a.month} de ${a.year} a ${b.n} de ${b.month} de ${b.year}`;
+  if (a.month !== b.month) return `${a.n} de ${a.month} a ${b.n} de ${b.month} de ${b.year}`;
+  return `${a.n} a ${b.n} de ${b.month} de ${b.year}`;
+}
+
+/** Nome curto do dia da semana: "Seg", "Ter"... */
+export function weekdayShort(day: string): string {
+  const s = new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: "UTC" }).format(new Date(day + "T00:00:00Z"));
+  const out = s.replace(".", "");
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
 export function monthLabel(ym: string): string {
   const d = new Date(ym + "-01T00:00:00Z");
   const s = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(d);

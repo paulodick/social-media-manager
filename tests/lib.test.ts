@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseDriveUrl, driveQuote, folderUrl } from "../src/lib/drive.ts";
-import { captionChecks, mediaChecks, thumbChecks, titleChecks, countHashtags, cutCaption } from "../src/lib/checks.ts";
+import { captionChecks, mediaChecks, thumbChecks, titleChecks, readiness, countHashtags, cutCaption } from "../src/lib/checks.ts";
 import { hashPassword, verifyPassword, passwordProblem } from "../src/lib/password.ts";
 import sharp from "sharp";
 import { processLogo } from "../src/lib/logo-image.ts";
 import { explainAiError } from "../src/lib/ai.ts";
 import { buildCaptionPrompt } from "../src/lib/prompt.ts";
-import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders } from "../src/lib/dates.ts";
+import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders, weekStart, weekDays, weekLabel, weekdayShort } from "../src/lib/dates.ts";
 
 test("parseDriveUrl", () => {
   assert.deepEqual(parseDriveUrl("https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing"), { id: "1AbCdEfGhIjKlMnOp", kind: "file" });
@@ -138,4 +138,34 @@ test("processLogo reduz para 512 px e mantém a transparência", async () => {
   const small = await sharp({ create: { width: 100, height: 80, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } } }).png().toBuffer();
   assert.equal((await sharp(await processLogo(small)).metadata()).width, 100);
   await assert.rejects(() => processLogo(Buffer.from("isto não é uma imagem")));
+});
+
+test("semana vai de segunda a domingo", () => {
+  assert.equal(weekStart("2026-11-21"), "2026-11-16"); // sábado
+  assert.equal(weekStart("2026-11-22"), "2026-11-16"); // domingo fica na semana que termina nele
+  assert.equal(weekStart("2026-11-16"), "2026-11-16"); // segunda
+  assert.equal(weekStart("2026-01-01"), "2025-12-29"); // vira o ano
+  assert.deepEqual(weekDays("2026-11-30"), ["2026-11-30", "2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05", "2026-12-06"]);
+  assert.equal(weekLabel("2026-11-16"), "16 a 22 de novembro de 2026");
+  assert.equal(weekLabel("2026-11-30"), "30 de novembro a 6 de dezembro de 2026");
+  assert.equal(weekLabel("2025-12-29"), "29 de dezembro de 2025 a 4 de janeiro de 2026");
+  assert.equal(weekdayShort("2026-11-16"), "Seg");
+  assert.equal(weekdayShort("2026-11-22"), "Dom");
+});
+
+test("situação do post na semana", () => {
+  const base = { network: "instagram" as const, format: "reels", status: "scheduled", caption: "Legenda boa #um", title: "Plantão", thumb_meta: null };
+  const video = { name: "a.mp4", mimeType: "video/mp4", width: 1080, height: 1920, size: 1000, durationMs: 20000 };
+  assert.equal(readiness({ ...base, drive_meta: null }).state, "missing");
+  assert.equal(readiness({ ...base, status: "posted", drive_meta: null }).state, "posted");
+  assert.equal(readiness({ ...base, drive_meta: video }).state, "ok");
+  const wrong = readiness({ ...base, drive_meta: { ...video, width: 1920, height: 1080 } });
+  assert.equal(wrong.state, "warn");
+  assert.equal(wrong.label, "1 aviso");
+  const empty = readiness({ ...base, caption: "", drive_meta: { ...video, width: 1920, height: 1080 } });
+  assert.equal(empty.warns, 2);
+  assert.equal(empty.label, "2 avisos");
+  // YouTube vídeo longo sem miniatura ligada vira aviso
+  const yt = readiness({ network: "youtube", format: "longo", status: "draft", caption: "Descrição", title: "Título", thumb_meta: null, drive_meta: { mimeType: "video/mp4", width: 1920, height: 1080 } });
+  assert.equal(yt.state, "warn");
 });

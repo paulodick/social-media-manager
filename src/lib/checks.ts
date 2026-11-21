@@ -117,6 +117,37 @@ export function titleChecks(network: NetworkId, title: string): Check[] {
     : [{ level: "ok", text: `${cfg.label}: título com ${fmtNumber(n)} de ${fmtNumber(cfg.titleLimit)} caracteres.` }];
 }
 
+export type Readiness = {
+  /** posted: já foi; missing: falta a mídia; warn: há avisos nas checagens; ok: pronto para postar */
+  state: "posted" | "missing" | "warn" | "ok";
+  /** quantidade de avisos (checagens em "warn", sem contar a mídia que falta) */
+  warns: number;
+  label: string;
+};
+
+/** Situação resumida de um destino, para a visão da semana. Usa as mesmas checagens da tela do dia. */
+export function readiness(t: {
+  network: NetworkId;
+  format: string;
+  status: string;
+  caption: string;
+  title: string;
+  drive_meta: MediaMeta | null;
+  thumb_meta: MediaMeta | null;
+}): Readiness {
+  if (t.status === "posted") return { state: "posted", warns: 0, label: "Postado" };
+  if (!t.drive_meta) return { state: "missing", warns: 0, label: "Sem mídia" };
+  const all = [
+    ...mediaChecks(t.network, t.format, t.drive_meta),
+    ...thumbChecks(t.network, t.format, t.thumb_meta),
+    ...titleChecks(t.network, t.title),
+    ...captionChecks(t.network, t.caption),
+  ];
+  const warns = all.filter((c) => c.level === "warn").length;
+  if (warns > 0) return { state: "warn", warns, label: warns === 1 ? "1 aviso" : `${warns} avisos` };
+  return { state: "ok", warns: 0, label: "Pronto" };
+}
+
 export function mediaChecks(network: NetworkId, format: string, meta: MediaMeta | null | undefined): Check[] {
   const cfg = NETWORKS[network];
   const fmt = cfg.formats[format];
