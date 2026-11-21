@@ -32,6 +32,7 @@ test("link assinado de mídia vence, não aceita adulteração e é só do arqui
 test("erros da Meta viram frases que dizem o que fazer", () => {
   assert.match(explainMetaError({ code: 190, message: "x" }), /Conecte a conta de novo/);
   assert.match(explainMetaError({ code: 200, message: "x" }), /permissão/);
+  assert.match(explainMetaError({ code: 200, error_subcode: 2108006, message: "Requires instagram_content_publish" }), /Resposta da Meta: código 200, subcódigo 2108006, "Requires instagram_content_publish"/);
   assert.match(explainMetaError({ code: 613, message: "x" }), /alguns minutos/);
   assert.match(explainMetaError({ code: 100, message: "Invalid parameter" }), /A Meta recusou: Invalid parameter/);
   assert.match(explainMetaError(undefined, 502), /problema/);

@@ -74,6 +74,7 @@ async function runPublish(t: Target, conn: Connection): Promise<void> {
   } catch (e) {
     // Nunca registrar o token. A mensagem de PublishError já vem em português e sem dados sensíveis.
     const msg = e instanceof PublishError || e instanceof Error ? e.message : "Erro desconhecido ao publicar.";
+    console.error(`[publicar] ${t.network}/${t.format} destino ${t.id} falhou: ${msg}`);
     await pool
       .query("update post_targets set publish_state='failed', publish_error=$2 where id=$1", [t.id, msg.slice(0, 500)])
       .catch(() => {});

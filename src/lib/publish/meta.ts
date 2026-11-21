@@ -43,7 +43,9 @@ export function explainMetaError(e: GraphError | undefined, status = 0): string 
   const raw = (e?.error_user_msg || e?.message || "").trim();
   if (code === 190) return "O acesso desta conta à Meta expirou ou foi revogado. Conecte a conta de novo.";
   if (code === 10 || (code !== undefined && code >= 200 && code <= 299)) {
-    return "A Meta recusou por falta de permissão. Confira se o app tem as permissões de publicação e se a sua conta tem função de administrador na Página.";
+    // Mostra também o que a Meta respondeu (código e texto original): é ele que diz qual permissão falta.
+    const detail = [`código ${code}`, e?.error_subcode ? `subcódigo ${e.error_subcode}` : "", raw ? `"${raw.slice(0, 220)}"` : ""].filter(Boolean).join(", ");
+    return `A Meta recusou por falta de permissão. Confira se o app tem as permissões de publicação e se a sua conta tem função de administrador na Página. Resposta da Meta: ${detail}.`;
   }
   if (code === 4 || code === 17 || code === 32 || code === 613) {
     return "A Meta limitou as chamadas do app por enquanto. Tente de novo em alguns minutos.";
