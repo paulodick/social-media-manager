@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Initials, NetDot } from "@/components/ui";
 import { NETWORKS, NETWORK_IDS, STATUS_LABEL, isNetwork } from "@/config/networks";
 import { addMonths, isMonth, monthGrid, monthLabel, monthOf, todaySP } from "@/lib/dates";
-import { getClient, listTargets, type Target } from "@/lib/queries";
+import { getClient, listDayNotes, listTargets, type Target } from "@/lib/queries";
 
 const WEEK = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -32,6 +32,7 @@ export default async function ClientCalendar({
     network: rede || undefined,
     status: status || undefined,
   });
+  const notes = await listDayNotes(id, cells[0].day, cells[cells.length - 1].day);
   const byDay = new Map<string, Target[]>();
   for (const t of targets) byDay.set(t.day, [...(byDay.get(t.day) ?? []), t]);
 
@@ -99,6 +100,7 @@ export default async function ClientCalendar({
         <span className="row" style={{ gap: 8 }}><span className="mini scheduled" style={{ width: 22, height: 14, padding: 0 }} />Agendado</span>
         <span className="row" style={{ gap: 8 }}><span className="mini posted" style={{ width: 22, height: 14, padding: 0 }} />Postado</span>
         <span className="row" style={{ gap: 8 }}><span className="mini late" style={{ width: 22, height: 14, padding: 0 }} />Atrasado</span>
+        <span className="row" style={{ gap: 8 }}><span className="mini note" style={{ width: 22, height: 14, minHeight: 0, padding: 0 }} />Planejamento</span>
         <span>Clique em um dia para abrir os posts e a prévia.</span>
       </div>
 
@@ -108,14 +110,20 @@ export default async function ClientCalendar({
           <div className="cal-body">
             {cells.map((c) => {
               const list = byDay.get(c.day) ?? [];
+              const note = notes[c.day];
               return (
                 <Link
                   key={c.day}
                   href={`/clientes/${id}/dia/${c.day}`}
                   className={`cell ${c.inMonth ? "" : "out"} ${c.day === today ? "today" : ""}`}
-                  aria-label={`${c.day}, ${list.length} ${list.length === 1 ? "post" : "posts"}`}
+                  aria-label={`${c.day}, ${list.length} ${list.length === 1 ? "post" : "posts"}${note ? `, planejamento: ${note}` : ""}`}
                 >
                   <span className="n">{c.inMonth ? c.n : `${c.n}/${c.day.slice(5, 7)}`}</span>
+                  {note && (
+                    <span className="mini note" title={note}>
+                      <span className="t">{note}</span>
+                    </span>
+                  )}
                   {list.slice(0, 4).map((t) => (
                     <span key={t.id} className={`mini ${t.late ? "late" : t.status}`} title={`${t.time} ${t.title}`}>
                       <NetDot network={t.network} />

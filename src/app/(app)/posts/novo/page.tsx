@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { BackLink, Flash, NetDot } from "@/components/ui";
+import TargetPicker, { type PickerOption } from "@/components/TargetPicker";
+import { BackLink, Flash } from "@/components/ui";
 import { NETWORKS, isNetwork } from "@/config/networks";
 import { createPost } from "@/lib/actions";
 import { isDay, todaySP } from "@/lib/dates";
@@ -39,13 +40,26 @@ export default async function NewPost({
 
   const { client, networks } = found;
   const date = isDay(sp.data) ? sp.data : todaySP();
+  const options: PickerOption[] = networks
+    .filter((n) => isNetwork(n.network))
+    .flatMap((n) => {
+      const cfg = NETWORKS[n.network as keyof typeof NETWORKS];
+      return Object.entries(cfg.formats).map(([fid, f]) => ({
+        key: `${n.network}:${fid}`,
+        network: n.network,
+        networkLabel: cfg.label,
+        formatLabel: f.label,
+        size: f.guide?.size,
+        length: f.guide?.length,
+      }));
+    });
   return (
     <main className="main narrow">
       <header className="col">
         <BackLink href={`/clientes/${client.id}`}>← {client.name}</BackLink>
         <h1>Novo post</h1>
         <p className="muted" style={{ maxWidth: "70ch" }}>
-          Escreva a ideia e escolha onde vai sair. Cada rede começa com a ideia como legenda, e você ajusta na tela do dia.
+          Anote o planejamento da data e, quando já souber, escolha onde vai sair e cole a legenda e o link do vídeo de cada rede.
         </p>
       </header>
       <Flash erro={sp.erro} />
@@ -53,62 +67,49 @@ export default async function NewPost({
         <input type="hidden" name="client_id" value={client.id} />
 
         <section className="card" aria-labelledby="s1">
-          <h2 id="s1">1. Redes e formatos</h2>
-          {networks.length === 0 ? (
-            <p className="alert err">Este cliente ainda não tem redes. <Link href={`/clientes/${client.id}/editar`} style={{ textDecoration: "underline" }}>Cadastre as redes</Link>.</p>
-          ) : (
-            <fieldset style={{ margin: 0, padding: 0, border: 0 }} className="col">
-              <legend className="sr">Onde vai sair</legend>
-              {networks.filter((n) => isNetwork(n.network)).flatMap((n) => {
-                const cfg = NETWORKS[n.network as keyof typeof NETWORKS];
-                return Object.entries(cfg.formats).map(([fid, f]) => (
-                  <label className="opt" key={`${n.network}:${fid}`}>
-                    <input type="checkbox" name="target" value={`${n.network}:${fid}`} />
-                    <NetDot network={n.network} />
-                    <b>{cfg.label}</b>
-                    <span className="muted">{f.label}</span>
-                  </label>
-                ));
-              })}
-            </fieldset>
-          )}
+          <h2 id="s1">1. Planejamento e comentários</h2>
+          <div className="col">
+            <label className="f" htmlFor="note">O que está planejado para esta data</label>
+            <textarea id="note" name="note" rows={4} placeholder="Ex.: Reels sobre o plantão 24h. Pedir depoimento ao cliente." />
+            <span className="muted small">
+              Aparece no calendário. Dá para salvar só o texto, sem escolher rede, e voltar depois para subir mídia e legendas.
+            </span>
+          </div>
           <div className="grid2">
             <div className="col">
               <label className="f" htmlFor="date">Data</label>
               <input id="date" name="date" type="date" defaultValue={date} required />
             </div>
             <div className="col">
-              <label className="f" htmlFor="time">Horário</label>
-              <input id="time" name="time" type="time" defaultValue="10:00" required />
+              <label className="f" htmlFor="time">Horário dos posts</label>
+              <input id="time" name="time" type="time" defaultValue="10:00" />
             </div>
           </div>
         </section>
 
         <section className="card" aria-labelledby="s2">
-          <h2 id="s2">2. A ideia</h2>
-          <div className="col">
-            <label className="f" htmlFor="title">Título interno (opcional)</label>
-            <input id="title" name="title" type="text" maxLength={120} placeholder="Ex.: Reels do plantão técnico" />
-          </div>
-          <div className="col">
-            <label className="f" htmlFor="idea">O que o post precisa dizer</label>
-            <textarea id="idea" name="idea" rows={6} />
-          </div>
+          <h2 id="s2">2. Redes, legendas e vídeos (opcional agora)</h2>
+          {networks.length === 0 ? (
+            <p className="alert err">Este cliente ainda não tem redes. <Link href={`/clientes/${client.id}/editar`} style={{ textDecoration: "underline" }}>Cadastre as redes</Link>.</p>
+          ) : (
+            <>
+              <p className="muted small">
+                Marque cada rede e formato em que o post vai sair. Cada um ganha a sua legenda e o seu link de vídeo.
+                A orientação ao lado é a medida ideal sugerida, não uma regra da rede.
+              </p>
+              <TargetPicker options={options} />
+              <div className="col">
+                <label className="f" htmlFor="title">Título interno (opcional)</label>
+                <input id="title" name="title" type="text" maxLength={120} placeholder="Ex.: Reels do plantão técnico" />
+              </div>
+            </>
+          )}
           <p className="muted small">A geração de legendas com IA, no tom de voz do cliente, chega na próxima etapa.</p>
-        </section>
-
-        <section className="card" aria-labelledby="s3">
-          <h2 id="s3">3. Mídia</h2>
-          <div className="col">
-            <label className="f" htmlFor="drive_url">Link do arquivo no Google Drive (opcional)</label>
-            <input id="drive_url" name="drive_url" type="text" placeholder="https://drive.google.com/file/d/…/view" />
-            <span className="muted small">Pode ser preenchido depois, na tela do dia.</span>
-          </div>
         </section>
 
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <Link href={`/clientes/${client.id}`} className="btn">Cancelar</Link>
-          <button type="submit" className="btn primary" disabled={networks.length === 0}>Criar post</button>
+          <button type="submit" className="btn primary">Salvar</button>
         </div>
       </form>
     </main>

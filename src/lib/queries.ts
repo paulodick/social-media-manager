@@ -128,3 +128,14 @@ export async function fileIsLinked(fileId: string): Promise<{ name?: string } | 
   if (!r.rows[0]) return null;
   return { name: r.rows[0].drive_meta?.name };
 }
+
+/** Notas de planejamento por dia (texto livre, sem rede nem mídia), de `from` a `to` inclusive. */
+export async function listDayNotes(clientId: string, from: string, to: string): Promise<Record<string, string>> {
+  const pool = await db();
+  const r = await pool.query<{ day: string; body: string }>(
+    `select to_char(day, 'YYYY-MM-DD') as day, body from day_notes
+      where client_id = $1 and day between $2::date and $3::date and body <> ''`,
+    [clientId, from, to],
+  );
+  return Object.fromEntries(r.rows.map((x) => [x.day, x.body]));
+}

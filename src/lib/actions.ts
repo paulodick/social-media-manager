@@ -138,22 +138,56 @@ async function resolveDrive(url: string): Promise<{ fileId: string | null; meta:
   return { fileId: ref.id, meta };
 }
 
+/** Acrescenta texto à nota do dia (sem apagar o que já estava lá). */
+async function appendDayNote(clientId: string, day: string, body: string): Promise<void> {
+  const pool = await db();
+  await pool.query(
+    `insert into day_notes (client_id, day, body) values ($1, $2::date, $3)
+     on conflict (client_id, day) do update set
+       body = case when day_notes.body = '' then excluded.body else day_notes.body || E'\n\n' || excluded.body end,
+       updated_at = now()`,
+    [clientId, day, body],
+  );
+}
+
+/** Troca a nota do dia pelo texto enviado. Texto vazio apaga a nota. */
+export async function saveDayNote(formData: FormData): Promise<void> {
+  await requireAuth();
+  const clientId = text(formData, "client_id", 40);
+  const day = text(formData, "day", 10);
+  const body = text(formData, "body", 4000);
+  if (!isDay(day) || !/^[0-9a-f-]{36}$/i.test(clientId)) redirect("/");
+  const pool = await db();
+  if (body) {
+    await pool.query(
+      `insert into day_notes (client_id, day, body) values ($1, $2::date, $3)
+       on conflict (client_id, day) do update set body = excluded.body, updated_at = now()`,
+      [clientId, day, body],
+    );
+  } else {
+    await pool.query("delete from day_notes where client_id = $1 and day = $2::date", [clientId, day]);
+  }
+  revalidatePath("/", "layout");
+  redirect(withParam(`/clientes/${clientId}/dia/${day}`, "nota", "1"));
+}
+
 export async function createPost(formData: FormData): Promise<void> {
   await requireAuth();
   const clientId = text(formData, "client_id", 40);
   const day = text(formData, "date", 10);
   const time = text(formData, "time", 5);
-  const idea = text(formData, "idea", 4000);
-  const driveUrl = text(formData, "drive_url", 500);
+  const note = text(formData, "note", 4000);
   const back = `/posts/novo?cliente=${encodeURIComponent(clientId)}`;
-  if (!isDay(day) || !isTime(time)) redirect(withParam(back, "erro", "Informe uma data e um horário válidos."));
+  if (!isDay(day)) redirect(withParam(back, "erro", "Informe uma data válida."));
 
   const targets = formData
     .getAll("target")
     .map(String)
     .map((v) => v.split(":"))
     .filter(([n, f]) => isNetwork(n) && isFormat(n, f));
-  if (!targets.length) redirect(withParam(back, "erro", "Escolha pelo menos uma rede e um formato."));
+  if (!targets.length && !note) {
+    redirect(withParam(back, "erro", "Escreva o planejamento do dia ou escolha pelo menos uma rede e um formato."));
+  }
 
   const pool = await db();
   const client = await pool
@@ -162,8 +196,28 @@ export async function createPost(formData: FormData): Promise<void> {
   if (!client?.rowCount) redirect("/");
   const root = client.rows[0].drive_folder_id;
 
-  const title = text(formData, "title", 120) || idea.split("\n")[0].slice(0, 80) || "Post sem título";
-  const { fileId, meta } = await resolveDrive(driveUrl);
+  // Só planejamento: guarda o texto na data e volta para o dia. Não cria post nem pasta.
+  if (!targets.length) {
+    await appendDayNote(clientId, day, note);
+    revalidatePath("/", "layout");
+    redirect(withParam(`/clientes/${clientId}/dia/${day}`, "nota", "1"));
+  }
+  if (!isTime(time)) redirect(withParam(back, "erro", "Informe um horário válido."));
+
+  // Cada destino tem a sua legenda e o seu link de vídeo.
+  const per = await Promise.all(
+    targets.map(async ([network, format]) => {
+      const key = `${network}:${format}`;
+      const caption = text(formData, `caption__${key}`, 4000);
+      const driveUrl = text(formData, `drive__${key}`, 500);
+      return { network, format, caption, driveUrl, ...(await resolveDrive(driveUrl)) };
+    }),
+  );
+  const title =
+    text(formData, "title", 120) ||
+    (per.find((p) => p.caption)?.caption.split("\n")[0].slice(0, 80) ?? "") ||
+    note.split("\n")[0].slice(0, 80) ||
+    "Post sem título";
 
   // Garante no Drive a pasta de cada destino (dia / rede / formato). Se falhar, o post é criado
   // mesmo assim e a tela do dia avisa; a pasta pode ser criada depois com o botão do destino.
@@ -189,14 +243,23 @@ export async function createPost(formData: FormData): Promise<void> {
   try {
     await c.query("begin");
     const p = await c.query<{ id: string }>(
-      "insert into posts (client_id, title, idea) values ($1,$2,$3) returning id",
-      [clientId, title, idea],
+      "insert into posts (client_id, title, idea) values ($1,$2,'') returning id",
+      [clientId, title],
     );
-    for (const [i, [network, format]] of targets.entries()) {
+    for (const [i, t] of per.entries()) {
       await c.query(
         `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id)
          values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10)`,
-        [p.rows[0].id, network, format, day, time, idea, driveUrl, fileId, meta ? JSON.stringify(meta) : null, folderIds[i]],
+        [p.rows[0].id, t.network, t.format, day, time, t.caption, t.driveUrl, t.fileId, t.meta ? JSON.stringify(t.meta) : null, folderIds[i]],
+      );
+    }
+    if (note) {
+      await c.query(
+        `insert into day_notes (client_id, day, body) values ($1, $2::date, $3)
+         on conflict (client_id, day) do update set
+           body = case when day_notes.body = '' then excluded.body else day_notes.body || E'\n\n' || excluded.body end,
+           updated_at = now()`,
+        [clientId, day, note],
       );
     }
     await c.query("commit");

@@ -50,6 +50,14 @@ label.f { font-weight: 600; font-size: 14px; }
 input[type=text], input[type=password], input[type=date], input[type=time], select, textarea { width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; }
 textarea { padding: 10px 12px; resize: vertical; line-height: 1.45; }
 input[type=checkbox] { width: 20px; height: 20px; margin: 0; }
+.target { border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
+.target.on { border-color: var(--accent); background: #fff; }
+.target > label { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; min-height: 44px; padding: 6px 12px; cursor: pointer; }
+.target .guide { margin-left: auto; text-align: right; }
+.target-fields { display: flex; flex-direction: column; gap: 14px; padding: 14px 12px 16px; border-top: 1px solid var(--line); }
+.target-fields[hidden] { display: none; }
+.mini.note { border: 1px solid #c9cfd8; background: #f3f4f7; color: #3b4757; height: auto; min-height: 24px; padding: 3px 6px; align-items: flex-start; }
+.mini.note span.t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .opt { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); cursor: pointer; }
 
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--line); background: var(--bg); font-size: 13px; font-weight: 500; white-space: nowrap; }

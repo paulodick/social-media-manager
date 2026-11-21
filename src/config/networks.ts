@@ -12,6 +12,13 @@ export type FormatCfg = {
   ratio?: "9:16" | "4:5" | "1:1" | "16:9";
   /** Tipo de mídia esperado. */
   media: "video" | "image" | "document" | "any";
+  /**
+   * Orientação para quem produz a mídia. Só informa na tela, não bloqueia nada.
+   * Conferido em 2026-11-21: LinkedIn e YouTube em páginas oficiais; Instagram, Facebook e TikTok em guias de terceiros
+   * (as páginas oficiais não trazem os números). "Ideal" é sugestão de mercado, não regra da rede.
+   * "tempo a confirmar" = não achamos fonte confiável; reconferir antes de mostrar um número.
+   */
+  guide?: { size: string; length: string };
 };
 
 export type NetworkCfg = {
@@ -35,9 +42,9 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     hashtagLimit: 30,
     cutAt: 110,
     formats: {
-      feed: { label: "Feed", folder: "Feed", ratio: "4:5", media: "any" },
-      reels: { label: "Reels", folder: "Reels", ratio: "9:16", media: "video" },
-      stories: { label: "Stories", folder: "Stories", ratio: "9:16", media: "any" },
+      feed: { label: "Feed", folder: "Feed", ratio: "4:5", media: "any", guide: { size: "4:5 · 1080×1350 px", length: "vídeo ideal de 30 a 60 s" } },
+      reels: { label: "Reels", folder: "Reels", ratio: "9:16", media: "video", guide: { size: "9:16 · 1080×1920 px", length: "até 3 min · ideal de 15 a 30 s" } },
+      stories: { label: "Stories", folder: "Stories", ratio: "9:16", media: "any", guide: { size: "9:16 · 1080×1920 px", length: "até 60 s por story · ideal de 7 a 15 s" } },
     },
   },
   facebook: {
@@ -48,9 +55,9 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     hashtagLimit: null,
     cutAt: 150,
     formats: {
-      feed: { label: "Feed", folder: "Feed", media: "any" },
-      reels: { label: "Reels", folder: "Reels", ratio: "9:16", media: "video" },
-      stories: { label: "Stories", folder: "Stories", ratio: "9:16", media: "any" },
+      feed: { label: "Feed", folder: "Feed", media: "any", guide: { size: "4:5 ou 1:1 · 1080×1350 px", length: "vídeo ideal de 30 a 90 s (mesma referência do LinkedIn)" } },
+      reels: { label: "Reels", folder: "Reels", ratio: "9:16", media: "video", guide: { size: "9:16 · 1080×1920 px", length: "sem limite fixo · ideal de 15 a 30 s" } },
+      stories: { label: "Stories", folder: "Stories", ratio: "9:16", media: "any", guide: { size: "9:16 · 1080×1920 px", length: "ideal de 7 a 15 s por story (mesma referência do Instagram)" } },
     },
   },
   linkedin: {
@@ -61,9 +68,9 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     hashtagLimit: null,
     cutAt: 150,
     formats: {
-      feed: { label: "Feed", folder: "Feed", media: "any" },
-      video: { label: "Vídeo", folder: "Video", media: "video" },
-      documento: { label: "Documento", folder: "Documento", media: "document" },
+      feed: { label: "Feed", folder: "Feed", media: "any", guide: { size: "1:1 ou 4:5 · 1080×1080 ou 1080×1350 px", length: "vídeo de 3 s a 10 min · ideal de 30 a 90 s" } },
+      video: { label: "Vídeo", folder: "Video", media: "video", guide: { size: "16:9 · 1920×1080 px (ou 1:1)", length: "3 s a 10 min (15 min no computador) · ideal de 30 a 90 s" } },
+      documento: { label: "Documento", folder: "Documento", media: "document", guide: { size: "PDF · 1080×1080 ou 1080×1350 px por página", length: "até 300 páginas e 100 MB" } },
     },
   },
   tiktok: {
@@ -74,8 +81,8 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     hashtagLimit: null,
     cutAt: 100,
     formats: {
-      video: { label: "Vídeo", folder: "Video", ratio: "9:16", media: "video" },
-      fotos: { label: "Fotos", folder: "Fotos", media: "image" },
+      video: { label: "Vídeo", folder: "Video", ratio: "9:16", media: "video", guide: { size: "9:16 · 1080×1920 px", length: "até 3 min (10 min em algumas contas)" } },
+      fotos: { label: "Fotos", folder: "Fotos", media: "image", guide: { size: "9:16 · 1080×1920 px", length: "carrossel de 2 a 10 imagens" } },
     },
   },
   kwai: {
@@ -86,7 +93,7 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     hashtagLimit: null,
     cutAt: 100,
     formats: {
-      video: { label: "Vídeo", folder: "Video", ratio: "9:16", media: "video" },
+      video: { label: "Vídeo", folder: "Video", ratio: "9:16", media: "video", guide: { size: "9:16 · 1080×1920 px", length: "até 3 min (mesma referência do TikTok)" } },
     },
   },
   youtube: {
@@ -97,8 +104,8 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     hashtagLimit: null,
     cutAt: 100,
     formats: {
-      shorts: { label: "Shorts", folder: "Shorts", ratio: "9:16", media: "video" },
-      longo: { label: "Vídeo longo", folder: "Video longo", ratio: "16:9", media: "video" },
+      shorts: { label: "Shorts", folder: "Shorts", ratio: "9:16", media: "video", guide: { size: "9:16 · 1080×1920 px", length: "até 3 min · ideal de 15 a 60 s" } },
+      longo: { label: "Vídeo longo", folder: "Video longo", ratio: "16:9", media: "video", guide: { size: "16:9 · 1920×1080 px", length: "até 15 min (12 h em canais verificados)" } },
     },
   },
 };

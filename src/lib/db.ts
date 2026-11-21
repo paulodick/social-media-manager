@@ -64,6 +64,18 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       alter table post_targets add column post_folder_id text;
     `,
   },
+  {
+    version: 4,
+    sql: `
+      create table day_notes (
+        client_id uuid not null references clients(id) on delete cascade,
+        day date not null,
+        body text not null default '',
+        updated_at timestamptz not null default now(),
+        primary key (client_id, day)
+      );
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };
