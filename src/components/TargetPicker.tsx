@@ -13,6 +13,8 @@ export type PickerOption = {
   formatLabel: string;
   size?: string;
   length?: string;
+  /** Formatos com miniatura própria: orientação de tamanho. Presente = mostra o campo do link da miniatura. */
+  thumbGuide?: string;
 };
 
 /**
@@ -58,7 +60,7 @@ export default function TargetPicker({
             </label>
             <div className="target-fields" hidden={!checked}>
               <div className="col">
-                <label className="f" htmlFor={`cap-${i}`}>Legenda — {o.networkLabel} {o.formatLabel}</label>
+                <label className="f" htmlFor={`cap-${i}`}>{o.key === "youtube:longo" ? "Descrição" : "Legenda"} — {o.networkLabel} {o.formatLabel}</label>
                 <textarea id={`cap-${i}`} name={`caption__${o.key}`} rows={4} disabled={!checked} />
                 <div className="row" style={{ gap: 8 }}>
                   <PromptButton client={client} option={o} captionId={`cap-${i}`} />
@@ -82,6 +84,13 @@ export default function TargetPicker({
                 <input id={`drv-${i}`} name={`drive__${o.key}`} type="text" placeholder="https://drive.google.com/file/d/…/view" disabled={!checked} />
                 <span className="muted small">Pode ficar em branco agora e ser preenchido depois, na tela do dia.</span>
               </div>
+              {o.thumbGuide && (
+                <div className="col">
+                  <label className="f" htmlFor={`thb-${i}`}>Link da miniatura no Google Drive — {o.networkLabel} {o.formatLabel} (opcional)</label>
+                  <input id={`thb-${i}`} name={`thumb__${o.key}`} type="text" placeholder="https://drive.google.com/file/d/…/view" disabled={!checked} />
+                  <span className="muted small">{o.thumbGuide}. Na tela do dia você vê como a miniatura aparece na lista do YouTube.</span>
+                </div>
+              )}
             </div>
           </div>
         );

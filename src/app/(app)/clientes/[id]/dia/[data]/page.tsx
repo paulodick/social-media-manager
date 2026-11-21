@@ -57,6 +57,9 @@ export default async function DayPage({
             driveUrl={t.drive_url}
             fileId={t.drive_file_id}
             meta={t.drive_meta}
+            thumbUrl={t.thumb_url}
+            thumbFileId={t.thumb_file_id}
+            thumbMeta={t.thumb_meta}
             title={t.title}
             profile={{ name: acc || client.name, handle: (acc || client.name).toLowerCase().replace(/\s+/g, "") }}
             expectedPath={`${client.name} / ${expected.join(" / ")}`}

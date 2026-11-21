@@ -19,6 +19,15 @@ export type FormatCfg = {
    * "tempo a confirmar" = não achamos fonte confiável; reconferir antes de mostrar um número.
    */
   guide?: { size: string; length: string };
+  /**
+   * Formatos com miniatura (capa) própria, enviada à parte. Habilita o campo "Link da miniatura no Drive",
+   * as checagens e a prévia da miniatura. YouTube conferido em página oficial em 2026-11-21
+   * (support.google.com/youtube/answer/72431): vídeo 16:9, recomendado 3840×2160, largura mínima 640 px;
+   * Shorts 9:16, recomendado 2160×3840, altura mínima 640 px; JPG ou PNG; até 2 MB pelo celular e 50 MB pelo computador.
+   */
+  thumb?: { ratio: "16:9" | "9:16"; minSide: number; side: "width" | "height"; guide: string };
+  /** Substitui o `cutAt` da rede nesta prévia (ex.: legenda sobre o vídeo vertical, que corta antes do feed). Só aparência. */
+  cutAt?: number;
 };
 
 export type NetworkCfg = {
@@ -27,6 +36,8 @@ export type NetworkCfg = {
   /** Nome da pasta no Drive. */
   folder: string;
   captionLimit: number | null;
+  /** Limite do título do post nesta rede (YouTube: 100 caracteres, página oficial conferida em 2026-11-21). Ausente = sem checagem. */
+  titleLimit?: number;
   hashtagLimit: number | null;
   /** Caracteres que aparecem antes do "ver mais" (aproximação para a prévia). */
   cutAt: number;
@@ -56,8 +67,8 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     cutAt: 150,
     formats: {
       feed: { label: "Feed", folder: "Feed", media: "any", guide: { size: "4:5 ou 1:1 · 1080×1350 px", length: "vídeo ideal de 30 a 90 s (mesma referência do LinkedIn)" } },
-      reels: { label: "Reels", folder: "Reels", ratio: "9:16", media: "video", guide: { size: "9:16 · 1080×1920 px", length: "sem limite fixo · ideal de 15 a 30 s" } },
-      stories: { label: "Stories", folder: "Stories", ratio: "9:16", media: "any", guide: { size: "9:16 · 1080×1920 px", length: "ideal de 7 a 15 s por story (mesma referência do Instagram)" } },
+      reels: { label: "Reels", folder: "Reels", ratio: "9:16", media: "video", cutAt: 100, guide: { size: "9:16 · 1080×1920 px", length: "sem limite fixo · ideal de 15 a 30 s" } },
+      stories: { label: "Stories", folder: "Stories", ratio: "9:16", media: "any", cutAt: 100, guide: { size: "9:16 · 1080×1920 px", length: "ideal de 7 a 15 s por story (mesma referência do Instagram)" } },
     },
   },
   linkedin: {
@@ -101,11 +112,20 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     color: "#D92D20",
     folder: "YouTube",
     captionLimit: 5000,
+    titleLimit: 100,
     hashtagLimit: null,
     cutAt: 100,
     formats: {
-      shorts: { label: "Shorts", folder: "Shorts", ratio: "9:16", media: "video", guide: { size: "9:16 · 1080×1920 px", length: "até 3 min · ideal de 15 a 60 s" } },
-      longo: { label: "Vídeo longo", folder: "Video longo", ratio: "16:9", media: "video", guide: { size: "16:9 · 1920×1080 px", length: "até 15 min (12 h em canais verificados)" } },
+      shorts: {
+        label: "Shorts", folder: "Shorts", ratio: "9:16", media: "video",
+        guide: { size: "9:16 · 1080×1920 px", length: "até 3 min · ideal de 15 a 60 s" },
+        thumb: { ratio: "9:16", minSide: 640, side: "height", guide: "9:16 · 2160×3840 px (altura mínima 640 px) · JPG ou PNG · só no Studio, pelo computador" },
+      },
+      longo: {
+        label: "Vídeo longo", folder: "Video longo", ratio: "16:9", media: "video",
+        guide: { size: "16:9 · 1920×1080 px", length: "até 15 min (12 h em canais verificados)" },
+        thumb: { ratio: "16:9", minSide: 640, side: "width", guide: "16:9 · 3840×2160 px (largura mínima 640 px) · JPG ou PNG · até 2 MB pelo celular, 50 MB pelo computador" },
+      },
     },
   },
 };

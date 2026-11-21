@@ -39,6 +39,9 @@ export type Target = {
   drive_url: string;
   drive_file_id: string | null;
   drive_meta: MediaMeta | null;
+  thumb_url: string;
+  thumb_file_id: string | null;
+  thumb_meta: MediaMeta | null;
   late: boolean;
 };
 
@@ -48,6 +51,7 @@ const TARGET_SELECT = `
          to_char(t.scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day,
          to_char(t.scheduled_at at time zone '${TZ}', 'HH24:MI') as time,
          t.caption, t.status, t.drive_url, t.drive_file_id, t.drive_meta,
+         t.thumb_url, t.thumb_file_id, t.thumb_meta,
          (t.status <> 'posted' and t.scheduled_at < now()) as late
   from post_targets t
   join posts p on p.id = t.post_id
@@ -130,12 +134,15 @@ export async function countDue(today: string): Promise<number> {
 /** O arquivo está ligado a algum post? Usado para não servir arquivos quaisquer do Drive. */
 export async function fileIsLinked(fileId: string): Promise<{ name?: string } | null> {
   const pool = await db();
-  const r = await pool.query<{ drive_meta: MediaMeta | null }>(
-    "select drive_meta from post_targets where drive_file_id = $1 limit 1",
+  const r = await pool.query<{ meta: MediaMeta | null }>(
+    `select drive_meta as meta from post_targets where drive_file_id = $1
+     union all
+     select thumb_meta as meta from post_targets where thumb_file_id = $1
+     limit 1`,
     [fileId],
   );
   if (!r.rows[0]) return null;
-  return { name: r.rows[0].drive_meta?.name };
+  return { name: r.rows[0].meta?.name };
 }
 
 /** Notas de planejamento por dia (texto livre, sem rede nem mídia), de `from` a `to` inclusive. */

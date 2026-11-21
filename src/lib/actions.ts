@@ -240,7 +240,10 @@ export async function createPost(formData: FormData): Promise<void> {
       const key = `${network}:${format}`;
       const caption = text(formData, `caption__${key}`, 4000);
       const driveUrl = text(formData, `drive__${key}`, 500);
-      return { network, format, caption, driveUrl, ...(await resolveDrive(driveUrl)) };
+      // Miniatura só existe nos formatos que a pedem (config `thumb`); nos outros o campo é ignorado.
+      const thumbUrl = isNetwork(network) && NETWORKS[network].formats[format]?.thumb ? text(formData, `thumb__${key}`, 500) : "";
+      const thumb = await resolveDrive(thumbUrl);
+      return { network, format, caption, driveUrl, ...(await resolveDrive(driveUrl)), thumbUrl, thumbFileId: thumb.fileId, thumbMeta: thumb.meta };
     }),
   );
   const title =
@@ -278,9 +281,13 @@ export async function createPost(formData: FormData): Promise<void> {
     );
     for (const [i, t] of per.entries()) {
       await c.query(
-        `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id)
-         values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10)`,
-        [p.rows[0].id, t.network, t.format, day, time, t.caption, t.driveUrl, t.fileId, t.meta ? JSON.stringify(t.meta) : null, folderIds[i]],
+        `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id,
+                                   thumb_url, thumb_file_id, thumb_meta)
+         values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          p.rows[0].id, t.network, t.format, day, time, t.caption, t.driveUrl, t.fileId, t.meta ? JSON.stringify(t.meta) : null, folderIds[i],
+          t.thumbUrl, t.thumbFileId, t.thumbMeta ? JSON.stringify(t.thumbMeta) : null,
+        ],
       );
     }
     if (note) {
@@ -336,13 +343,18 @@ export async function saveTarget(formData: FormData): Promise<void> {
   const time = text(formData, "time", 5);
   const day = text(formData, "date", 10);
   const driveUrl = text(formData, "drive_url", 500);
+  const thumbUrl = text(formData, "thumb_url", 500);
   const status = text(formData, "status", 12);
   if (!["draft", "scheduled", "posted"].includes(status)) redirect(back);
   if (!isTime(time) || !isDay(day)) redirect(withParam(back, "erro", "Informe uma data e um horário válidos."));
 
   const pool = await db();
-  const cur = await pool.query<{ drive_url: string; drive_file_id: string | null; drive_meta: MediaMeta | null; day: string }>(
-    `select drive_url, drive_file_id, drive_meta, to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day
+  const cur = await pool.query<{
+    drive_url: string; drive_file_id: string | null; drive_meta: MediaMeta | null;
+    thumb_url: string; thumb_file_id: string | null; thumb_meta: MediaMeta | null; day: string;
+  }>(
+    `select drive_url, drive_file_id, drive_meta, thumb_url, thumb_file_id, thumb_meta,
+            to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day
        from post_targets where id = $1`,
     [id],
   );
@@ -351,11 +363,17 @@ export async function saveTarget(formData: FormData): Promise<void> {
   if (driveUrl !== cur.rows[0].drive_url || (meta && meta.error)) {
     ({ fileId, meta } = await resolveDrive(driveUrl));
   }
+  let { thumb_file_id: thumbFileId, thumb_meta: thumbMeta } = cur.rows[0];
+  if (thumbUrl !== cur.rows[0].thumb_url || (thumbMeta && thumbMeta.error)) {
+    const t = await resolveDrive(thumbUrl);
+    thumbFileId = t.fileId;
+    thumbMeta = t.meta;
+  }
   await pool.query(
     `update post_targets set caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
         status=$4, posted_at = case when $4='posted' then coalesce(posted_at, now()) else null end,
-        drive_url=$5, drive_file_id=$6, drive_meta=$7 where id=$8`,
-    [caption, day, time, status, driveUrl, fileId, meta ? JSON.stringify(meta) : null, id],
+        drive_url=$5, drive_file_id=$6, drive_meta=$7, thumb_url=$8, thumb_file_id=$9, thumb_meta=$10 where id=$11`,
+    [caption, day, time, status, driveUrl, fileId, meta ? JSON.stringify(meta) : null, thumbUrl, thumbFileId, thumbMeta ? JSON.stringify(thumbMeta) : null, id],
   );
   // Mudou o dia: a pasta guardada era a do dia antigo. Limpa para criar a do dia novo com o botão.
   if (cur.rows[0].day !== day) await pool.query("update post_targets set post_folder_id = null where id = $1", [id]);

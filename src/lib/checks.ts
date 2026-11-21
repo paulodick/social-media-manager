@@ -66,6 +66,57 @@ function ratioLabel(a: number): string {
   return a.toFixed(2).replace(".", ",") + ":1";
 }
 
+/** Checagens da miniatura (capa) de formatos que têm `thumb` na configuração. Vazio se o formato não usa miniatura. */
+export function thumbChecks(network: NetworkId, format: string, meta: MediaMeta | null | undefined): Check[] {
+  const cfg = NETWORKS[network];
+  const spec = cfg.formats[format]?.thumb;
+  if (!spec) return [];
+  const where = `${cfg.label}, miniatura`;
+  if (!meta) return [{ level: "warn", text: `${where}: ainda não há miniatura ligada a este post.` }];
+  if (meta.error) return [{ level: "warn", text: `${where}: ${meta.error}` }];
+  const out: Check[] = [];
+  if (meta.mimeType && !meta.mimeType.startsWith("image/")) {
+    out.push({ level: "warn", text: `${where}: o arquivo precisa ser uma imagem (JPG ou PNG), mas é ${meta.mimeType}.` });
+    return out;
+  }
+  const a = aspectOf(meta);
+  if (a != null) {
+    const okRatio = spec.ratio === "16:9" ? Math.abs(a - 16 / 9) < 0.08 : Math.abs(a - 9 / 16) < 0.03;
+    out.push(
+      okRatio
+        ? { level: "ok", text: `${where}: proporção ${ratioLabel(a)}, adequada.` }
+        : { level: "warn", text: `${where}: proporção ${ratioLabel(a)}, a rede pede ${spec.ratio}.` },
+    );
+  }
+  const side = spec.side === "width" ? meta.width : meta.height;
+  if (side != null) {
+    const label = spec.side === "width" ? "largura" : "altura";
+    out.push(
+      side >= spec.minSide
+        ? { level: "ok", text: `${where}: ${label} de ${fmtNumber(side)} px (mínimo ${spec.minSide} px).` }
+        : { level: "warn", text: `${where}: ${label} de ${fmtNumber(side)} px, o mínimo é ${spec.minSide} px.` },
+    );
+  }
+  if (meta.size != null) {
+    const mb = meta.size / (1024 * 1024);
+    const shown = mb.toFixed(1).replace(".", ",");
+    if (mb > 50) out.push({ level: "warn", text: `${where}: ${shown} MB, acima do limite de 50 MB.` });
+    else if (mb > 2) out.push({ level: "warn", text: `${where}: ${shown} MB. Pelo celular o limite é 2 MB; pelo computador, 50 MB.` });
+    else out.push({ level: "ok", text: `${where}: ${shown} MB, dentro do limite de 2 MB.` });
+  }
+  return out;
+}
+
+/** Título do post contra o limite da rede (hoje só o YouTube tem limite configurado). */
+export function titleChecks(network: NetworkId, title: string): Check[] {
+  const cfg = NETWORKS[network];
+  if (!cfg.titleLimit) return [];
+  const n = title.trim().length;
+  return n > cfg.titleLimit
+    ? [{ level: "warn", text: `${cfg.label}: o título tem ${fmtNumber(n)} caracteres e o limite é ${fmtNumber(cfg.titleLimit)}.` }]
+    : [{ level: "ok", text: `${cfg.label}: título com ${fmtNumber(n)} de ${fmtNumber(cfg.titleLimit)} caracteres.` }];
+}
+
 export function mediaChecks(network: NetworkId, format: string, meta: MediaMeta | null | undefined): Check[] {
   const cfg = NETWORKS[network];
   const fmt = cfg.formats[format];

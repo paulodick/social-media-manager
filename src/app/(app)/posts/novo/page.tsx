@@ -57,6 +57,7 @@ export default async function NewPost({
         formatLabel: f.label,
         size: f.guide?.size,
         length: f.guide?.length,
+        thumbGuide: f.thumb?.guide,
       }));
     });
   return (
@@ -106,12 +107,12 @@ export default async function NewPost({
               </p>
               <TargetPicker options={options} clientId={client.id} aiEnabled={aiConfigured()} client={{ name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }} />
               <div className="col">
-                <label className="f" htmlFor="title">Título interno (opcional)</label>
+                <label className="f" htmlFor="title">Título do post (opcional)</label>
                 <input id="title" name="title" type="text" maxLength={120} placeholder="Ex.: Reels do plantão técnico" />
+                <span className="muted small">Serve para você achar o post. No YouTube, é também o título do vídeo (até 100 caracteres).</span>
               </div>
             </>
           )}
-          <p className="muted small">A geração de legendas com IA, no tom de voz do cliente, chega na próxima etapa.</p>
         </section>
 
         <div className="row" style={{ justifyContent: "flex-end" }}>

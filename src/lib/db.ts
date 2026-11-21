@@ -87,6 +87,14 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 6,
+    sql: `
+      alter table post_targets add column thumb_url text not null default '';
+      alter table post_targets add column thumb_file_id text;
+      alter table post_targets add column thumb_meta jsonb;
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

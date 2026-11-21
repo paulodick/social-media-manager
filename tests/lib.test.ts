@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseDriveUrl, driveQuote, folderUrl } from "../src/lib/drive.ts";
-import { captionChecks, mediaChecks, countHashtags, cutCaption } from "../src/lib/checks.ts";
+import { captionChecks, mediaChecks, thumbChecks, titleChecks, countHashtags, cutCaption } from "../src/lib/checks.ts";
 import { hashPassword, verifyPassword, passwordProblem } from "../src/lib/password.ts";
 import sharp from "sharp";
 import { processLogo } from "../src/lib/logo-image.ts";
@@ -36,6 +36,34 @@ test("checagem de mídia", () => {
   assert.ok(mediaChecks("youtube", "longo", v).some((c) => c.level === "warn"));
   assert.ok(mediaChecks("linkedin", "feed", v).some((c) => /vertical/.test(c.text)));
   assert.ok(mediaChecks("instagram", "reels", null).some((c) => c.level === "warn"));
+});
+
+test("checagem de miniatura do YouTube", () => {
+  const MB = 1024 * 1024;
+  const boa = { mimeType: "image/png", width: 3840, height: 2160, size: 1.5 * MB };
+  assert.ok(thumbChecks("youtube", "longo", boa).length >= 3);
+  assert.ok(thumbChecks("youtube", "longo", boa).every((c) => c.level === "ok"));
+  // 16:9 mas pequena demais (largura mínima 640 px)
+  assert.ok(thumbChecks("youtube", "longo", { ...boa, width: 480, height: 270 }).some((c) => c.level === "warn" && /mínimo/.test(c.text)));
+  // vertical num vídeo longo
+  assert.ok(thumbChecks("youtube", "longo", { ...boa, width: 1080, height: 1920 }).some((c) => c.level === "warn" && /proporção/.test(c.text)));
+  // pesada: avisa o limite de 2 MB do celular, mas não passa de 50 MB
+  assert.ok(thumbChecks("youtube", "longo", { ...boa, size: 5 * MB }).some((c) => c.level === "warn" && /2 MB/.test(c.text)));
+  assert.ok(thumbChecks("youtube", "longo", { ...boa, size: 60 * MB }).some((c) => c.level === "warn" && /50 MB/.test(c.text)));
+  // não é imagem
+  assert.ok(thumbChecks("youtube", "longo", { mimeType: "video/mp4" }).some((c) => c.level === "warn"));
+  // Shorts pedem 9:16 e altura mínima
+  assert.ok(thumbChecks("youtube", "shorts", { mimeType: "image/jpeg", width: 1080, height: 1920, size: MB }).every((c) => c.level === "ok"));
+  // sem miniatura ligada; erro do Drive; formato que não usa miniatura
+  assert.ok(thumbChecks("youtube", "longo", null).some((c) => /ainda não há/.test(c.text)));
+  assert.ok(thumbChecks("youtube", "longo", { error: "sem acesso" }).some((c) => /sem acesso/.test(c.text)));
+  assert.deepEqual(thumbChecks("instagram", "reels", null), []);
+});
+
+test("checagem do título (YouTube, 100 caracteres)", () => {
+  assert.ok(titleChecks("youtube", "x".repeat(100)).every((c) => c.level === "ok"));
+  assert.ok(titleChecks("youtube", "x".repeat(101)).some((c) => c.level === "warn"));
+  assert.deepEqual(titleChecks("instagram", "x".repeat(500)), []);
 });
 
 test("datas", () => {
