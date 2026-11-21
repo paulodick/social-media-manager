@@ -95,6 +95,29 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       alter table post_targets add column thumb_meta jsonb;
     `,
   },
+  {
+    version: 7,
+    sql: `
+      create table network_connections (
+        id uuid primary key default gen_random_uuid(),
+        client_id uuid not null references clients(id) on delete cascade,
+        network text not null,
+        account_id text not null,
+        account_name text not null default '',
+        page_id text,
+        token_enc text not null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        unique (client_id, network)
+      );
+      alter table post_targets add column publish_state text not null default 'idle'
+        check (publish_state in ('idle','publishing','published','failed'));
+      alter table post_targets add column publish_started_at timestamptz;
+      alter table post_targets add column external_id text;
+      alter table post_targets add column external_url text not null default '';
+      alter table post_targets add column publish_error text not null default '';
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

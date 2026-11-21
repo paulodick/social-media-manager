@@ -9,6 +9,10 @@ import { TZ, dayFolders, isDay, isTime } from "./dates";
 import { ensureFolderPath, getFileMeta, parseDriveUrl } from "./drive";
 import { generateText, type AiResult } from "./ai";
 import { buildCaptionPrompt } from "./prompt";
+import { startPublish } from "./publisher";
+import { removeMetaConnections, saveMetaConnections } from "./connections";
+import { clearPending, readPending } from "./meta-pending";
+import { listPages } from "./publish/meta-oauth";
 import { fetchLogo } from "./logo";
 import type { MediaMeta } from "./checks";
 import { NETWORKS, NETWORK_IDS, isFormat, isNetwork } from "@/config/networks";
@@ -381,6 +385,16 @@ export async function saveTarget(formData: FormData): Promise<void> {
   redirect(withParam(back, "salvo", id) + `#t-${id}`);
 }
 
+export async function publishTarget(formData: FormData): Promise<void> {
+  await requireAuth();
+  const id = text(formData, "id", 40);
+  const back = safePath(text(formData, "volta", 300), "/");
+  const r = await startPublish(id);
+  revalidatePath("/", "layout");
+  if (!r.ok) redirect(withParam(back, "erro", r.error) + `#t-${id}`);
+  redirect(back + `#t-${id}`);
+}
+
 export async function markPosted(formData: FormData): Promise<void> {
   await requireAuth();
   const id = text(formData, "id", 40);
@@ -435,4 +449,43 @@ export async function generateCaption(input: {
     captionDraft: String(input.draft ?? "").slice(0, 4000),
   });
   return generateText(prompt);
+}
+
+// ---------- contas conectadas (Meta) ----------
+
+/** Escolha da Página quando o login da Meta liberou mais de uma. O token do usuário vem do cookie, nunca do formulário. */
+export async function connectMetaPage(formData: FormData): Promise<void> {
+  await requireAuth();
+  const clientId = text(formData, "clientId", 40);
+  const pageId = text(formData, "pageId", 40);
+  if (!/^[0-9a-f-]{36}$/i.test(clientId)) redirect("/");
+  const back = `/clientes/${clientId}/editar`;
+  const userToken = await readPending(clientId);
+  if (!userToken) redirect(withParam(back, "erro", "A escolha expirou. Clique em Conectar de novo."));
+  let msg: { k: "ok" | "aviso" | "erro"; v: string };
+  try {
+    const page = (await listPages(userToken)).find((p) => p.id === pageId);
+    if (!page) {
+      msg = { k: "erro", v: "Essa Página não está entre as liberadas no login da Meta. Conecte de novo." };
+    } else {
+      const r = await saveMetaConnections(clientId, page);
+      msg = r.instagram
+        ? { k: "ok", v: `Conectado: Página ${page.name} e Instagram ${r.instagram}.` }
+        : { k: "aviso", v: `Página ${page.name} conectada, mas ela não tem Instagram profissional ligado. Ligue o Instagram à Página e conecte de novo.` };
+    }
+  } catch (e) {
+    msg = { k: "erro", v: e instanceof Error ? e.message : "Não foi possível conectar. Tente de novo." };
+  }
+  await clearPending();
+  revalidatePath(back);
+  redirect(withParam(back, msg.k, msg.v));
+}
+
+export async function disconnectMeta(formData: FormData): Promise<void> {
+  await requireAuth();
+  const clientId = text(formData, "clientId", 40);
+  if (!/^[0-9a-f-]{36}$/i.test(clientId)) redirect("/");
+  await removeMetaConnections(clientId);
+  revalidatePath(`/clientes/${clientId}/editar`);
+  redirect(withParam(`/clientes/${clientId}/editar`, "ok", "Contas do Facebook e do Instagram desconectadas."));
 }

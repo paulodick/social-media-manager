@@ -1,7 +1,9 @@
 import { JWT } from "google-auth-library";
 import type { MediaMeta } from "./checks.ts";
 
-const API = "https://www.googleapis.com/drive/v3";
+// DRIVE_API_BASE e DRIVE_TEST_TOKEN só existem para testes com um Drive de mentira (os dois precisam estar definidos).
+const TEST_DRIVE = !!process.env.DRIVE_API_BASE && !!process.env.DRIVE_TEST_TOKEN;
+const API = TEST_DRIVE ? (process.env.DRIVE_API_BASE as string) : "https://www.googleapis.com/drive/v3";
 // Escopo completo porque o app precisa enxergar pastas que ele não criou e criar subpastas.
 // O alcance real é limitado pelo que foi compartilhado com a conta de serviço (a pasta do cliente).
 // O app só lê arquivos e cria pastas: não envia, move nem apaga nada.
@@ -55,6 +57,7 @@ export function serviceAccountEmail(): string | null {
 type G = typeof globalThis & { _smmJwt?: JWT };
 
 async function token(): Promise<string> {
+  if (TEST_DRIVE) return process.env.DRIVE_TEST_TOKEN as string;
   const c = creds();
   if (!c) throw new Error("Google Drive não configurado.");
   const g = globalThis as G;

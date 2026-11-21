@@ -7,7 +7,8 @@ import { addDays, dayFolders, dayLabel, isDay, monthOf, weekStart } from "@/lib/
 import { folderPathFromRoot } from "@/lib/drive";
 import { aiConfigured } from "@/lib/ai";
 import { saveDayNote } from "@/lib/actions";
-import { getClient, listDayNotes, listTargets } from "@/lib/queries";
+import { getClient, listConnected, listDayNotes, listTargets } from "@/lib/queries";
+import { canAutoPublish } from "@/lib/publisher";
 
 export default async function DayPage({
   params,
@@ -25,6 +26,7 @@ export default async function DayPage({
   const targets = await listTargets({ clientId: id, from: day, to: day });
   const note = (await listDayNotes(id, day, day))[day] ?? "";
   const volta = `/clientes/${id}/dia/${day}`;
+  const connected = await listConnected(id);
 
   const editors = await Promise.all(
     targets.map(async (t) => {
@@ -68,6 +70,11 @@ export default async function DayPage({
             canCreateFolder={!!client.drive_folder_id}
             volta={volta}
             saved={sp.salvo === t.id}
+            publish={
+              canAutoPublish(t.network)
+                ? { connected: connected[t.network] ?? null, state: t.publish_state, url: t.external_url, error: t.publish_error }
+                : undefined
+            }
             ai={{ client: { name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }, plan: note, clientId: id, enabled: aiConfigured() }}
           />
         </div>

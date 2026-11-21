@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { NetChip, ClientAvatar, StatusPill } from "@/components/ui";
+import { NetChip, ClientAvatar, Flash, StatusPill } from "@/components/ui";
 import { isNetwork } from "@/config/networks";
 import { dayLabel, todaySP } from "@/lib/dates";
 import { listClients, listTargets } from "@/lib/queries";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ erro?: string; ok?: string; aviso?: string }> }) {
+  const { erro, ok, aviso } = await searchParams;
   const today = todaySP();
   const [clients, due] = await Promise.all([listClients(), listTargets({ dueUntil: today })]);
   return (
@@ -16,6 +17,7 @@ export default async function Home() {
           <Link href="/posts/novo" className="btn primary">Novo post</Link>
         </div>
       </header>
+      <Flash erro={erro} ok={ok} aviso={aviso} />
 
       <section className="card" aria-labelledby="hoje">
         <div className="row between">

@@ -8,6 +8,7 @@ import { buildCaptionPrompt, type PromptClient } from "@/lib/prompt";
 import CopyButton from "./CopyButton";
 import GenerateButton from "./GenerateButton";
 import PostPreview from "./Previews";
+import PublishPanel, { type PublishInfo } from "./PublishPanel";
 
 export type EditorProps = {
   id: string;
@@ -35,6 +36,8 @@ export type EditorProps = {
   canCreateFolder: boolean;
   volta: string;
   saved: boolean;
+  /** Publicação pelo app (só Instagram e Facebook, por enquanto). Ausente = a rede é manual. */
+  publish?: PublishInfo;
   /** Dados do cliente e planejamento do dia, para montar o pedido de legenda para a IA. */
   ai: { client: PromptClient; plan: string; clientId: string; enabled: boolean };
 };
@@ -129,6 +132,16 @@ export default function TargetEditor(p: EditorProps) {
               {posted && <button className="btn" type="submit" name="status" value="scheduled">Voltar para agendado</button>}
             </div>
           </form>
+          {p.publish && (
+            <PublishPanel
+              id={p.id}
+              networkLabel={cfg.label}
+              volta={p.volta}
+              info={p.publish}
+              dirty={caption !== p.caption}
+              posted={posted}
+            />
+          )}
           <div className="row">
             <CopyButton text={caption} />
             <CopyButton

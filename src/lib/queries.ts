@@ -43,6 +43,10 @@ export type Target = {
   thumb_file_id: string | null;
   thumb_meta: MediaMeta | null;
   late: boolean;
+  publish_state: "idle" | "publishing" | "published" | "failed";
+  external_id: string | null;
+  external_url: string;
+  publish_error: string;
 };
 
 const TARGET_SELECT = `
@@ -52,7 +56,13 @@ const TARGET_SELECT = `
          to_char(t.scheduled_at at time zone '${TZ}', 'HH24:MI') as time,
          t.caption, t.status, t.drive_url, t.drive_file_id, t.drive_meta,
          t.thumb_url, t.thumb_file_id, t.thumb_meta,
-         (t.status <> 'posted' and t.scheduled_at < now()) as late
+         (t.status <> 'posted' and t.scheduled_at < now()) as late,
+         case when t.publish_state = 'publishing' and t.publish_started_at < now() - interval '15 minutes'
+              then 'failed' else t.publish_state end as publish_state,
+         t.external_id, t.external_url,
+         case when t.publish_state = 'publishing' and t.publish_started_at < now() - interval '15 minutes'
+              then 'A publicação não terminou (o app pode ter reiniciado). Confira na rede antes de tentar de novo.'
+              else t.publish_error end as publish_error
   from post_targets t
   join posts p on p.id = t.post_id
   join clients c on c.id = p.client_id`;
@@ -164,4 +174,26 @@ export async function getClientLogo(id: string): Promise<{ png: Buffer; v: numbe
     [id],
   );
   return r.rows[0] ?? null;
+}
+
+export type Connection = { account_id: string; account_name: string; page_id: string | null; token_enc: string };
+
+/** Conta conectada do cliente numa rede (ou null). O token vem criptografado: use decryptToken. */
+export async function getConnection(clientId: string, network: string): Promise<Connection | null> {
+  const pool = await db();
+  const r = await pool.query<Connection>(
+    "select account_id, account_name, page_id, token_enc from network_connections where client_id = $1 and network = $2",
+    [clientId, network],
+  );
+  return r.rows[0] ?? null;
+}
+
+/** Quais redes do cliente têm conta conectada (sem trazer o token). */
+export async function listConnected(clientId: string): Promise<Record<string, string>> {
+  const pool = await db();
+  const r = await pool.query<{ network: string; account_name: string }>(
+    "select network, account_name from network_connections where client_id = $1",
+    [clientId],
+  );
+  return Object.fromEntries(r.rows.map((x) => [x.network, x.account_name]));
 }
