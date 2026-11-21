@@ -114,10 +114,12 @@ export default async function ClientCalendar({
             {cells.map((c) => {
               const list = byDay.get(c.day) ?? [];
               const note = notes[c.day];
+              // Dia só com ideia (sem posts): abre direto o Novo post, com a ideia já preenchida. Com posts, abre o dia.
+              const href = list.length === 0 && note ? `/posts/novo?cliente=${id}&data=${c.day}` : `/clientes/${id}/dia/${c.day}`;
               return (
                 <Link
                   key={c.day}
-                  href={`/clientes/${id}/dia/${c.day}`}
+                  href={href}
                   className={`cell ${c.inMonth ? "" : "out"} ${c.day === today ? "today" : ""}`}
                   aria-label={`${c.day}, ${list.length} ${list.length === 1 ? "post" : "posts"}${note ? `, planejamento: ${note}` : ""}`}
                 >

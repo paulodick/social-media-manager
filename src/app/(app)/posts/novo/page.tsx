@@ -5,7 +5,7 @@ import { NETWORKS, captionLabel, isNetwork } from "@/config/networks";
 import { aiConfigured } from "@/lib/ai";
 import { createPost } from "@/lib/actions";
 import { isDay, todaySP } from "@/lib/dates";
-import { getClient, listClients } from "@/lib/queries";
+import { getClient, listClients, listDayNotes } from "@/lib/queries";
 
 export default async function NewPost({
   searchParams,
@@ -46,6 +46,7 @@ export default async function NewPost({
 
   const { client, networks } = found;
   const date = isDay(sp.data) ? sp.data : todaySP();
+  const savedNote = (await listDayNotes(client.id, date, date))[date] ?? "";
   const options: PickerOption[] = networks
     .filter((n) => isNetwork(n.network))
     .flatMap((n) => {
@@ -80,9 +81,10 @@ export default async function NewPost({
           <h2 id="s1">1. Ideia do post e planejamento</h2>
           <div className="col">
             <label className="f" htmlFor="note">A ideia do post / o que está planejado para esta data</label>
-            <textarea id="note" name="note" rows={4} placeholder="Ex.: Reels sobre o plantão 24h. Pedir depoimento ao cliente." />
+            <textarea id="note" name="note" rows={4} defaultValue={savedNote} placeholder="Ex.: Reels sobre o plantão 24h. Pedir depoimento ao cliente." />
+            <input type="hidden" name="note_from" value={savedNote ? date : ""} />
             <span className="muted small">
-              Aparece no calendário. Dá para salvar só o texto, sem escolher rede, e voltar depois para subir mídia e legendas.
+              Aparece no calendário. Se esta data já tinha uma ideia salva, ela vem preenchida aqui. Dá para salvar só o texto, sem escolher rede, e voltar depois para subir mídia e legendas.
             </span>
           </div>
           <div className="grid2">

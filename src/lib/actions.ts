@@ -248,6 +248,8 @@ export async function createPost(formData: FormData): Promise<void> {
   const day = text(formData, "date", 10);
   const time = text(formData, "time", 5);
   const note = text(formData, "note", 4000);
+  // Dia cuja ideia já veio preenchida no campo: o texto enviado é a ideia inteira (substitui). Outra data: acrescenta.
+  const noteFrom = text(formData, "note_from", 10);
   const back = `/posts/novo?cliente=${encodeURIComponent(clientId)}`;
   if (!isDay(day)) redirect(withParam(back, "erro", "Informe uma data válida."));
 
@@ -335,12 +337,13 @@ export async function createPost(formData: FormData): Promise<void> {
       );
     }
     if (note) {
+      const replace = noteFrom === day;
       await c.query(
         `insert into day_notes (client_id, day, body) values ($1, $2::date, $3)
          on conflict (client_id, day) do update set
-           body = case when day_notes.body = '' then excluded.body else day_notes.body || E'\n\n' || excluded.body end,
+           body = case when $4::boolean or day_notes.body = '' then excluded.body else day_notes.body || E'\n\n' || excluded.body end,
            updated_at = now()`,
-        [clientId, day, note],
+        [clientId, day, note, replace],
       );
     }
     await c.query("commit");
