@@ -139,11 +139,14 @@ test("configuração do app da Meta diz o que falta e monta o endereço de login
   assert.equal(u.searchParams.get("redirect_uri"), cfg.redirectUri);
   assert.equal(u.searchParams.get("state"), "STATE");
   assert.equal(u.searchParams.get("scope"), META_SCOPES.join(","));
+  assert.ok(META_SCOPES.includes("instagram_content_publish") && !META_SCOPES.some((x) => x.endsWith("publishing"))); // nome certo da permissão
   assert.ok(!u.toString().includes("segredo-do-app")); // o segredo nunca vai na URL
   process.env.META_LOGIN_CONFIG_ID = "999";
   const u2 = new URL(authUrl(cfg, "STATE"));
   assert.equal(u2.searchParams.get("config_id"), "999");
   assert.equal(u2.searchParams.get("scope"), null);
+  assert.equal(u2.searchParams.get("response_type"), "code");
+  assert.equal(u2.searchParams.get("override_default_response_type"), "true");
   for (const [k, v] of Object.entries({ META_APP_ID: old.id, META_APP_SECRET: old.sec, APP_URL: old.url, META_LOGIN_CONFIG_ID: old.cfg })) {
     if (v === undefined) delete process.env[k]; else process.env[k] = v;
   }

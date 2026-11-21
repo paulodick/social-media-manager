@@ -15,8 +15,7 @@ export const META_SCOPES = [
   "pages_read_engagement",
   "pages_manage_posts",
   "instagram_basic",
-  "instagram_content_publishing",
-  "business_management",
+  "instagram_content_publish",
 ];
 
 export type MetaPage = {
@@ -76,8 +75,11 @@ export function newNonce(): string {
 export function authUrl(cfg: MetaConfig, state: string): string {
   const q = new URLSearchParams({ client_id: cfg.appId, redirect_uri: cfg.redirectUri, state, response_type: "code" });
   const configId = process.env.META_LOGIN_CONFIG_ID?.trim();
-  if (configId) q.set("config_id", configId);
-  else q.set("scope", META_SCOPES.join(","));
+  if (configId) {
+    // Com configuração de login, as permissões vêm dela. Sem este parâmetro a Meta devolveria um token em vez do code.
+    q.set("config_id", configId);
+    q.set("override_default_response_type", "true");
+  } else q.set("scope", META_SCOPES.join(","));
   return `https://www.facebook.com/${graphVersion()}/dialog/oauth?${q.toString()}`;
 }
 
