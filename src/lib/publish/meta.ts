@@ -54,10 +54,23 @@ export function explainMetaError(e: GraphError | undefined, status = 0): string 
   return raw ? `A Meta recusou: ${raw}` : `A Meta recusou o pedido (código ${status || "desconhecido"}).`;
 }
 
-async function parse(res: Response): Promise<Record<string, unknown>> {
-  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+async function parse(res: Response, step = ""): Promise<Record<string, unknown>> {
+  const text = await res.text().catch(() => "");
+  let body: Record<string, unknown> = {};
+  try {
+    body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    body = {};
+  }
   if (!res.ok || body.error) {
-    throw new PublishError(explainMetaError(body.error as GraphError | undefined, res.status));
+    let err = body.error as GraphError | undefined;
+    // O envio de vídeo (upload resumível) responde em outro formato: { debug_info: { message } }.
+    const dbg = body.debug_info as { message?: string } | undefined;
+    if (!err && dbg?.message) err = { message: dbg.message };
+    // Resposta sem formato conhecido: guarda o começo do texto, que é o que diz o motivo.
+    if (!err && text) err = { message: text.replace(/\s+/g, " ").slice(0, 220) };
+    const msg = explainMetaError(err, res.status);
+    throw new PublishError(step ? `${msg} (etapa: ${step})` : msg);
   }
   return body;
 }
@@ -74,7 +87,7 @@ async function graph(path: string, token: string, init: { method?: string; body?
   } catch {
     throw new PublishError("Não foi possível falar com a Meta agora. Tente de novo em alguns minutos.");
   }
-  return parse(res);
+  return parse(res, path.replace(/^\/+/, "").replace(/\?.*$/, "").replace(/^\d+\//, ""));
 }
 
 async function uploadFile(uploadUrl: string, token: string, media: MediaSource): Promise<void> {
@@ -92,7 +105,7 @@ async function uploadFile(uploadUrl: string, token: string, media: MediaSource):
   } catch {
     throw new PublishError("O envio do vídeo para a Meta foi interrompido. Tente de novo.");
   }
-  const body = await parse(res);
+  const body = await parse(res, "envio do vídeo");
   if (body.success === false) throw new PublishError("A Meta não aceitou o envio do arquivo.");
 }
 
