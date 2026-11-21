@@ -53,11 +53,20 @@ test("publica no Instagram e no Facebook contra o servidor de mentira", async ()
     assert.match(r.url, /instagram\.com\/reel\//);
     const up = m.seen.find((s: { path: string }) => s.path.startsWith("/upload/ig/"));
     assert.equal(up.auth, "OAuth TK");
-    assert.equal(up.offset, "0");
-    assert.equal(up.file_size, "2048");
-    assert.equal(up.content_length, "2048");
-    assert.equal(up.entity_length, "2048");
-    assert.equal(up.bytes, 2048);
+    // Primeiro a Meta baixa o vídeo pelo endereço assinado: nenhum byte sai do app.
+    assert.equal(up.file_url, "http://app.test/api/pub/x");
+    assert.equal(up.bytes, 0);
+    // Se a Meta recusar o endereço, o app envia o arquivo direto, com os cabeçalhos de tamanho.
+    m.seen.length = 0;
+    await publishToMeta({ network: "instagram", format: "reels", accountId: "IG1", token: "TK", caption: "Legenda #dois", media: media("video", "http://app.test/api/pub/REJEITAR") });
+    const ups = m.seen.filter((s: { path: string }) => s.path.startsWith("/upload/ig/"));
+    assert.equal(ups.length, 2);
+    assert.equal(ups[1].file_size, "2048");
+    assert.equal(ups[1].content_length, "2048");
+    assert.equal(ups[1].entity_length, "2048");
+    assert.equal(ups[1].bytes, 2048);
+    m.seen.length = 0;
+    r = await publishToMeta({ network: "instagram", format: "reels", accountId: "IG1", token: "TK", caption: "Legenda #um", media: media("video") });
     const create = m.seen.find((s: { path: string; body: { upload_type?: string } }) => s.path.endsWith("/IG1/media") && s.body.upload_type);
     assert.deepEqual(create.body, { media_type: "REELS", upload_type: "resumable", caption: "Legenda #um" });
     assert.equal(create.auth, "Bearer TK");

@@ -91,6 +91,28 @@ async function graph(path: string, token: string, init: { method?: string; body?
 }
 
 async function uploadFile(uploadUrl: string, token: string, media: MediaSource): Promise<void> {
+  // 1ª tentativa: a Meta baixa o vídeo sozinha, pelo endereço assinado do app (o mesmo caminho das imagens).
+  // Um envio que falha não cria post, então é seguro tentar o envio direto em seguida.
+  let primeiro = "";
+  if (media.publicUrl) {
+    try {
+      const res = await fetch(uploadUrl, { method: "POST", headers: { Authorization: `OAuth ${token}`, file_url: media.publicUrl } });
+      const body = await parse(res, "envio do vídeo pelo endereço do app");
+      if (body.success !== false) return;
+      primeiro = "A Meta não aceitou o envio pelo endereço do app.";
+    } catch (e) {
+      primeiro = e instanceof Error ? e.message : String(e);
+    }
+  }
+  try {
+    await uploadBytes(uploadUrl, token, media);
+  } catch (e) {
+    if (e instanceof PublishError && primeiro) throw new PublishError(`${e.message} Antes, pelo endereço do app: ${primeiro}`);
+    throw e;
+  }
+}
+
+async function uploadBytes(uploadUrl: string, token: string, media: MediaSource): Promise<void> {
   const src = await media.open();
   if (!src.ok || !src.body) throw new PublishError("Não foi possível ler o arquivo no Google Drive.");
   let res: Response;
