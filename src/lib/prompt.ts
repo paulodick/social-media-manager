@@ -79,6 +79,9 @@ export function buildCaptionPrompt(input: {
   const rules: string[] = [];
   if (cfg.captionLimit) rules.push(`No máximo ${cfg.captionLimit} caracteres.`);
   if (cfg.hashtagLimit != null) rules.push(`No máximo ${cfg.hashtagLimit} hashtags.`);
+  rules.push(
+    "Hashtags: varie de acordo com o tema deste post (assunto, equipamento, situação) e não repita o mesmo bloco de sempre. Se as Observações do cliente trouxerem hashtags fixas da marca, mantenha todas elas e complete com as do tema. Coloque as hashtags no final da legenda.",
+  );
   if (cfg.cutAt) rules.push(`Os primeiros ${cfg.cutAt} caracteres aparecem antes do "ver mais": a ideia principal e o gancho vão ali.`);
   if (fmt?.guide) rules.push(`A mídia é ${fmt.guide.size}, ${fmt.guide.length}. A legenda deve combinar com isso.`);
   rules.push("Nada de promessas que o cliente não possa cumprir nem informações inventadas.");

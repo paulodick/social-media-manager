@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import ClientForm from "@/components/ClientForm";
 import { BackLink, Flash } from "@/components/ui";
 import { disconnectMeta } from "@/lib/actions";
+import ConnectionNotice from "@/components/ConnectionNotice";
+import { clientMetaHealth } from "@/lib/connection-health";
 import { getClient, listConnected } from "@/lib/queries";
 
 export default async function EditClient({
@@ -16,6 +18,7 @@ export default async function EditClient({
   const data = await getClient(id);
   if (!data) notFound();
   const connected = await listConnected(id);
+  const health = await clientMetaHealth(id);
   const fb = connected.facebook;
   const ig = connected.instagram;
   return (
@@ -30,6 +33,7 @@ export default async function EditClient({
         <p className="muted small">
           Conectando, o botão "Publicar agora" funciona para Instagram e Facebook deste cliente. O acesso fica guardado criptografado e só é usado quando você clica em publicar.
         </p>
+        <ConnectionNotice health={health} clientId={id} />
         <ul className="col" style={{ listStyle: "none", padding: 0, gap: 4 }}>
           <li>Facebook: {fb ? <strong>{fb}</strong> : <span className="muted">não conectado</span>}</li>
           <li>Instagram: {ig ? <strong>{ig}</strong> : <span className="muted">não conectado</span>}</li>

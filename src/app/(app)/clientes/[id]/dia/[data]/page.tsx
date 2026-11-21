@@ -6,6 +6,8 @@ import { acceptedFolders, isNetwork, targetFolders } from "@/config/networks";
 import { addDays, dayFolders, dayLabel, isDay, monthOf, weekStart } from "@/lib/dates";
 import { folderPathFromRoot } from "@/lib/drive";
 import { aiConfigured } from "@/lib/ai";
+import ConnectionNotice from "@/components/ConnectionNotice";
+import { clientMetaHealth } from "@/lib/connection-health";
 import { getClient, listConnected, listDayNotes, listTargets } from "@/lib/queries";
 import { canAutoPublish } from "@/lib/publisher";
 import { pickerOptions } from "@/lib/picker-options";
@@ -29,6 +31,8 @@ export default async function DayPage({
   const note = (await listDayNotes(id, day, day))[day] ?? "";
   const volta = `/clientes/${id}/dia/${day}`;
   const connected = await listConnected(id);
+  // Só consulta a Meta quando algum post do dia pode ser publicado pelo app.
+  const health = onDay.some((t) => canAutoPublish(t.network) && connected[t.network]) ? await clientMetaHealth(id) : null;
 
   // Cada post do dia aparece inteiro (todas as redes dele, mesmo as de outros dias).
   const postIds = [...new Set(onDay.map((t) => t.post_id))];
@@ -104,6 +108,7 @@ export default async function DayPage({
         </div>
       </header>
       <Flash erro={sp.erro} aviso={sp.aviso} ok={sp.pasta ? "Pasta do Drive pronta." : sp.nota ? "Planejamento do dia salvo." : undefined} />
+      <ConnectionNotice health={health} clientId={id} quiet />
       {posts.map((p) => (
         <PostEditor
           key={p.postId}

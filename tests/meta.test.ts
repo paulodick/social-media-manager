@@ -211,3 +211,46 @@ test("endereço público para redirecionar: usa APP_URL ou o que o proxy repassa
   assert.equal(publicOrigin(req({ "x-forwarded-host": "outro.com" })), "https://app.ebuks.com.br");
   if (old === undefined) delete process.env.APP_URL; else process.env.APP_URL = old;
 });
+
+import { checkMetaToken, interpretDebugToken } from "../src/lib/publish/meta-health.ts";
+
+test("saúde da conexão: interpreta o debug_token e avisa o que fazer", async () => {
+  const now = Date.UTC(2026, 10, 21, 12, 0, 0);
+  const all = ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "instagram_basic", "instagram_content_publish"];
+  assert.equal(interpretDebugToken({ is_valid: true, expires_at: 0, scopes: all }, now).state, "ok");
+  const morto = interpretDebugToken({ is_valid: false, error: { message: "Session has been invalidated" } }, now);
+  assert.equal(morto.state, "reconnect");
+  assert.match(morto.message, /Conecte de novo/);
+  const pouco = interpretDebugToken({ is_valid: true, scopes: all.slice(0, 3) }, now);
+  assert.equal(pouco.state, "reconnect");
+  assert.deepEqual(pouco.missing, ["instagram_basic", "instagram_content_publish"]);
+  assert.equal(interpretDebugToken({ is_valid: true, expires_at: now / 1000 + 2 * 86400, scopes: all }, now).state, "attention");
+  assert.equal(interpretDebugToken(undefined, now).state, "unknown");
+
+  // Contra o servidor de mentira: segredo no cabeçalho, nunca na URL
+  const m = await startMockMeta(4023);
+  process.env.META_GRAPH_BASE = "http://localhost:4023";
+  const old = { id: process.env.META_APP_ID, sec: process.env.META_APP_SECRET, url: process.env.APP_URL };
+  process.env.META_APP_ID = "APP1";
+  process.env.META_APP_SECRET = "SEGREDO1";
+  process.env.APP_URL = "https://app.test";
+  try {
+    assert.equal((await checkMetaToken("TOKEN_BOM")).state, "ok");
+    const call = m.seen.find((s: { path: string }) => s.path.endsWith("/debug_token"));
+    assert.equal(call.auth, "Bearer APP1|SEGREDO1");
+    assert.ok(!JSON.stringify(call.query).includes("SEGREDO1"));
+    assert.equal((await checkMetaToken("TOKEN_MORTO")).state, "reconnect");
+    assert.equal((await checkMetaToken("TOKEN_POUCO")).state, "reconnect");
+    assert.equal((await checkMetaToken("TOKEN_VENCENDO")).state, "attention");
+    // App inativo: a Meta recusa a consulta, e isso vira "não deu para conferir", sem alarme falso
+    const inativo = await checkMetaToken("TOKEN_APP_INATIVO");
+    assert.equal(inativo.state, "unknown");
+    assert.match(inativo.message, /Application is not active/);
+  } finally {
+    delete process.env.META_GRAPH_BASE;
+    for (const [k, v] of [["META_APP_ID", old.id], ["META_APP_SECRET", old.sec], ["APP_URL", old.url]] as const) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+    await m.close();
+  }
+});

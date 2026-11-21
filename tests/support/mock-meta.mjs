@@ -19,6 +19,15 @@ const server = http.createServer(async (req, res) => {
   const form = req.headers["content-type"]?.includes("x-www-form-urlencoded") ? Object.fromEntries(new URLSearchParams(raw)) : {};
   if (path === "/_pages" && req.method === "POST") { state.pages = body; return json(res, 200, {}); }
   seen.push({ method: req.method, path, auth: req.headers.authorization, offset: req.headers.offset, file_size: req.headers.file_size, content_length: req.headers["content-length"], entity_length: req.headers["x-entity-length"], file_url: req.headers.file_url, bytes, body, form, query: Object.fromEntries(url.searchParams) });
+  if (path.endsWith("/debug_token")) {
+    const it = url.searchParams.get("input_token");
+    const all = ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "instagram_basic", "instagram_content_publish"];
+    if (it === "TOKEN_MORTO") return json(res, 200, { data: { is_valid: false, error: { code: 190, message: "Session has been invalidated" }, scopes: [] } });
+    if (it === "TOKEN_POUCO") return json(res, 200, { data: { is_valid: true, expires_at: 0, scopes: all.slice(0, 3) } });
+    if (it === "TOKEN_VENCENDO") return json(res, 200, { data: { is_valid: true, expires_at: Math.floor(Date.now() / 1000) + 2 * 86400, scopes: all } });
+    if (it === "TOKEN_APP_INATIVO") return json(res, 400, { error: { message: "Application is not active", code: 190 } });
+    return json(res, 200, { data: { is_valid: true, expires_at: 0, scopes: all } });
+  }
   const token = (req.headers.authorization || "").replace(/^(Bearer|OAuth) /, "");
   if (token === "TOKEN_EXPIRADO") return json(res, 400, { error: { message: "Error validating access token: Session has expired", code: 190 } });
   if (token === "TOKEN_SEM_PERMISSAO") return json(res, 403, { error: { message: "(#200) Requires pages_manage_posts permission", code: 200 } });

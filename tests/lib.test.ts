@@ -119,6 +119,9 @@ test("buildCaptionPrompt reúne cliente, tom, ideia, descrição, ajustes e limi
   assert.doesNotMatch(p, /Site:/);
   assert.doesNotMatch(p, /Título:/);
 
+  // Hashtags: variam com o tema, mas as fixas da marca (nas Observações) ficam
+  assert.match(p, /Hashtags: varie de acordo com o tema deste post/);
+  assert.match(p, /mantenha todas elas/);
   const q = buildCaptionPrompt({ client, network: "linkedin", format: "feed", plan: "", captionDraft: "Minha legenda" });
   assert.match(q, /não informado/);
   assert.match(q, /Legenda atual[^\n]*\nMinha legenda/);
