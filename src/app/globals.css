@@ -177,3 +177,23 @@ details.personalize > summary { cursor: pointer; font-weight: 600; font-size: 14
 .skip:focus { top: 8px; }
 main:focus { outline: none; }
 a.small, a.muted.small { display: inline-flex; align-items: center; min-height: 24px; }
+
+/* Tom de voz por post (ToneSelector) */
+fieldset.tones { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 14px; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+fieldset.tones legend { font-weight: 600; padding: 0 6px; }
+.tones-hint { margin: 0; }
+.tone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.tone { position: relative; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; overflow-wrap: anywhere; }
+.tone:hover { background: var(--bg); }
+.tone.on { border-color: var(--accent); background: var(--bg); }
+.tone.off { opacity: .6; cursor: not-allowed; }
+.tone:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+.tone input { width: 24px; height: 24px; flex: none; margin: 0; }
+.tone-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.tone-name { font-weight: 600; }
+.tone-order { margin-left: auto; flex: none; min-width: 24px; height: 24px; border-radius: 12px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+
+/* Tela única do post (PostEditor / NetworkRow): campos de um lado, prévia do outro; no celular a prévia vem embaixo */
+.target-split { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 900px) { .target-split { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
+.target.existing .target-head { padding: 10px 12px; }

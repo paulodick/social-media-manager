@@ -8,7 +8,7 @@ import GenerateButton from "./GenerateButton";
 /**
  * Ferramentas de legenda de um destino (rede/formato), usadas no novo post e na tela do dia:
  *  - "Gerar legenda": cria a legenda com a ideia do post (item 1), a descrição da legenda (item 2), o tom de voz e as
- *    observações do cliente;
+ *    observações do cliente e os tons de voz marcados para o post;
  *  - "Copiar pedido para a IA": o mesmo pedido, para colar no Claude ou no Gemini;
  *  - "Personalizar legenda" (recolhido): pedidos de ajuste. Vale antes da primeira legenda e depois, e o botão
  *    "Nova legenda" refaz a legenda levando o ajuste em conta.
@@ -22,6 +22,7 @@ export default function CaptionTools({
   getPlan,
   getBrief,
   getCaption,
+  getTones,
   onResult,
 }: {
   client: PromptClient;
@@ -32,6 +33,8 @@ export default function CaptionTools({
   getPlan: () => string;
   getBrief: () => string;
   getCaption: () => string;
+  /** Tons de voz marcados para o post agora (mesmo que ainda não salvos). */
+  getTones: () => string[];
   onResult: (r: { title: string; caption: string }) => void;
 }) {
   const [custom, setCustom] = useState("");
@@ -47,6 +50,7 @@ export default function CaptionTools({
       brief: getBrief(),
       captionDraft: getCaption(),
       custom,
+      tones: getTones(),
     });
     try {
       await navigator.clipboard.writeText(text);
@@ -57,7 +61,7 @@ export default function CaptionTools({
     }
   }
 
-  const common = { clientId, network, format, getPlan, getBrief, getDraft: getCaption, getCustom: () => custom, onResult };
+  const common = { clientId, network, format, getPlan, getBrief, getDraft: getCaption, getCustom: () => custom, getTones, onResult };
 
   return (
     <div className="col" style={{ gap: 8 }}>

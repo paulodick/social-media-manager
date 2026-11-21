@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseDriveUrl, driveQuote, folderUrl, cleanFolderName } from "../src/lib/drive.ts";
-import { hasTitle, captionLabel } from "../src/config/networks.ts";
+import { hasTitle, captionLabel, folderGroup, targetFolders, legacyTargetFolders, acceptedFolders } from "../src/config/networks.ts";
 import { captionChecks, mediaChecks, thumbChecks, titleChecks, readiness, countHashtags, cutCaption } from "../src/lib/checks.ts";
 import { hashPassword, verifyPassword, passwordProblem } from "../src/lib/password.ts";
 import sharp from "sharp";
 import { processLogo } from "../src/lib/logo-image.ts";
 import { explainAiError } from "../src/lib/ai.ts";
-import { buildCaptionPrompt, splitGenerated } from "../src/lib/prompt.ts";
+import { buildCaptionPrompt, buildToneBlock, splitGenerated } from "../src/lib/prompt.ts";
+import { TONES, MAX_TONES, validateTones, toneBlockedReason } from "../src/config/tones.ts";
 import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders, weekStart, weekDays, weekLabel, weekdayShort } from "../src/lib/dates.ts";
 
 test("parseDriveUrl", () => {
@@ -233,4 +234,86 @@ test("situação do post na semana", () => {
   // YouTube vídeo longo sem miniatura ligada vira aviso
   const yt = readiness({ network: "youtube", format: "longo", status: "draft", caption: "Descrição", title: "Título", thumb_meta: null, drive_meta: { mimeType: "video/mp4", width: 1920, height: 1080 } });
   assert.equal(yt.state, "warn");
+});
+
+test("pastas agrupadas: Reels, Shorts, TikTok e Kwai dividem uma pasta; Stories, outra", () => {
+  for (const [n, f] of [["instagram", "reels"], ["facebook", "reels"], ["youtube", "shorts"], ["tiktok", "video"], ["kwai", "video"]]) {
+    assert.equal(folderGroup(n, f)?.id, "curto", `${n}:${f}`);
+    assert.deepEqual(targetFolders(n, f), ["Reels-Shorts-TikTok-Kwai"]);
+  }
+  for (const [n, f] of [["instagram", "stories"], ["facebook", "stories"]]) {
+    assert.equal(folderGroup(n, f)?.id, "stories");
+    assert.deepEqual(targetFolders(n, f), ["Stories"]);
+  }
+  // Fora dos grupos: continua Rede / Formato
+  assert.equal(folderGroup("linkedin", "feed"), null);
+  assert.deepEqual(targetFolders("linkedin", "feed"), ["LinkedIn", "Feed"]);
+  assert.deepEqual(targetFolders("youtube", "longo"), ["YouTube", "Video longo"]);
+  assert.deepEqual(targetFolders("instagram", "feed"), ["Instagram", "Feed"]);
+  assert.deepEqual(targetFolders("tiktok", "fotos"), ["TikTok", "Fotos"]);
+  assert.equal(targetFolders("orkut", "x"), null);
+  assert.deepEqual(legacyTargetFolders("instagram", "reels"), ["Instagram", "Reels"]);
+});
+
+test("pastas aceitas na conferência: atual, antiga e a de outro formato do grupo", () => {
+  const tiktok = acceptedFolders("tiktok", "video").map((p) => p.join("/"));
+  assert.ok(tiktok.includes("Reels-Shorts-TikTok-Kwai"));
+  assert.ok(tiktok.includes("TikTok/Video"));
+  assert.ok(tiktok.includes("Instagram/Reels"));
+  assert.ok(!tiktok.includes("Instagram/Stories"));
+  assert.deepEqual(acceptedFolders("linkedin", "feed").map((p) => p.join("/")), ["LinkedIn/Feed"]);
+});
+
+test("tons de voz: 11 tons com instrução da configuração", () => {
+  assert.equal(TONES.length, 11);
+  assert.equal(new Set(TONES.map((t) => t.id)).size, 11);
+  for (const t of TONES) assert.ok(t.instruction.startsWith(`${t.label}:`), t.id);
+  assert.equal(MAX_TONES, 3);
+});
+
+test("tons de voz: limite de 3 e pares que se excluem", () => {
+  assert.equal(toneBlockedReason("narrativo", []), null);
+  assert.equal(toneBlockedReason("narrativo", ["tecnico", "didatico", "carinhoso"]), "Limite de 3 tons");
+  // 4º tom bloqueado, mas os marcados podem ser desmarcados
+  assert.equal(toneBlockedReason("tecnico", ["tecnico", "didatico", "carinhoso"]), null);
+  assert.equal(toneBlockedReason("descontraido", ["formal"]), "Não combina com Formal");
+  assert.equal(toneBlockedReason("humorado", ["formal"]), "Não combina com Formal");
+  assert.equal(toneBlockedReason("formal", ["descontraido"]), "Não combina com Descontraído");
+  assert.equal(toneBlockedReason("humorado", ["urgente"]), "Não combina com Urgente");
+  assert.equal(toneBlockedReason("urgente", ["humorado"]), "Não combina com Humorado");
+  assert.equal(toneBlockedReason("descontraido", ["humorado"]), null);
+});
+
+test("tons de voz: validação do servidor", () => {
+  assert.deepEqual(validateTones([]), { tones: [] });
+  assert.deepEqual(validateTones(["tecnico", "narrativo", "descontraido"]), { tones: ["tecnico", "narrativo", "descontraido"] });
+  assert.deepEqual(validateTones(["tecnico", "tecnico"]), { tones: ["tecnico"] });
+  assert.ok("error" in validateTones(["inventado"]));
+  assert.ok("error" in validateTones(["tecnico", "didatico", "carinhoso", "narrativo"]));
+  assert.ok("error" in validateTones(["formal", "descontraido"]));
+  assert.ok("error" in validateTones(["formal", "humorado"]));
+  assert.ok("error" in validateTones(["urgente", "humorado"]));
+});
+
+test("buildToneBlock: vazio sem tons; ordem de prioridade; ignora ids desconhecidos", () => {
+  assert.equal(buildToneBlock(undefined), "");
+  assert.equal(buildToneBlock([]), "");
+  assert.equal(buildToneBlock(["x"]), "");
+  const b = buildToneBlock(["tecnico", "narrativo", "descontraido"]);
+  assert.ok(b.startsWith("Tom de voz deste post: combine os estilos abaixo, do mais importante para o menos importante.\n1. Técnico:"));
+  assert.ok(b.includes("\n2. Narrativo:"));
+  assert.ok(b.includes("\n3. Descontraído:"));
+  assert.ok(b.endsWith("use os estilos acima para a forma de escrever."));
+});
+
+test("pedido de legenda: sem tons fica igual ao de antes; com tons entra o mesmo bloco e o ajuste vem depois", () => {
+  const base = { client: { name: "Best Medical", segment: "Imagem", site: "", tone: "Direto e técnico", notes: "Não usar a palavra barato" }, network: "instagram" as const, format: "reels", plan: "Plantão 24h" };
+  const sem = buildCaptionPrompt(base);
+  assert.equal(sem, buildCaptionPrompt({ ...base, tones: [] }));
+  assert.ok(!sem.includes("Tom de voz deste post"));
+  const tones = ["tecnico", "narrativo", "descontraido"];
+  const com = buildCaptionPrompt({ ...base, tones, custom: "mais curta" });
+  assert.ok(com.includes(buildToneBlock(tones)));
+  assert.ok(com.indexOf("Tom de voz do cliente") < com.indexOf("Tom de voz deste post"));
+  assert.ok(com.indexOf("Tom de voz deste post") < com.indexOf("Ajustes pedidos para esta legenda (siga à risca)"));
 });

@@ -152,6 +152,60 @@ export function captionLabel(network: string, format: string): string {
   return network === "youtube" && format === "longo" ? "Descrição" : "Legenda";
 }
 
+/**
+ * Formatos que usam o MESMO arquivo de vídeo (9:16, 1080×1920, duração ideal próxima) dividem uma pasta só no Drive,
+ * dentro do dia: `Cliente / AAAA / MM - Mês / DD / <pasta do grupo>`. Decisão do Paulo em 2026-11-21.
+ * - curto: Reels, Shorts, TikTok e Kwai (ideal de 15 a 30 s; Shorts até 60 s).
+ * - stories: Stories do Instagram e do Facebook (ideal de 7 a 15 s por story).
+ * Os demais formatos seguem `Rede / Formato`. Posts criados antes dessa regra ficaram em `Rede / Formato`
+ * (o app aceita os dois caminhos na conferência).
+ */
+export const FOLDER_GROUPS: Record<string, { folder: string; members: string[] }> = {
+  curto: {
+    folder: "Reels-Shorts-TikTok-Kwai",
+    members: ["instagram:reels", "facebook:reels", "youtube:shorts", "tiktok:video", "kwai:video"],
+  },
+  stories: { folder: "Stories", members: ["instagram:stories", "facebook:stories"] },
+};
+
+/** Grupo de pasta compartilhada do formato, ou null se ele tem a própria pasta (`Rede / Formato`). */
+export function folderGroup(network: string, format: string): { id: string; folder: string } | null {
+  const key = `${network}:${format}`;
+  for (const [id, g] of Object.entries(FOLDER_GROUPS)) if (g.members.includes(key)) return { id, folder: g.folder };
+  return null;
+}
+
+/** Pastas do destino abaixo do dia, pela regra atual (grupo compartilhado ou Rede / Formato). */
+export function targetFolders(network: string, format: string): string[] | null {
+  if (!isNetwork(network)) return null;
+  const g = folderGroup(network, format);
+  if (g) return [g.folder];
+  return legacyTargetFolders(network, format);
+}
+
+/** Pastas `Rede / Formato`: regra usada até 2026-11-21 e ainda usada pelos formatos sem grupo. */
+export function legacyTargetFolders(network: string, format: string): string[] | null {
+  if (!isNetwork(network)) return null;
+  const cfg = NETWORKS[network];
+  return [cfg.folder, cfg.formats[format]?.folder ?? format];
+}
+
+/**
+ * Caminhos (abaixo do dia) em que o arquivo do destino pode estar sem aviso: o atual, o `Rede / Formato` antigo e,
+ * nos grupos, o `Rede / Formato` de qualquer formato do grupo (um post antigo pode ter a pasta de outra rede do grupo).
+ */
+export function acceptedFolders(network: string, format: string): string[][] {
+  const out: string[][] = [];
+  const add = (p: string[] | null) => {
+    if (p && !out.some((o) => o.join("/") === p.join("/"))) out.push(p);
+  };
+  add(targetFolders(network, format));
+  add(legacyTargetFolders(network, format));
+  const g = folderGroup(network, format);
+  if (g) for (const m of FOLDER_GROUPS[g.id].members) add(legacyTargetFolders(...(m.split(":") as [string, string])));
+  return out;
+}
+
 export const STATUS_LABEL: Record<string, string> = {
   draft: "Rascunho",
   scheduled: "Agendado",

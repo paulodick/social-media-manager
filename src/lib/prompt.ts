@@ -1,4 +1,5 @@
 import { NETWORKS, type NetworkId } from "../config/networks.ts";
+import { toneById } from "../config/tones.ts";
 
 export type PromptClient = {
   name: string;
@@ -9,12 +10,28 @@ export type PromptClient = {
 };
 
 /**
+ * Bloco "Tom de voz deste post" a partir dos ids dos tons (na ordem de prioridade). As instruções vêm sempre de
+ * `src/config/tones.ts`. Sem tons válidos devolve texto vazio e o pedido fica como era antes. É a mesma função para
+ * "Gerar legenda" (API) e "Copiar pedido para a IA", porque os dois passam por `buildCaptionPrompt`.
+ */
+export function buildToneBlock(toneIds: string[] | undefined): string {
+  const tones = (toneIds ?? []).map((id) => toneById(id)).filter((t): t is NonNullable<typeof t> => !!t);
+  if (!tones.length) return "";
+  return [
+    "Tom de voz deste post: combine os estilos abaixo, do mais importante para o menos importante.",
+    ...tones.map((t, i) => `${i + 1}. ${t.instruction}`),
+    "Em caso de conflito, siga o Tom de voz e as Observações do cadastro do cliente para regras de marca (palavras proibidas, assinatura, termos obrigatórios) e use os estilos acima para a forma de escrever.",
+  ].join("\n");
+}
+
+/**
  * Monta o pedido de legenda para colar numa IA (Claude, Gemini...) ou enviar à API. O app só reúne o que já sabe
  * (cliente, tom de voz, observações, rede, formato, limites) e o que a pessoa escreveu:
  *  - plan: a ideia do post, o planejamento do dia (item 1 do novo post);
  *  - brief: a descrição da legenda, o rascunho ou os pontos que ela quer ver na legenda (item 2);
  *  - captionDraft: a legenda que já está no campo, para refazer ou melhorar;
- *  - custom: "Personalizar legenda", os ajustes pedidos (tom, tamanho, o que mudar).
+ *  - custom: "Personalizar legenda", os ajustes pedidos (tom, tamanho, o que mudar). Tem prioridade sobre os tons;
+ *  - tones: ids dos tons de voz escolhidos para este post, do mais importante ao menos importante.
  */
 export function buildCaptionPrompt(input: {
   client: PromptClient;
@@ -24,6 +41,7 @@ export function buildCaptionPrompt(input: {
   brief?: string;
   captionDraft?: string;
   custom?: string;
+  tones?: string[];
 }): string {
   const cfg = NETWORKS[input.network];
   const fmt = cfg.formats[input.format];
@@ -40,6 +58,9 @@ export function buildCaptionPrompt(input: {
   if (c.notes.trim()) info.push(`Observações sobre o cliente:\n${c.notes.trim()}`);
   if (c.site.trim()) info.push(`Site: ${c.site.trim()}`);
   if (info.length) lines.push(info.join("\n\n"), "");
+
+  const toneBlock = buildToneBlock(input.tones);
+  if (toneBlock) lines.push(toneBlock, "");
 
   const plan = input.plan.trim();
   const brief = input.brief?.trim() ?? "";

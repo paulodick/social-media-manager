@@ -32,6 +32,8 @@ export type Target = {
   title: string;
   /** Descrição da legenda: o rascunho/pontos que a pessoa quer na legenda. */
   idea: string;
+  /** Tons de voz escolhidos para o post (ids de src/config/tones.ts, do mais para o menos importante). */
+  tones: string[];
   /** Título do destino na rede (YouTube, documento do LinkedIn). Vazio nos formatos sem título. */
   target_title: string;
   network: string;
@@ -55,7 +57,7 @@ export type Target = {
 
 const TARGET_SELECT = `
   select t.id, t.post_id, p.client_id, c.name as client_name, c.drive_folder_id, t.post_folder_id,
-         p.title, p.idea, t.title as target_title, t.network, t.format,
+         p.title, p.idea, p.tones, t.title as target_title, t.network, t.format,
          to_char(t.scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day,
          to_char(t.scheduled_at at time zone '${TZ}', 'HH24:MI') as time,
          t.caption, t.status, t.drive_url, t.drive_file_id, t.drive_meta,
@@ -110,6 +112,8 @@ export type TargetFilter = {
   /** só o que ainda não foi postado e vence até este dia (inclusive) */
   dueUntil?: string;
   targetId?: string;
+  /** todos os destinos de um post */
+  postId?: string;
 };
 
 export async function listTargets(f: TargetFilter): Promise<Target[]> {
@@ -121,6 +125,7 @@ export async function listTargets(f: TargetFilter): Promise<Target[]> {
     where.push(sql.replace("$$", `$${args.length}`));
   };
   if (f.targetId) add("t.id = $$", f.targetId);
+  if (f.postId) add("t.post_id = $$", f.postId);
   if (f.clientId) add("p.client_id = $$", f.clientId);
   if (f.from) add(`t.scheduled_at >= ($$::date)::timestamp at time zone '${TZ}'`, f.from);
   if (f.to) add(`t.scheduled_at < (($$::date + 1)::timestamp) at time zone '${TZ}'`, f.to);

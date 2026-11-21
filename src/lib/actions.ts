@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { checkPassword, createSession, destroySession, hasPassword, requireAuth } from "./auth";
 import { hashPassword, passwordProblem } from "./password";
 import { db } from "./db";
-import { TZ, dayFolders, isDay, isTime } from "./dates";
+import { TZ, dayFolders, isDay, isTime, monthOf } from "./dates";
 import { ensureClientFolders, ensureFolderPath, folderUrl, getFileMeta, getFolderName, parseDriveUrl } from "./drive";
 import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { generateText, type AiResult } from "./ai";
@@ -16,7 +16,8 @@ import { clearPending, readPending } from "./meta-pending";
 import { listPages } from "./publish/meta-oauth";
 import { fetchLogo } from "./logo";
 import type { MediaMeta } from "./checks";
-import { NETWORKS, NETWORK_IDS, hasTitle, isFormat, isNetwork } from "@/config/networks";
+import { validateTones } from "@/config/tones";
+import { NETWORKS, NETWORK_IDS, folderGroup, hasTitle, isFormat, isNetwork, targetFolders } from "@/config/networks";
 
 const text = (f: FormData, k: string, max = 5000): string => String(f.get(k) ?? "").trim().slice(0, max);
 
@@ -194,11 +195,13 @@ export async function saveDriveRoot(formData: FormData): Promise<void> {
 
 // ---------- posts ----------
 
-/** Nomes das pastas, a partir da pasta do cliente: AAAA / MM - Mês / DD / Rede / Formato. */
+/**
+ * Nomes das pastas, a partir da pasta do cliente: AAAA / MM - Mês / DD / (pasta do grupo | Rede / Formato).
+ * Reels, Shorts, TikTok e Kwai dividem uma pasta; Stories do Instagram e do Facebook dividem outra (ver FOLDER_GROUPS).
+ */
 function folderNames(day: string, network: string, format: string): string[] | null {
-  if (!isNetwork(network)) return null;
-  const cfg = NETWORKS[network];
-  return [...dayFolders(day), cfg.folder, cfg.formats[format]?.folder ?? format];
+  const rest = targetFolders(network, format);
+  return rest ? [...dayFolders(day), ...rest] : null;
 }
 
 async function resolveDrive(url: string): Promise<{ fileId: string | null; meta: MediaMeta | null }> {
@@ -209,141 +212,231 @@ async function resolveDrive(url: string): Promise<{ fileId: string | null; meta:
   return { fileId: ref.id, meta };
 }
 
-/** Acrescenta texto à nota do dia (sem apagar o que já estava lá). */
-async function appendDayNote(clientId: string, day: string, body: string): Promise<void> {
-  const pool = await db();
-  await pool.query(
-    `insert into day_notes (client_id, day, body) values ($1, $2::date, $3)
-     on conflict (client_id, day) do update set
-       body = case when day_notes.body = '' then excluded.body else day_notes.body || E'\n\n' || excluded.body end,
-       updated_at = now()`,
-    [clientId, day, body],
-  );
+type PreparedTarget = {
+  network: string; format: string; day: string; time: string; caption: string; title: string;
+  driveUrl: string; fileId: string | null; meta: MediaMeta | null;
+  thumbUrl: string; thumbFileId: string | null; thumbMeta: MediaMeta | null;
+};
+
+/** Confere um link do Drive (arquivo) e devolve o id e os dados da mídia. Usado pela tela do post para mostrar a prévia antes de salvar. */
+export async function inspectDrive(url: string): Promise<{ fileId: string | null; meta: MediaMeta | null }> {
+  await requireAuth();
+  return resolveDrive(String(url ?? "").trim().slice(0, 500));
 }
 
-/** Troca a nota do dia pelo texto enviado. Texto vazio apaga a nota. */
-export async function saveDayNote(formData: FormData): Promise<void> {
-  await requireAuth();
-  const clientId = text(formData, "client_id", 40);
-  const day = text(formData, "day", 10);
-  const body = text(formData, "body", 4000);
-  if (!isDay(day) || !/^[0-9a-f-]{36}$/i.test(clientId)) redirect("/");
-  const pool = await db();
-  if (body) {
-    await pool.query(
-      `insert into day_notes (client_id, day, body) values ($1, $2::date, $3)
-       on conflict (client_id, day) do update set body = excluded.body, updated_at = now()`,
-      [clientId, day, body],
-    );
-  } else {
-    await pool.query("delete from day_notes where client_id = $1 and day = $2::date", [clientId, day]);
+/**
+ * Pasta do Drive de cada destino (mesma ordem de `items`). `reuse` traz pastas já existentes por grupo e dia
+ * (ex.: o post já tem a pasta do grupo "curto" no Reels): o destino do mesmo grupo e dia usa essa mesma pasta.
+ */
+async function ensureTargetFolders(
+  root: string | null,
+  items: { network: string; format: string; day: string }[],
+  reuse: Map<string, string> = new Map(),
+): Promise<{ ids: (string | null)[]; error: string | null }> {
+  const cache = new Map<string, string>();
+  const ids: (string | null)[] = [];
+  let error: string | null = null;
+  for (const { network, format, day } of items) {
+    const group = folderGroup(network, format);
+    const key = group ? `${group.id}|${day}` : "";
+    const known = key ? reuse.get(key) : undefined;
+    if (known) {
+      ids.push(known);
+      continue;
+    }
+    const names = folderNames(day, network, format);
+    if (!root || !names || error) {
+      ids.push(null);
+      continue;
+    }
+    const res = await ensureFolderPath(root, names, cache);
+    if ("error" in res) {
+      error = res.error;
+      ids.push(null);
+    } else {
+      ids.push(res.id);
+      if (key) reuse.set(key, res.id);
+    }
   }
-  revalidatePath("/", "layout");
-  redirect(withParam(`/clientes/${clientId}/dia/${day}`, "nota", "1"));
+  return { ids, error };
 }
 
-export async function createPost(formData: FormData): Promise<void> {
+type ExistingTarget = {
+  id: string; network: string; format: string; day: string; post_folder_id: string | null;
+  drive_url: string; drive_file_id: string | null; drive_meta: MediaMeta | null;
+  thumb_url: string; thumb_file_id: string | null; thumb_meta: MediaMeta | null;
+};
+
+/**
+ * Grava o post inteiro (tela única de Novo post e de edição): ideia/planejamento do dia, nome, tons e descrição da
+ * legenda, os destinos que o post já tem (campos `*__<id do destino>`) e os destinos novos marcados (`target`, campos
+ * `*__rede:formato`). Sem `post_id` cria o post; com `post_id` atualiza. Os botões de situação mandam
+ * `status=<id do destino>:<draft|scheduled|posted>`; o Salvar comum não mexe na situação.
+ */
+export async function savePost(formData: FormData): Promise<void> {
   await requireAuth();
   const clientId = text(formData, "client_id", 40);
-  const day = text(formData, "date", 10);
-  const time = text(formData, "time", 5);
-  const note = text(formData, "note", 4000);
-  // Dia cuja ideia já veio preenchida no campo: o texto enviado é a ideia inteira (substitui). Outra data: acrescenta.
-  const noteFrom = text(formData, "note_from", 10);
-  const back = `/posts/novo?cliente=${encodeURIComponent(clientId)}`;
-  if (!isDay(day)) redirect(withParam(back, "erro", "Informe uma data válida."));
+  const postId = text(formData, "post_id", 40);
+  const editing = postId !== "";
+  const uuid = /^[0-9a-f-]{36}$/i;
+  if (!uuid.test(clientId) || (editing && !uuid.test(postId))) redirect("/");
+  const newPath = `/posts/novo?cliente=${encodeURIComponent(clientId)}`;
+  const back = editing ? safePath(text(formData, "volta", 300), "/") : newPath;
+  const fail = (msg: string): never => redirect(withParam(back, "erro", msg));
 
-  const targets = formData
+  const note = text(formData, "note", 4000);
+  const noteDay = editing ? text(formData, "note_day", 10) : text(formData, "date", 10);
+  if (!isDay(noteDay)) fail("Informe uma data válida.");
+
+  const keys = formData
     .getAll("target")
     .map(String)
     .map((v) => v.split(":"))
-    .filter(([n, f]) => isNetwork(n) && isFormat(n, f));
-  if (!targets.length && !note) {
-    redirect(withParam(back, "erro", "Escreva o planejamento do dia ou escolha pelo menos uma rede e um formato."));
-  }
+    .filter(([n, f]) => isNetwork(n) && isFormat(n, f))
+    .map(([n, f]) => `${n}:${f}`);
+  const newKeys = [...new Set(keys)];
 
   const pool = await db();
-  const client = await pool
-    .query<{ drive_folder_id: string | null }>("select drive_folder_id from clients where id = $1", [clientId])
+  const owner = await pool
+    .query<{ drive_folder_id: string | null }>(
+      editing
+        ? "select c.drive_folder_id from posts p join clients c on c.id = p.client_id where p.id = $2 and c.id = $1"
+        : "select drive_folder_id from clients where id = $1",
+      editing ? [clientId, postId] : [clientId],
+    )
     .catch(() => null);
-  if (!client?.rowCount) redirect("/");
-  const root = client.rows[0].drive_folder_id;
+  if (!owner?.rowCount) redirect("/");
+  const root = owner.rows[0].drive_folder_id;
+
+  // Nota do dia. Novo post: a ideia já salva para a data vem preenchida (note_from); se a data é a mesma, o texto
+  // enviado é a ideia inteira (substitui); em outra data, acrescenta. Edição: substitui quando a pessoa mudou o texto.
+  const noteFrom = text(formData, "note_from", 10);
+  const noteOrig = text(formData, "note_orig", 4000);
+  const noteChanged = editing ? note !== noteOrig : note !== "";
+  const noteReplace = editing || noteFrom === noteDay;
 
   // Só planejamento: guarda o texto na data e volta para o dia. Não cria post nem pasta.
-  if (!targets.length) {
-    await appendDayNote(clientId, day, note);
+  if (!editing && !newKeys.length) {
+    if (!note) fail("Escreva o planejamento do dia ou escolha pelo menos uma rede e um formato.");
+    await saveNote(pool, clientId, noteDay, note, noteReplace);
     revalidatePath("/", "layout");
-    redirect(withParam(`/clientes/${clientId}/dia/${day}`, "nota", "1"));
+    redirect(`/clientes/${clientId}?mes=${monthOf(noteDay)}`);
   }
-  if (!isTime(time)) redirect(withParam(back, "erro", "Informe um horário válido."));
 
-  // Cada destino tem a sua legenda e o seu link de vídeo.
-  const per = await Promise.all(
-    targets.map(async ([network, format]) => {
-      const key = `${network}:${format}`;
-      const caption = text(formData, `caption__${key}`, 4000);
-      const driveUrl = text(formData, `drive__${key}`, 500);
-      // Miniatura só existe nos formatos que a pedem (config `thumb`); nos outros o campo é ignorado.
-      const thumbUrl = isNetwork(network) && NETWORKS[network].formats[format]?.thumb ? text(formData, `thumb__${key}`, 500) : "";
-      const thumb = await resolveDrive(thumbUrl);
-      // Título próprio só existe nos formatos que o pedem (YouTube, documento do LinkedIn); nos outros o campo é ignorado.
-      const title = hasTitle(network, format) ? text(formData, `title__${key}`, 200) : "";
-      return { network, format, caption, title, driveUrl, ...(await resolveDrive(driveUrl)), thumbUrl, thumbFileId: thumb.fileId, thumbMeta: thumb.meta };
+  const toneCheck = validateTones(formData.getAll("tones").map(String));
+  if ("error" in toneCheck) fail(toneCheck.error);
+  const tones = (toneCheck as { tones: string[] }).tones;
+
+  const existing = editing
+    ? (
+        await pool.query<ExistingTarget>(
+          `select id, network, format, post_folder_id, drive_url, drive_file_id, drive_meta, thumb_url, thumb_file_id, thumb_meta,
+                  to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day
+             from post_targets where post_id = $1`,
+          [postId],
+        )
+      ).rows
+    : [];
+  const sentIds = new Set(formData.getAll("tid").map(String));
+  const edits = existing.filter((e) => sentIds.has(e.id));
+  const have = new Set(existing.map((e) => `${e.network}:${e.format}`));
+  const fresh = newKeys.filter((k) => !have.has(k));
+
+  // Data e horário de cada destino (os que já existem e os novos).
+  const when = (k: string): { day: string; time: string } => {
+    const day = text(formData, `date__${k}`, 10);
+    const time = text(formData, `time__${k}`, 5);
+    if (!isDay(day) || !isTime(time)) fail("Informe uma data e um horário válidos para cada rede.");
+    return { day, time };
+  };
+
+  // Destinos que já existiam: só confere o Drive de novo quando o link mudou (ou estava com erro).
+  const updates = await Promise.all(
+    edits.map(async (e) => {
+      const { day, time } = when(e.id);
+      const caption = text(formData, `caption__${e.id}`, 70000);
+      const driveUrl = text(formData, `drive__${e.id}`, 500);
+      let { drive_file_id: fileId, drive_meta: meta } = e;
+      if (driveUrl !== e.drive_url || (meta && meta.error)) ({ fileId, meta } = await resolveDrive(driveUrl));
+      const hasThumb = isNetwork(e.network) && !!NETWORKS[e.network].formats[e.format]?.thumb;
+      const thumbUrl = hasThumb ? text(formData, `thumb__${e.id}`, 500) : e.thumb_url;
+      let { thumb_file_id: thumbFileId, thumb_meta: thumbMeta } = e;
+      if (thumbUrl !== e.thumb_url || (thumbMeta && thumbMeta.error)) {
+        const t = await resolveDrive(thumbUrl);
+        thumbFileId = t.fileId;
+        thumbMeta = t.meta;
+      }
+      const title = hasTitle(e.network, e.format) ? text(formData, `title__${e.id}`, 200) : "";
+      return { e, day, time, caption, driveUrl, fileId, meta, thumbUrl, thumbFileId, thumbMeta, title };
     }),
   );
+
+  // Destinos novos: cada um com a sua data, horário, legenda, título e links.
+  const created: PreparedTarget[] = await Promise.all(
+    fresh.map(async (key) => {
+      const [network, format] = key.split(":");
+      const { day, time } = when(key);
+      const caption = text(formData, `caption__${key}`, 4000);
+      const driveUrl = text(formData, `drive__${key}`, 500);
+      // Miniatura só existe nos formatos que a pedem (config `thumb`); título só nos que têm (config `title`).
+      const thumbUrl = isNetwork(network) && NETWORKS[network].formats[format]?.thumb ? text(formData, `thumb__${key}`, 500) : "";
+      const thumb = await resolveDrive(thumbUrl);
+      const title = hasTitle(network, format) ? text(formData, `title__${key}`, 200) : "";
+      const video = await resolveDrive(driveUrl);
+      return { network, format, day, time, caption, title, driveUrl, fileId: video.fileId, meta: video.meta, thumbUrl, thumbFileId: thumb.fileId, thumbMeta: thumb.meta };
+    }),
+  );
+
+  // Pasta no Drive de cada destino novo. Se falhar, o post é salvo mesmo assim e a tela avisa; dá para criar depois.
+  const reuse = new Map<string, string>();
+  for (const e of existing) {
+    const g = folderGroup(e.network, e.format);
+    if (g && e.post_folder_id && !reuse.has(`${g.id}|${e.day}`)) reuse.set(`${g.id}|${e.day}`, e.post_folder_id);
+  }
+  const { ids: folderIds, error: folderError } = await ensureTargetFolders(root, created, reuse);
+
   // Nome interno do post: serve só para achar o post, não vai para nenhuma rede.
-  const title =
+  const postName =
     text(formData, "post_name", 120) ||
-    (per.find((p) => p.caption)?.caption.split("\n")[0].slice(0, 80) ?? "") ||
+    (created.find((p) => p.caption)?.caption.split("\n")[0].slice(0, 80) ?? "") ||
     note.split("\n")[0].slice(0, 80) ||
     "Post sem título";
-
-  // Garante no Drive a pasta de cada destino (dia / rede / formato). Se falhar, o post é criado
-  // mesmo assim e a tela do dia avisa; a pasta pode ser criada depois com o botão do destino.
-  const folderCache = new Map<string, string>();
-  const folderIds: (string | null)[] = [];
-  let folderError: string | null = null;
-  for (const [network, format] of targets) {
-    const names = folderNames(day, network, format);
-    if (!root || !names || folderError) {
-      folderIds.push(null);
-      continue;
-    }
-    const res = await ensureFolderPath(root, names, folderCache);
-    if ("error" in res) {
-      folderError = res.error;
-      folderIds.push(null);
-    } else {
-      folderIds.push(res.id);
-    }
-  }
+  const brief = text(formData, "caption_brief", 4000);
+  const statusAsk = text(formData, "status", 60).split(":");
+  const statusId = statusAsk[0];
+  const status = ["draft", "scheduled", "posted"].includes(statusAsk[1]) ? statusAsk[1] : "";
 
   const c = await pool.connect();
+  let savedPostId = postId;
   try {
     await c.query("begin");
-    const p = await c.query<{ id: string }>(
-      "insert into posts (client_id, title, idea) values ($1,$2,$3) returning id",
-      [clientId, title, text(formData, "caption_brief", 4000)],
-    );
-    for (const [i, t] of per.entries()) {
+    if (editing) {
+      await c.query("update posts set title = $1, idea = $2, tones = $3 where id = $4", [postName, brief, tones, postId]);
+    } else {
+      const p = await c.query<{ id: string }>("insert into posts (client_id, title, idea, tones) values ($1,$2,$3,$4) returning id", [clientId, postName, brief, tones]);
+      savedPostId = p.rows[0].id;
+    }
+    for (const u of updates) {
+      await c.query(
+        `update post_targets set caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
+            drive_url=$4, drive_file_id=$5, drive_meta=$6, thumb_url=$7, thumb_file_id=$8, thumb_meta=$9, title=$10,
+            post_folder_id = case when $11::boolean then null else post_folder_id end
+          where id=$12`,
+        [u.caption, u.day, u.time, u.driveUrl, u.fileId, u.meta ? JSON.stringify(u.meta) : null, u.thumbUrl, u.thumbFileId, u.thumbMeta ? JSON.stringify(u.thumbMeta) : null, u.title, u.day !== u.e.day, u.e.id],
+      );
+      if (status && u.e.id === statusId) {
+        await c.query("update post_targets set status=$1, posted_at = case when $1='posted' then coalesce(posted_at, now()) else null end where id=$2", [status, u.e.id]);
+      }
+    }
+    for (const [i, t] of created.entries()) {
       await c.query(
         `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id,
                                    thumb_url, thumb_file_id, thumb_meta, title)
          values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
-          p.rows[0].id, t.network, t.format, day, time, t.caption, t.driveUrl, t.fileId, t.meta ? JSON.stringify(t.meta) : null, folderIds[i],
+          savedPostId, t.network, t.format, t.day, t.time, t.caption, t.driveUrl, t.fileId, t.meta ? JSON.stringify(t.meta) : null, folderIds[i],
           t.thumbUrl, t.thumbFileId, t.thumbMeta ? JSON.stringify(t.thumbMeta) : null, t.title,
         ],
-      );
-    }
-    if (note) {
-      const replace = noteFrom === day;
-      await c.query(
-        `insert into day_notes (client_id, day, body) values ($1, $2::date, $3)
-         on conflict (client_id, day) do update set
-           body = case when $4::boolean or day_notes.body = '' then excluded.body else day_notes.body || E'\n\n' || excluded.body end,
-           updated_at = now()`,
-        [clientId, day, note, replace],
       );
     }
     await c.query("commit");
@@ -353,15 +446,37 @@ export async function createPost(formData: FormData): Promise<void> {
   } finally {
     c.release();
   }
+  if (noteChanged) await saveNote(pool, clientId, noteDay, note, noteReplace);
   revalidatePath("/", "layout");
-  const dayPath = `/clientes/${clientId}/dia/${day}`;
+  if (editing) {
+    const url = withParam(back, "salvo", savedPostId);
+    redirect(folderError ? withParam(url, "aviso", `Salvo, mas a pasta no Drive não foi criada: ${folderError}`) : url);
+  }
+  const dayPath = `/clientes/${clientId}/dia/${created[0]?.day ?? noteDay}`;
   redirect(folderError ? withParam(dayPath, "aviso", `O post foi criado, mas a pasta no Drive não: ${folderError}`) : dayPath);
 }
 
+/** Grava a nota de planejamento do dia: substitui (apagando se vazia) ou acrescenta ao que já estava lá. */
+async function saveNote(pool: Awaited<ReturnType<typeof db>>, clientId: string, day: string, body: string, replace: boolean): Promise<void> {
+  if (replace && !body) {
+    await pool.query("delete from day_notes where client_id = $1 and day = $2::date", [clientId, day]);
+    return;
+  }
+  await pool.query(
+    `insert into day_notes (client_id, day, body) values ($1, $2::date, $3)
+     on conflict (client_id, day) do update set
+       body = case when $4::boolean or day_notes.body = '' then excluded.body else day_notes.body || E'\n\n' || excluded.body end,
+       updated_at = now()`,
+    [clientId, day, body, replace],
+  );
+}
+
 /** Cria (ou encontra) no Drive a pasta de um destino que ainda não tem pasta. */
-export async function ensureTargetFolder(formData: FormData): Promise<void> {
+export async function ensureTargetFolder(targetId: string, formData: FormData): Promise<void> {
   await requireAuth();
-  const id = text(formData, "id", 40);
+  // O id vem da ligação do botão (bind), não de campo do formulário: o React troca o `name` de botões com formAction.
+  const id = String(targetId).slice(0, 40);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) redirect("/");
   const back = safePath(text(formData, "volta", 300), "/");
   if (!/^[0-9a-f-]{36}$/i.test(id)) redirect("/");
   const pool = await db();
@@ -382,57 +497,11 @@ export async function ensureTargetFolder(formData: FormData): Promise<void> {
   redirect(withParam(back, "pasta", id) + `#t-${id}`);
 }
 
-export async function saveTarget(formData: FormData): Promise<void> {
+export async function publishTarget(targetId: string, formData: FormData): Promise<void> {
   await requireAuth();
-  const id = text(formData, "id", 40);
-  const back = safePath(text(formData, "volta", 300), "/");
-  const caption = text(formData, "caption", 70000);
-  const time = text(formData, "time", 5);
-  const day = text(formData, "date", 10);
-  const driveUrl = text(formData, "drive_url", 500);
-  const thumbUrl = text(formData, "thumb_url", 500);
-  const status = text(formData, "status", 12);
-  if (!["draft", "scheduled", "posted"].includes(status)) redirect(back);
-  if (!isTime(time) || !isDay(day)) redirect(withParam(back, "erro", "Informe uma data e um horário válidos."));
-
-  const pool = await db();
-  const cur = await pool.query<{
-    network: string; format: string;
-    drive_url: string; drive_file_id: string | null; drive_meta: MediaMeta | null;
-    thumb_url: string; thumb_file_id: string | null; thumb_meta: MediaMeta | null; day: string;
-  }>(
-    `select network, format, drive_url, drive_file_id, drive_meta, thumb_url, thumb_file_id, thumb_meta,
-            to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day
-       from post_targets where id = $1`,
-    [id],
-  );
-  if (!cur.rows[0]) redirect("/");
-  let { drive_file_id: fileId, drive_meta: meta } = cur.rows[0];
-  if (driveUrl !== cur.rows[0].drive_url || (meta && meta.error)) {
-    ({ fileId, meta } = await resolveDrive(driveUrl));
-  }
-  let { thumb_file_id: thumbFileId, thumb_meta: thumbMeta } = cur.rows[0];
-  if (thumbUrl !== cur.rows[0].thumb_url || (thumbMeta && thumbMeta.error)) {
-    const t = await resolveDrive(thumbUrl);
-    thumbFileId = t.fileId;
-    thumbMeta = t.meta;
-  }
-  const title = hasTitle(cur.rows[0].network, cur.rows[0].format) ? text(formData, "title", 200) : "";
-  await pool.query(
-    `update post_targets set caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
-        status=$4, posted_at = case when $4='posted' then coalesce(posted_at, now()) else null end,
-        drive_url=$5, drive_file_id=$6, drive_meta=$7, thumb_url=$8, thumb_file_id=$9, thumb_meta=$10, title=$11 where id=$12`,
-    [caption, day, time, status, driveUrl, fileId, meta ? JSON.stringify(meta) : null, thumbUrl, thumbFileId, thumbMeta ? JSON.stringify(thumbMeta) : null, title, id],
-  );
-  // Mudou o dia: a pasta guardada era a do dia antigo. Limpa para criar a do dia novo com o botão.
-  if (cur.rows[0].day !== day) await pool.query("update post_targets set post_folder_id = null where id = $1", [id]);
-  revalidatePath("/", "layout");
-  redirect(withParam(back, "salvo", id) + `#t-${id}`);
-}
-
-export async function publishTarget(formData: FormData): Promise<void> {
-  await requireAuth();
-  const id = text(formData, "id", 40);
+  // O id vem da ligação do botão (bind), não de campo do formulário: o React troca o `name` de botões com formAction.
+  const id = String(targetId).slice(0, 40);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) redirect("/");
   const back = safePath(text(formData, "volta", 300), "/");
   const r = await startPublish(id);
   revalidatePath("/", "layout");
@@ -450,9 +519,11 @@ export async function markPosted(formData: FormData): Promise<void> {
   redirect(back);
 }
 
-export async function deleteTarget(formData: FormData): Promise<void> {
+export async function deleteTarget(targetId: string, formData: FormData): Promise<void> {
   await requireAuth();
-  const id = text(formData, "id", 40);
+  // O id vem da ligação do botão (bind), não de campo do formulário: o React troca o `name` de botões com formAction.
+  const id = String(targetId).slice(0, 40);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) redirect("/");
   const back = safePath(text(formData, "volta", 300), "/");
   const pool = await db();
   const r = await pool.query<{ post_id: string }>("delete from post_targets where id=$1 returning post_id", [id]);
@@ -480,12 +551,16 @@ export async function generateCaption(input: {
   draft: string;
   /** "Personalizar legenda": pedidos de ajuste (tom, tamanho, o que mudar). */
   custom?: string;
+  /** Tons de voz marcados para o post no momento do clique (ids de src/config/tones.ts), mesmo que ainda não salvos. */
+  tones?: string[];
 }): Promise<AiResult> {
   await requireAuth();
   const network = String(input.network);
   const format = String(input.format);
   if (!isNetwork(network) || !isFormat(network, format)) return { error: "rede ou formato inválido." };
   if (!/^[0-9a-f-]{36}$/i.test(String(input.clientId))) return { error: "cliente inválido." };
+  const toneCheck = validateTones(Array.isArray(input.tones) ? input.tones.map(String) : []);
+  if ("error" in toneCheck) return { error: toneCheck.error };
   const pool = await db();
   const r = await pool.query<{ name: string; segment: string; site: string; tone: string; notes: string }>(
     "select name, segment, site, tone, notes from clients where id = $1",
@@ -500,6 +575,7 @@ export async function generateCaption(input: {
     brief: String(input.brief ?? "").slice(0, 4000),
     captionDraft: String(input.draft ?? "").slice(0, 4000),
     custom: String(input.custom ?? "").slice(0, 2000),
+    tones: toneCheck.tones,
   });
   return generateText(prompt);
 }

@@ -126,6 +126,13 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       update post_targets t set title = p.title from posts p where p.id = t.post_id and t.network = 'youtube';
     `,
   },
+  {
+    version: 9,
+    sql: `
+      -- Tons de voz escolhidos por post (ids de src/config/tones.ts, na ordem de prioridade). Só acrescenta a coluna.
+      alter table posts add column tones text[] not null default '{}';
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

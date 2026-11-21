@@ -21,6 +21,7 @@ export default function GenerateButton({
   getBrief,
   getDraft,
   getCustom,
+  getTones,
   onResult,
 }: {
   clientId: string;
@@ -33,6 +34,7 @@ export default function GenerateButton({
   getBrief: () => string;
   getDraft: () => string;
   getCustom: () => string;
+  getTones: () => string[];
   onResult: (r: { title: string; caption: string }) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -44,7 +46,7 @@ export default function GenerateButton({
     setBusy(true);
     setMsg(null);
     try {
-      const r = await generateCaption({ clientId, network, format, plan: getPlan(), brief: getBrief(), draft, custom: getCustom() });
+      const r = await generateCaption({ clientId, network, format, plan: getPlan(), brief: getBrief(), draft, custom: getCustom(), tones: getTones() });
       if ("error" in r) setMsg({ kind: "err", text: `Não consegui gerar: ${r.error}` });
       else {
         onResult(splitGenerated(r.text, hasTitle(network, format)));

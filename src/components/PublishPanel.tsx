@@ -15,7 +15,6 @@ export type PublishInfo = {
 export default function PublishPanel(p: {
   id: string;
   networkLabel: string;
-  volta: string;
   info: PublishInfo;
   /** A legenda na tela ainda não foi salva: o app publica o que está salvo. */
   dirty: boolean;
@@ -37,7 +36,6 @@ export default function PublishPanel(p: {
     return () => clearInterval(t);
   }, [info.state, router]);
 
-  const back = p.volta.split("#")[0];
   return (
     <div className="col" style={{ gap: 8, padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--soft)" }} aria-label={`Publicar no ${p.networkLabel}`}>
       <b className="small">Publicar pelo app</b>
@@ -68,17 +66,15 @@ export default function PublishPanel(p: {
               <span className="muted small">em {info.connected}</span>
             </div>
           ) : (
-            <form action={publishTarget} className="col" style={{ gap: 8 }}>
-              <input type="hidden" name="id" value={p.id} />
-              <input type="hidden" name="volta" value={back} />
+            <div className="col" style={{ gap: 8 }}>
               <p style={{ margin: 0 }}>
                 Publicar <b>agora, de verdade</b>, em <b>{info.connected}</b> ({p.networkLabel})? Não dá para desfazer pelo app.
               </p>
               <div className="row">
-                <button className="btn primary" type="submit">Confirmar e publicar</button>
+                <button className="btn primary" type="submit" formAction={publishTarget.bind(null, p.id)} formNoValidate>Confirmar e publicar</button>
                 <button className="btn" type="button" onClick={() => setConfirming(false)}>Cancelar</button>
               </div>
-            </form>
+            </div>
           )}
         </>
       )}

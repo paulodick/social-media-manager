@@ -1,14 +1,14 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import TargetEditor from "@/components/TargetEditor";
+import { notFound, redirect } from "next/navigation";
+import PostEditor, { type EditorTarget } from "@/components/PostEditor";
 import { BackLink, Flash } from "@/components/ui";
-import { NETWORKS, isNetwork } from "@/config/networks";
+import { acceptedFolders, isNetwork, targetFolders } from "@/config/networks";
 import { addDays, dayFolders, dayLabel, isDay, monthOf, weekStart } from "@/lib/dates";
 import { folderPathFromRoot } from "@/lib/drive";
 import { aiConfigured } from "@/lib/ai";
-import { saveDayNote } from "@/lib/actions";
 import { getClient, listConnected, listDayNotes, listTargets } from "@/lib/queries";
 import { canAutoPublish } from "@/lib/publisher";
+import { pickerOptions } from "@/lib/picker-options";
 
 export default async function DayPage({
   params,
@@ -23,65 +23,68 @@ export default async function DayPage({
   const found = await getClient(id);
   if (!found) notFound();
   const { client, networks } = found;
-  const targets = await listTargets({ clientId: id, from: day, to: day });
+  const onDay = await listTargets({ clientId: id, from: day, to: day });
+  // Dia sem post: a tela para criar é a mesma tela do post, já com a ideia do dia preenchida.
+  if (onDay.length === 0) redirect(`/posts/novo?cliente=${id}&data=${day}`);
   const note = (await listDayNotes(id, day, day))[day] ?? "";
   const volta = `/clientes/${id}/dia/${day}`;
   const connected = await listConnected(id);
 
-  const editors = await Promise.all(
-    targets.map(async (t) => {
-      if (!isNetwork(t.network)) return null;
-      const cfg = NETWORKS[t.network];
-      const fmt = cfg.formats[t.format];
-      const [y, m, d] = dayFolders(t.day);
-      const expected = [y, m, d, cfg.folder, fmt?.folder ?? t.format];
-      let pathNote: string | null = null;
-      if (t.drive_file_id && client.drive_folder_id && t.drive_meta && !t.drive_meta.error) {
-        const actual = await folderPathFromRoot(t.drive_file_id, client.drive_folder_id);
-        if (actual === null) {
-          pathNote = `O arquivo não está dentro da pasta do cliente. Deveria estar em ${expected.join(" / ")}.`;
-        } else if (actual.join("/") !== expected.join("/")) {
-          pathNote = `O arquivo está em ${actual.join(" / ") || "(raiz da pasta do cliente)"}, mas deveria estar em ${expected.join(" / ")}.`;
-        }
-      }
-      const acc = networks.find((n) => n.network === t.network)?.account_name;
-      return (
-        <div key={t.id}>
-          <TargetEditor
-            id={t.id}
-            network={t.network}
-            format={t.format}
-            day={t.day}
-            time={t.time}
-            caption={t.caption}
-            status={t.status}
-            late={t.late}
-            driveUrl={t.drive_url}
-            fileId={t.drive_file_id}
-            meta={t.drive_meta}
-            thumbUrl={t.thumb_url}
-            thumbFileId={t.thumb_file_id}
-            thumbMeta={t.thumb_meta}
-            name={t.title}
-            title={t.target_title}
-            profile={{ name: acc || client.name, handle: (acc || client.name).toLowerCase().replace(/\s+/g, "") }}
-            expectedPath={`${client.name} / ${expected.join(" / ")}`}
-            pathNote={pathNote}
-            folderId={t.post_folder_id}
-            canCreateFolder={!!client.drive_folder_id}
-            volta={volta}
-            saved={sp.salvo === t.id}
-            publish={
-              canAutoPublish(t.network)
-                ? { connected: connected[t.network] ?? null, state: t.publish_state, url: t.external_url, error: t.publish_error }
-                : undefined
+  // Cada post do dia aparece inteiro (todas as redes dele, mesmo as de outros dias).
+  const postIds = [...new Set(onDay.map((t) => t.post_id))];
+  const posts = await Promise.all(
+    postIds.map(async (postId) => {
+      const all = await listTargets({ clientId: id, postId });
+      const targets: EditorTarget[] = await Promise.all(
+        all.map(async (t) => {
+          const [y, m, d] = dayFolders(t.day);
+          const expected = [y, m, d, ...(targetFolders(t.network, t.format) ?? [])];
+          const accepted = acceptedFolders(t.network, t.format).map((p) => [y, m, d, ...p].join("/"));
+          let pathNote: string | null = null;
+          if (t.drive_file_id && client.drive_folder_id && t.drive_meta && !t.drive_meta.error) {
+            const actual = await folderPathFromRoot(t.drive_file_id, client.drive_folder_id);
+            if (actual === null) {
+              pathNote = `O arquivo não está dentro da pasta do cliente. Deveria estar em ${expected.join(" / ")}.`;
+            } else if (!accepted.includes(actual.join("/"))) {
+              pathNote = `O arquivo está em ${actual.join(" / ") || "(raiz da pasta do cliente)"}, mas deveria estar em ${expected.join(" / ")}.`;
             }
-            ai={{ client: { name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }, plan: note, brief: t.idea, clientId: id, enabled: aiConfigured() }}
-          />
-        </div>
+          }
+          return {
+            id: t.id,
+            network: t.network,
+            format: t.format,
+            day: t.day,
+            time: t.time,
+            caption: t.caption,
+            title: t.target_title,
+            status: t.status,
+            late: t.late,
+            driveUrl: t.drive_url,
+            fileId: t.drive_file_id,
+            meta: t.drive_meta,
+            thumbUrl: t.thumb_url,
+            thumbFileId: t.thumb_file_id,
+            thumbMeta: t.thumb_meta,
+            pathNote,
+            folderId: t.post_folder_id,
+            publish: canAutoPublish(t.network)
+              ? { connected: connected[t.network] ?? null, state: t.publish_state, url: t.external_url, error: t.publish_error }
+              : undefined,
+          };
+        }),
       );
+      return { postId, first: all[0], targets };
     }),
   );
+
+  // Redes do cliente + as que algum destino do post usa (se o cliente tirou a rede depois).
+  const netList = [...networks];
+  for (const p of posts) for (const t of p.targets) if (isNetwork(t.network) && !netList.some((n) => n.network === t.network)) netList.push({ network: t.network, account_name: "", profile_url: "" });
+  const options = pickerOptions(netList);
+  const profiles = Object.fromEntries(
+    networks.map((n) => [n.network, { name: n.account_name || client.name, handle: (n.account_name || client.name).toLowerCase().replace(/\s+/g, "") }]),
+  );
+  const promptClient = { id, name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes };
 
   return (
     <main id="conteudo" tabIndex={-1} className="main">
@@ -101,30 +104,27 @@ export default async function DayPage({
         </div>
       </header>
       <Flash erro={sp.erro} aviso={sp.aviso} ok={sp.pasta ? "Pasta do Drive pronta." : sp.nota ? "Planejamento do dia salvo." : undefined} />
-      <section className="card" aria-labelledby="plan">
-        <h2 id="plan">Planejamento e comentários</h2>
-        <form action={saveDayNote} className="col">
-          <input type="hidden" name="client_id" value={id} />
-          <input type="hidden" name="day" value={day} />
-          <label className="f sr" htmlFor="body">Planejamento e comentários do dia</label>
-          <textarea id="body" name="body" rows={3} defaultValue={note} placeholder="Ex.: Reels sobre o plantão 24h. Pedir depoimento ao cliente." />
-          <div className="row between">
-            <span className="muted small">Aparece no calendário. Apague o texto e salve para remover.</span>
-            <button type="submit" className="btn">Salvar planejamento</button>
-          </div>
-        </form>
-      </section>
-      {editors.length === 0 ? (
-        <div className="card">
-          <p>{note ? "Ainda sem posts neste dia. Quando tiver a legenda ou o vídeo, crie o post." : "Nenhum post neste dia."}</p>
-          <div><Link href={`/posts/novo?cliente=${id}&data=${day}`} className="btn primary">Criar post para este dia</Link></div>
-        </div>
-      ) : (
-        <>
-          {editors}
-          <div><Link href={`/posts/novo?cliente=${id}&data=${day}`} className="btn">Adicionar outro post neste dia</Link></div>
-        </>
-      )}
+      {posts.map((p) => (
+        <PostEditor
+          key={p.postId}
+          postId={p.postId}
+          client={promptClient}
+          canCreateFolder={!!client.drive_folder_id}
+          options={options}
+          aiEnabled={aiConfigured()}
+          volta={volta}
+          day={day}
+          defaultTime={p.targets[0]?.time ?? "10:00"}
+          note={note}
+          postName={p.first?.title ?? ""}
+          brief={p.first?.idea ?? ""}
+          tones={p.first?.tones ?? []}
+          targets={p.targets}
+          profiles={profiles}
+          saved={sp.salvo === p.postId}
+        />
+      ))}
+      <div><Link href={`/posts/novo?cliente=${id}&data=${day}`} className="btn">Novo post neste dia</Link></div>
       <BackLink href={`/clientes/${id}`}>← {client.name}</BackLink>
     </main>
   );
