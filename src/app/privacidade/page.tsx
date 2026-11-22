@@ -108,7 +108,7 @@ export default function Privacidade() {
         Proteção de Dados (Lei 13.709/2018). O responsável pelo aplicativo é Paulo Eduardo Adoglio Dick{contato ? <>, contato: <a href={`mailto:${contato}`}>{contato}</a></> : null}.
       </p>
 
-      <p className="muted small">Esta política pode mudar; a data no topo mostra a última atualização.</p>
+      <p className="muted small">Esta política pode mudar; a data no topo mostra a última atualização. Veja também os <Link href="/termos">Termos de Serviço</Link>.</p>
       <p><Link href="/">Voltar para o app</Link></p>
     </main>
   );
