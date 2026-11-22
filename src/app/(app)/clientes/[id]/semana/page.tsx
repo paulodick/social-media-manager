@@ -159,6 +159,7 @@ export default async function ClientWeek({
                         {t.late && t.status !== "posted" && <span className="wtag late">Atrasado</span>}
                         {t.publish_state === "publishing" && <span className="wtag warn">Publicando</span>}
                         {t.publish_state === "failed" && <span className="wtag late">Falhou ao publicar</span>}
+                        {t.publish_state === "drafted" && t.status !== "posted" && <span className="wtag warn">Rascunho enviado</span>}
                         {t.status === "draft" && <span className="muted small">Rascunho</span>}
                       </span>
                     </Link>

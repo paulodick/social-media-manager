@@ -280,6 +280,8 @@ export default function NetworkRow({
                   info={existing.publish}
                   dirty={caption !== existing.caption || title !== existing.title}
                   posted={posted}
+                  mode={network === "tiktok" ? "draft" : "direct"}
+                  captionSent={format === "fotos"}
                 />
               )}
               <div className="row actions">

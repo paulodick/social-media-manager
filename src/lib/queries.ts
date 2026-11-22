@@ -49,7 +49,7 @@ export type Target = {
   thumb_file_id: string | null;
   thumb_meta: MediaMeta | null;
   late: boolean;
-  publish_state: "idle" | "publishing" | "published" | "failed";
+  publish_state: "idle" | "publishing" | "published" | "failed" | "drafted";
   external_id: string | null;
   external_url: string;
   publish_error: string;

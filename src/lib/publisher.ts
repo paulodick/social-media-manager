@@ -2,15 +2,19 @@ import { decryptToken } from "./crypto";
 import { db } from "./db";
 import { driveConfigured, openMedia } from "./drive";
 import { publishLinkedin } from "./publish/linkedin";
+import { publishTiktokDraft, TIKTOK_VIDEO_TYPES } from "./publish/tiktok";
+import { freshTiktokToken } from "./tiktok-token";
 import { PublishError, publishToMeta, type MediaSource } from "./publish/meta";
 import { getConnection, listTargets, type Connection, type Target } from "./queries";
 import { signedMediaUrl } from "./signed-url";
 
 /** Redes que o app já sabe publicar sozinho. As outras seguem manuais. */
-export const AUTO_PUBLISH_NETWORKS = ["instagram", "facebook", "linkedin"] as const;
+export const AUTO_PUBLISH_NETWORKS = ["instagram", "facebook", "linkedin", "tiktok"] as const;
 export function canAutoPublish(network: string, format?: string): boolean {
   // Documento (PDF) do LinkedIn ainda é manual: o upload de documento não foi feito.
   if (network === "linkedin" && format === "documento") return false;
+  // TikTok: o app envia como rascunho para a caixa de entrada do TikTok (publicar direto exige a auditoria do TikTok).
+  if (network === "tiktok" && format !== "video" && format !== "fotos") return false;
   return (AUTO_PUBLISH_NETWORKS as readonly string[]).includes(network);
 }
 
@@ -20,7 +24,7 @@ export type StartResult = { ok: true } | { ok: false; error: string };
 export async function startPublish(targetId: string): Promise<StartResult> {
   const [t] = await listTargets({ targetId });
   if (!t) return { ok: false, error: "Post não encontrado." };
-  if (!canAutoPublish(t.network)) return { ok: false, error: "Esta rede ainda é publicada manualmente." };
+  if (!canAutoPublish(t.network, t.format)) return { ok: false, error: "Esta rede ainda é publicada manualmente." };
   if (t.status === "posted") return { ok: false, error: "Este post já está marcado como postado." };
   if (t.publish_state === "publishing") return { ok: false, error: "Este post já está sendo publicado." };
   if (t.network === "linkedin" && t.format === "documento") return { ok: false, error: "Documento (PDF) do LinkedIn ainda é publicado manualmente." };
@@ -32,6 +36,10 @@ export async function startPublish(targetId: string): Promise<StartResult> {
     const mime = t.drive_meta.mimeType ?? "";
     if (!mime.startsWith("video/") && !mime.startsWith("image/")) return { ok: false, error: "O arquivo precisa ser uma imagem ou um vídeo." };
     if (mime.startsWith("video/") && !t.drive_meta.size) return { ok: false, error: "Não sei o tamanho do vídeo. Salve o post de novo para reler o arquivo no Drive." };
+    if (t.network === "tiktok") {
+      if (t.format === "video" && !TIKTOK_VIDEO_TYPES.includes(mime)) return { ok: false, error: "O TikTok só aceita vídeo MP4, MOV ou WebM." };
+      if (t.format === "fotos" && !mime.startsWith("image/")) return { ok: false, error: "TikTok Fotos precisa de uma imagem ligada ao post." };
+    }
   }
   if (!t.caption.trim() && t.format !== "stories") return { ok: false, error: "Escreva a legenda antes de publicar." };
   if (!textOnly && !driveConfigured()) return { ok: false, error: "O Google Drive não está configurado." };
@@ -59,7 +67,8 @@ export async function startPublish(targetId: string): Promise<StartResult> {
 async function runPublish(t: Target, conn: Connection): Promise<void> {
   const pool = await db();
   try {
-    const token = decryptToken(conn.token_enc);
+    // TikTok: o acesso dura poucas horas, então vem renovado (e o novo token de renovação já fica guardado).
+    const token = t.network === "tiktok" ? await freshTiktokToken(t.client_id) : decryptToken(conn.token_enc);
     const meta = t.drive_meta;
     const fileId = t.drive_file_id;
     const media: MediaSource | null =
@@ -71,6 +80,12 @@ async function runPublish(t: Target, conn: Connection): Promise<void> {
             open: () => openMedia(fileId, null),
           }
         : null;
+    if (t.network === "tiktok") {
+      const d = await publishTiktokDraft({ format: t.format, token, caption: t.caption, media: media as MediaSource, mime: meta?.mimeType });
+      // Rascunho na caixa de entrada: ainda NÃO está publicado. A pessoa finaliza no app do TikTok e marca como postado.
+      await pool.query("update post_targets set publish_state='drafted', external_id=$2, external_url='', publish_error='' where id=$1", [t.id, d.id]);
+      return;
+    }
     const r =
       t.network === "linkedin"
         ? await publishLinkedin({ format: t.format, personId: conn.account_id, token, caption: t.caption, media })

@@ -1,6 +1,7 @@
 import { decryptToken } from "./crypto";
 import { getConnection } from "./queries";
 import { linkedinHealthFrom } from "./publish/linkedin-health";
+import { tiktokHealthFrom } from "./publish/tiktok-health";
 import { checkMetaToken, type TokenHealth } from "./publish/meta-health";
 
 /**
@@ -24,4 +25,11 @@ export async function clientLinkedinHealth(clientId: string): Promise<TokenHealt
   const conn = await getConnection(clientId, "linkedin");
   if (!conn) return null;
   return linkedinHealthFrom(conn.expires_at);
+}
+
+/** Saúde da conexão do TikTok: o acesso é renovado sozinho, então só a data de vencimento da autorização importa (sem chamar a rede). */
+export async function clientTiktokHealth(clientId: string): Promise<TokenHealth | null> {
+  const conn = await getConnection(clientId, "tiktok");
+  if (!conn) return null;
+  return tiktokHealthFrom(conn.expires_at);
 }

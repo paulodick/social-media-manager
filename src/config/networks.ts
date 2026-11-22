@@ -90,7 +90,7 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     label: "TikTok",
     color: "#111111",
     folder: "TikTok",
-    captionLimit: null,
+    captionLimit: 2200,
     hashtagLimit: null,
     cutAt: 100,
     formats: {

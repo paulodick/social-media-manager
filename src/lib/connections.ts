@@ -1,6 +1,7 @@
 import { db } from "./db";
-import { encryptToken } from "./crypto";
+import { decryptToken, encryptToken } from "./crypto";
 import type { MetaPage } from "./publish/meta-oauth";
+import type { TiktokTokens } from "./publish/tiktok-oauth";
 
 /** Guarda a Página do Facebook e, se houver, o Instagram profissional ligado a ela. Tokens vão criptografados. */
 export async function saveMetaConnections(clientId: string, page: MetaPage): Promise<{ instagram: string | null }> {
@@ -41,4 +42,31 @@ export async function saveLinkedinConnection(clientId: string, m: { id: string; 
 export async function removeLinkedinConnection(clientId: string): Promise<void> {
   const pool = await db();
   await pool.query("delete from network_connections where client_id = $1 and network = 'linkedin'", [clientId]);
+}
+
+/** Guarda a conta do TikTok. expires_at = vencimento da autorização (token de renovação); access_expires_at = do acesso. */
+export async function saveTiktokConnection(clientId: string, a: { id: string; name: string; tokens: TiktokTokens }): Promise<void> {
+  const pool = await db();
+  await pool.query(
+    `insert into network_connections (client_id, network, account_id, account_name, page_id, token_enc, refresh_token_enc, access_expires_at, expires_at)
+     values ($1, 'tiktok', $2, $3, null, $4, $5, $6, $7)
+     on conflict (client_id, network) do update
+       set account_id = excluded.account_id, account_name = excluded.account_name, token_enc = excluded.token_enc,
+           refresh_token_enc = excluded.refresh_token_enc, access_expires_at = excluded.access_expires_at,
+           expires_at = excluded.expires_at, updated_at = now()`,
+    [clientId, a.id, a.name, encryptToken(a.tokens.accessToken), encryptToken(a.tokens.refreshToken), a.tokens.accessExpiresAt, a.tokens.refreshExpiresAt],
+  );
+}
+
+/** Apaga a conexão do TikTok e devolve o token de acesso que estava guardado (para revogar no TikTok), se houver. */
+export async function removeTiktokConnection(clientId: string): Promise<string | null> {
+  const pool = await db();
+  const r = await pool.query<{ token_enc: string }>("delete from network_connections where client_id = $1 and network = 'tiktok' returning token_enc", [clientId]);
+  const enc = r.rows[0]?.token_enc;
+  if (!enc) return null;
+  try {
+    return decryptToken(enc);
+  } catch {
+    return null;
+  }
 }

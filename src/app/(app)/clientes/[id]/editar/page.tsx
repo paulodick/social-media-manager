@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import ClientForm from "@/components/ClientForm";
 import { BackLink, Flash } from "@/components/ui";
-import { disconnectLinkedin, disconnectMeta } from "@/lib/actions";
+import { disconnectLinkedin, disconnectMeta, disconnectTiktok } from "@/lib/actions";
 import ConnectionNotice from "@/components/ConnectionNotice";
-import { clientLinkedinHealth, clientMetaHealth } from "@/lib/connection-health";
+import { clientLinkedinHealth, clientMetaHealth, clientTiktokHealth } from "@/lib/connection-health";
 import { getClient, listConnected } from "@/lib/queries";
 
 export default async function EditClient({
@@ -20,9 +20,11 @@ export default async function EditClient({
   const connected = await listConnected(id);
   const health = await clientMetaHealth(id);
   const liHealth = await clientLinkedinHealth(id);
+  const ttHealth = await clientTiktokHealth(id);
   const fb = connected.facebook;
   const ig = connected.instagram;
   const li = connected.linkedin;
+  const tt = connected.tiktok;
   return (
     <main id="conteudo" tabIndex={-1} className="main narrow">
       <header className="col">
@@ -65,6 +67,26 @@ export default async function EditClient({
           <a className="btn primary" href={`/api/linkedin/conectar?cliente=${id}`}>{li ? "Reconectar LinkedIn" : "Conectar LinkedIn"}</a>
           {li && (
             <form action={disconnectLinkedin}>
+              <input type="hidden" name="clientId" value={id} />
+              <button className="btn" type="submit">Desconectar</button>
+            </form>
+          )}
+        </div>
+      </section>
+      <section className="card" aria-labelledby="conta-tiktok">
+        <h2 id="conta-tiktok">TikTok</h2>
+        <p className="muted small">
+          Conectando, o botão "Enviar como rascunho" funciona para TikTok Vídeo e Fotos: o arquivo vai para a caixa de entrada do TikTok de quem fizer o login, e a pessoa publica pelo app do TikTok. O app não publica direto no TikTok porque isso exige uma auditoria do TikTok. O acesso é renovado sozinho; o app avisa se for preciso conectar de novo.
+        </p>
+        <ConnectionNotice health={ttHealth} clientId={id} provider="tiktok" />
+        <ul className="col" style={{ listStyle: "none", padding: 0, gap: 4 }}>
+          <li>TikTok: {tt ? <strong>{tt}</strong> : <span className="muted">não conectado</span>}</li>
+        </ul>
+        <div className="row">
+          {/* Link comum (não Link do Next): a rota redireciona para fora do app. */}
+          <a className="btn primary" href={`/api/tiktok/conectar?cliente=${id}`}>{tt ? "Reconectar TikTok" : "Conectar TikTok"}</a>
+          {tt && (
+            <form action={disconnectTiktok}>
               <input type="hidden" name="clientId" value={id} />
               <button className="btn" type="submit">Desconectar</button>
             </form>

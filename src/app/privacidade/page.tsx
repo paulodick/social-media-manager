@@ -38,6 +38,11 @@ export default function Privacidade() {
           <b>Conexão com o LinkedIn (quando a pessoa autoriza):</b> o nome e o identificador do perfil que fez o login e o token de
           acesso que o LinkedIn entrega para publicar. O token fica criptografado, vale 60 dias e nunca é exibido nem registrado nos logs.
         </li>
+        <li>
+          <b>Conexão com o TikTok (quando a pessoa autoriza):</b> o nome exibido e o identificador da conta que fez o login e os
+          tokens de acesso e de renovação que o TikTok entrega para enviar vídeos e fotos como rascunho. Os tokens ficam criptografados
+          e nunca são exibidos nem registrados nos logs.
+        </li>
       </ul>
       <p>Não coletamos dados de seguidores, mensagens, comentários, anúncios nem informações pessoais de quem visita as páginas.</p>
 
@@ -52,6 +57,7 @@ export default function Privacidade() {
       <ul>
         <li><b>Meta (Facebook e Instagram):</b> recebe o conteúdo do post e o token, para publicar na conta autorizada.</li>
         <li><b>LinkedIn:</b> recebe o texto e a mídia do post e o token, para publicar no perfil autorizado.</li>
+        <li><b>TikTok:</b> recebe o vídeo ou a foto do post (e, nas fotos, o texto) e o token, para entregar o rascunho na caixa de entrada da conta autorizada. A publicação é feita pela própria pessoa, no app do TikTok.</li>
         <li><b>Google Drive:</b> lê os arquivos de mídia e cria as pastas dos posts, com a permissão dada pela empresa.</li>
         <li>
           <b>Anthropic (Claude):</b> se o recurso &quot;Gerar legenda&quot; estiver ligado, o texto do pedido (dados de marca do cliente, ideia do
@@ -73,6 +79,11 @@ export default function Privacidade() {
           aplicativo e remova. No aplicativo, &quot;Desconectar&quot; em Editar cliente apaga o token guardado.
         </li>
         <li>
+          <b>Remover o acesso do TikTok:</b> no TikTok, abra Configurações e privacidade › Segurança e permissões › Gerenciar permissões
+          de apps (o nome pode variar conforme a versão), escolha este aplicativo e remova. No aplicativo, &quot;Desconectar&quot; em
+          Editar cliente apaga os tokens guardados e avisa o TikTok para revogar o acesso.
+        </li>
+        <li>
           <b>Remover o acesso da Meta:</b> no Facebook, abra Configurações › Integrações de negócios (ou Aplicativos e sites), escolha
           este aplicativo e remova. A Meta deixa de aceitar o acesso guardado.
         </li>
@@ -87,7 +98,7 @@ export default function Privacidade() {
 
       <h2>Segurança</h2>
       <p>
-        O acesso exige senha, a conexão é protegida por HTTPS e os tokens da Meta e do LinkedIn são guardados criptografados. Ninguém além de quem
+        O acesso exige senha, a conexão é protegida por HTTPS e os tokens da Meta, do LinkedIn e do TikTok são guardados criptografados. Ninguém além de quem
         administra o aplicativo tem acesso aos dados.
       </p>
 

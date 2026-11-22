@@ -140,6 +140,19 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       alter table network_connections add column expires_at timestamptz;
     `,
   },
+  {
+    version: 11,
+    sql: `
+      -- TikTok: o acesso dura poucas horas e é renovado com um token de renovação (que gira a cada uso).
+      -- expires_at passa a guardar o vencimento da autorização (do token de renovação); access_expires_at, o do acesso.
+      alter table network_connections add column refresh_token_enc text;
+      alter table network_connections add column access_expires_at timestamptz;
+      -- Novo estado de publicação: "drafted" = enviado como rascunho para a caixa de entrada da rede (TikTok).
+      alter table post_targets drop constraint post_targets_publish_state_check;
+      alter table post_targets add constraint post_targets_publish_state_check
+        check (publish_state in ('idle','publishing','published','failed','drafted'));
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

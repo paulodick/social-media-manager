@@ -1,7 +1,7 @@
 import type { TokenHealth } from "@/lib/publish/meta-health";
 
 /**
- * Aviso da conexão com uma rede (Meta ou LinkedIn). `quiet`: só aparece quando precisa de atenção (tela do dia).
+ * Aviso da conexão com uma rede (Meta, LinkedIn ou TikTok). `quiet`: só aparece quando precisa de atenção (tela do dia).
  * `provider` escolhe o texto e o endereço de reconexão.
  */
 export default function ConnectionNotice({
@@ -13,17 +13,17 @@ export default function ConnectionNotice({
   health: TokenHealth | null;
   clientId: string;
   quiet?: boolean;
-  provider?: "meta" | "linkedin";
+  provider?: "meta" | "linkedin" | "tiktok";
 }) {
   if (!health) return null;
   if (health.state === "ok" && quiet) return null;
-  // Meta é feminino ("a Meta ... conectada"); LinkedIn é masculino.
-  const li = provider === "linkedin";
-  const nome = li ? "LinkedIn" : "Meta";
+  // Meta é feminino ("a Meta ... conectada"); LinkedIn e TikTok são masculinos.
+  const nome = provider === "linkedin" ? "LinkedIn" : provider === "tiktok" ? "TikTok" : "Meta";
+  const li = provider !== "meta";
   const art = li ? "o" : "a";
   const conectado = li ? "conectado" : "conectada";
-  const href = li ? `/api/linkedin/conectar?cliente=${clientId}` : `/api/meta/conectar?cliente=${clientId}`;
-  const cta = li ? "Reconectar LinkedIn" : "Reconectar Facebook e Instagram";
+  const href = `/api/${provider === "meta" ? "meta" : provider}/conectar?cliente=${clientId}`;
+  const cta = provider === "linkedin" ? "Reconectar LinkedIn" : provider === "tiktok" ? "Reconectar TikTok" : "Reconectar Facebook e Instagram";
   const cls = health.state === "ok" ? "ok" : health.state === "unknown" ? "warn" : health.state === "attention" ? "warn" : "err";
   const title =
     health.state === "ok"

@@ -7,7 +7,7 @@ import { addDays, dayFolders, dayLabel, isDay, monthOf, weekStart } from "@/lib/
 import { folderPathFromRoot } from "@/lib/drive";
 import { aiConfigured } from "@/lib/ai";
 import ConnectionNotice from "@/components/ConnectionNotice";
-import { clientLinkedinHealth, clientMetaHealth } from "@/lib/connection-health";
+import { clientLinkedinHealth, clientMetaHealth, clientTiktokHealth } from "@/lib/connection-health";
 import { getClient, listConnected, listDayNotes, listTargets } from "@/lib/queries";
 import { canAutoPublish } from "@/lib/publisher";
 import { pickerOptions } from "@/lib/picker-options";
@@ -34,6 +34,7 @@ export default async function DayPage({
   // Só consulta a Meta quando algum post do dia pode ser publicado pelo app.
   const health = onDay.some((t) => (t.network === "instagram" || t.network === "facebook") && connected[t.network]) ? await clientMetaHealth(id) : null;
   const liHealth = onDay.some((t) => t.network === "linkedin" && connected.linkedin) ? await clientLinkedinHealth(id) : null;
+  const ttHealth = onDay.some((t) => t.network === "tiktok" && connected.tiktok) ? await clientTiktokHealth(id) : null;
 
   // Cada post do dia aparece inteiro (todas as redes dele, mesmo as de outros dias).
   const postIds = [...new Set(onDay.map((t) => t.post_id))];
@@ -111,6 +112,7 @@ export default async function DayPage({
       <Flash erro={sp.erro} aviso={sp.aviso} ok={sp.pasta ? "Pasta do Drive pronta." : sp.nota ? "Planejamento do dia salvo." : undefined} />
       <ConnectionNotice health={health} clientId={id} quiet />
       <ConnectionNotice health={liHealth} clientId={id} quiet provider="linkedin" />
+      <ConnectionNotice health={ttHealth} clientId={id} quiet provider="tiktok" />
       {posts.map((p) => (
         <PostEditor
           key={p.postId}

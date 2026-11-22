@@ -11,7 +11,8 @@ import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { generateText, type AiResult } from "./ai";
 import { buildCaptionPrompt } from "./prompt";
 import { startPublish } from "./publisher";
-import { removeMetaConnections, removeLinkedinConnection, saveMetaConnections } from "./connections";
+import { removeMetaConnections, removeLinkedinConnection, removeTiktokConnection, saveMetaConnections } from "./connections";
+import { revokeAccess, tiktokConfig } from "./publish/tiktok-oauth";
 import { clearPending, readPending } from "./meta-pending";
 import { listPages } from "./publish/meta-oauth";
 import { fetchLogo } from "./logo";
@@ -617,6 +618,18 @@ export async function disconnectLinkedin(formData: FormData): Promise<void> {
   await removeLinkedinConnection(clientId);
   revalidatePath(`/clientes/${clientId}/editar`);
   redirect(withParam(`/clientes/${clientId}/editar`, "ok", "LinkedIn desconectado."));
+}
+
+export async function disconnectTiktok(formData: FormData): Promise<void> {
+  await requireAuth();
+  const clientId = text(formData, "clientId", 40);
+  if (!/^[0-9a-f-]{36}$/i.test(clientId)) redirect("/");
+  const token = await removeTiktokConnection(clientId);
+  // Avisa o TikTok para o app sumir da lista de apps autorizados da pessoa (melhor esforço).
+  const cfg = tiktokConfig();
+  if (token && !("error" in cfg)) await revokeAccess(cfg, token);
+  revalidatePath(`/clientes/${clientId}/editar`);
+  redirect(withParam(`/clientes/${clientId}/editar`, "ok", "TikTok desconectado."));
 }
 
 export async function disconnectMeta(formData: FormData): Promise<void> {
