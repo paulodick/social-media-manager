@@ -10,7 +10,9 @@ import { ensureClientFolders, ensureFolderPath, folderUrl, getFileMeta, getFolde
 import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { generateText, type AiResult } from "./ai";
 import { buildCaptionPrompt } from "./prompt";
-import { startPublish } from "./publisher";
+import { autoBlocker, checkPublishable, startPublish } from "./publisher";
+import { canAutoSchedule } from "./auto-publish";
+import { listTargets } from "./queries";
 import { removeMetaConnections, removeLinkedinConnection, removeTiktokConnection, saveMetaConnections } from "./connections";
 import { revokeAccess, tiktokConfig } from "./publish/tiktok-oauth";
 import { clearPending, readPending } from "./meta-pending";
@@ -266,6 +268,8 @@ type ExistingTarget = {
   id: string; network: string; format: string; day: string; post_folder_id: string | null;
   drive_url: string; drive_file_id: string | null; drive_meta: MediaMeta | null;
   thumb_url: string; thumb_file_id: string | null; thumb_meta: MediaMeta | null;
+  /** Estava confirmado para publicar sozinho antes desta gravação. */
+  confirmed: boolean;
 };
 
 /**
@@ -332,6 +336,7 @@ export async function savePost(formData: FormData): Promise<void> {
     ? (
         await pool.query<ExistingTarget>(
           `select id, network, format, post_folder_id, drive_url, drive_file_id, drive_meta, thumb_url, thumb_file_id, thumb_meta,
+                  (auto_confirmed_at is not null) as confirmed,
                   to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day
              from post_targets where post_id = $1`,
           [postId],
@@ -409,6 +414,7 @@ export async function savePost(formData: FormData): Promise<void> {
 
   const c = await pool.connect();
   let savedPostId = postId;
+  let droppedConfirm = 0;
   try {
     await c.query("begin");
     if (editing) {
@@ -418,15 +424,29 @@ export async function savePost(formData: FormData): Promise<void> {
       savedPostId = p.rows[0].id;
     }
     for (const u of updates) {
-      await c.query(
-        `update post_targets set caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
+      // Mudou horário, legenda, mídia, miniatura ou título de um destino confirmado: a confirmação cai e a pessoa
+      // confirma de novo. Assim o app nunca publica algo diferente do que ela viu quando confirmou.
+      const upd = await c.query<{ still: boolean }>(
+        `update post_targets set
+            auto_confirmed_at = case when auto_confirmed_at is not null and (
+                caption is distinct from $1 or scheduled_at is distinct from (($2::date + $3::time) at time zone '${TZ}')
+                or drive_file_id is distinct from $5 or thumb_file_id is distinct from $8 or title is distinct from $10
+              ) then null else auto_confirmed_at end,
+            caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
             drive_url=$4, drive_file_id=$5, drive_meta=$6, thumb_url=$7, thumb_file_id=$8, thumb_meta=$9, title=$10,
             post_folder_id = case when $11::boolean then null else post_folder_id end
-          where id=$12`,
+          where id=$12
+        returning (auto_confirmed_at is not null) as still`,
         [u.caption, u.day, u.time, u.driveUrl, u.fileId, u.meta ? JSON.stringify(u.meta) : null, u.thumbUrl, u.thumbFileId, u.thumbMeta ? JSON.stringify(u.thumbMeta) : null, u.title, u.day !== u.e.day, u.e.id],
       );
+      if (u.e.confirmed && upd.rows[0] && !upd.rows[0].still) droppedConfirm++;
       if (status && u.e.id === statusId) {
-        await c.query("update post_targets set status=$1, posted_at = case when $1='posted' then coalesce(posted_at, now()) else null end where id=$2", [status, u.e.id]);
+        // Voltar para rascunho ou marcar como postado também desfaz a confirmação.
+        await c.query(
+          `update post_targets set status=$1, posted_at = case when $1='posted' then coalesce(posted_at, now()) else null end,
+                  auto_confirmed_at = case when $1='scheduled' then auto_confirmed_at else null end where id=$2`,
+          [status, u.e.id],
+        );
       }
     }
     for (const [i, t] of created.entries()) {
@@ -451,7 +471,10 @@ export async function savePost(formData: FormData): Promise<void> {
   revalidatePath("/", "layout");
   if (editing) {
     const url = withParam(back, "salvo", savedPostId);
-    redirect(folderError ? withParam(url, "aviso", `Salvo, mas a pasta no Drive não foi criada: ${folderError}`) : url);
+    const notes: string[] = [];
+    if (droppedConfirm) notes.push(droppedConfirm === 1 ? "Você mudou algo de um post confirmado: a confirmação da publicação automática foi desfeita. Confirme de novo." : `Você mudou algo de ${droppedConfirm} posts confirmados: as confirmações da publicação automática foram desfeitas. Confirme de novo.`);
+    if (folderError) notes.push(`Salvo, mas a pasta no Drive não foi criada: ${folderError}`);
+    redirect(notes.length ? withParam(url, "aviso", notes.join(" ")) : url);
   }
   const dayPath = `/clientes/${clientId}/dia/${created[0]?.day ?? noteDay}`;
   redirect(folderError ? withParam(dayPath, "aviso", `O post foi criado, mas a pasta no Drive não: ${folderError}`) : dayPath);
@@ -510,12 +533,57 @@ export async function publishTarget(targetId: string, formData: FormData): Promi
   redirect(back + `#t-${id}`);
 }
 
+/**
+ * "Confirmar publicação": avisa o app que este destino está pronto e que ele deve publicar sozinho no dia e horário
+ * marcados. Só vale para o que está salvo (a tela bloqueia o botão com edição não salva). Dá para cancelar antes do horário.
+ */
+export async function confirmPublication(targetId: string, formData: FormData): Promise<void> {
+  await requireAuth();
+  // O id vem da ligação do botão (bind), não de campo do formulário: o React troca o `name` de botões com formAction.
+  const id = String(targetId).slice(0, 40);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) redirect("/");
+  const back = safePath(text(formData, "volta", 300), "/");
+  const fail = (msg: string): never => redirect(withParam(back, "erro", msg) + `#t-${id}`);
+  const [t] = await listTargets({ targetId: id });
+  if (!t) redirect("/");
+  if (t.status === "posted") fail("Este post já está marcado como postado.");
+  if (!canAutoSchedule(t.network, t.format)) fail("Esta rede e formato ainda não publicam sozinhos no horário.");
+  const check = await checkPublishable(t);
+  if (!check.ok) fail(check.error);
+  const why = autoBlocker(t);
+  if (why) fail(why);
+  const pool = await db();
+  const r = await pool.query(
+    `update post_targets set auto_confirmed_at = now(), auto_notified_at = null, status = 'scheduled',
+            publish_state = case when publish_state = 'failed' then 'idle' else publish_state end,
+            publish_error = case when publish_state = 'failed' then '' else publish_error end
+      where id = $1 and status <> 'posted' and publish_state in ('idle','failed') and scheduled_at > now()
+      returning id`,
+    [id],
+  );
+  if (!r.rows[0]) fail("O horário deste post já passou. Ajuste a data e o horário para o futuro e confirme de novo, ou use Publicar agora.");
+  revalidatePath("/", "layout");
+  redirect(withParam(back, "confirmado", id) + `#t-${id}`);
+}
+
+/** Tira a confirmação: o app deixa de publicar este destino sozinho. A situação (agendado) continua. */
+export async function cancelConfirmation(targetId: string, formData: FormData): Promise<void> {
+  await requireAuth();
+  const id = String(targetId).slice(0, 40);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) redirect("/");
+  const back = safePath(text(formData, "volta", 300), "/");
+  const pool = await db();
+  await pool.query("update post_targets set auto_confirmed_at = null where id = $1 and publish_state <> 'publishing'", [id]);
+  revalidatePath("/", "layout");
+  redirect(back + `#t-${id}`);
+}
+
 export async function markPosted(formData: FormData): Promise<void> {
   await requireAuth();
   const id = text(formData, "id", 40);
   const back = safePath(text(formData, "volta", 300), "/postar-hoje");
   const pool = await db();
-  await pool.query("update post_targets set status='posted', posted_at=coalesce(posted_at, now()) where id=$1", [id]);
+  await pool.query("update post_targets set status='posted', posted_at=coalesce(posted_at, now()), auto_confirmed_at=null where id=$1", [id]);
   revalidatePath("/", "layout");
   redirect(back);
 }

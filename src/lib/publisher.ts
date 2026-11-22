@@ -7,6 +7,10 @@ import { freshTiktokToken } from "./tiktok-token";
 import { PublishError, publishToMeta, type MediaSource } from "./publish/meta";
 import { getConnection, listTargets, type Connection, type Target } from "./queries";
 import { signedMediaUrl } from "./signed-url";
+import { AUTO_WINDOW_MIN, canAutoSchedule } from "./auto-publish";
+import { captionChecks, titleChecks } from "./checks";
+import { isNetwork } from "../config/networks";
+import { notifyProblem } from "./notify";
 
 /** Redes que o app já sabe publicar sozinho. As outras seguem manuais. */
 export const AUTO_PUBLISH_NETWORKS = ["instagram", "facebook", "linkedin", "tiktok"] as const;
@@ -18,11 +22,10 @@ export function canAutoPublish(network: string, format?: string): boolean {
   return (AUTO_PUBLISH_NETWORKS as readonly string[]).includes(network);
 }
 
-export type StartResult = { ok: true } | { ok: false; error: string };
+export type StartResult = { ok: true } | { ok: false; error: string; /** outro processo já pegou este destino: não é falha */ skipped?: boolean };
 
-/** Confere tudo, trava o destino como "publicando" e dispara a publicação em segundo plano. */
-export async function startPublish(targetId: string): Promise<StartResult> {
-  const [t] = await listTargets({ targetId });
+/** Confere tudo o que o destino precisa para ser publicado (sem travar nada). */
+export async function checkPublishable(t: Target | undefined): Promise<{ ok: true; conn: Connection } | { ok: false; error: string }> {
   if (!t) return { ok: false, error: "Post não encontrado." };
   if (!canAutoPublish(t.network, t.format)) return { ok: false, error: "Esta rede ainda é publicada manualmente." };
   if (t.status === "posted") return { ok: false, error: "Este post já está marcado como postado." };
@@ -48,23 +51,57 @@ export async function startPublish(targetId: string): Promise<StartResult> {
   if (conn.expires_at && conn.expires_at.getTime() <= Date.now()) {
     return { ok: false, error: "O acesso desta conta venceu. Conecte de novo em Editar cliente › Contas conectadas." };
   }
+  return { ok: true, conn };
+}
 
-  // Trava: só um clique vale. Um "publicando" parado há mais de 15 minutos conta como falha e pode ser refeito.
+/**
+ * Checagens a mais para a publicação AUTOMÁTICA (confirmar e, de novo, na hora de publicar): nada que a rede vá recusar
+ * por tamanho de legenda, título ou excesso de hashtags. Devolve a frase do problema, ou null se está tudo certo.
+ */
+export function autoBlocker(t: Pick<Target, "network" | "format" | "caption" | "target_title">): string | null {
+  if (!canAutoSchedule(t.network, t.format)) return "Esta rede e formato ainda não publicam sozinhos no horário.";
+  if (!isNetwork(t.network)) return null;
+  // Stories saem sem legenda: a checagem de legenda vazia não vale.
+  const caption = t.format === "stories" ? [] : captionChecks(t.network, t.caption);
+  const warn = [...caption, ...titleChecks(t.network, t.target_title)].find((c) => c.level === "warn");
+  return warn ? warn.text : null;
+}
+
+/**
+ * Confere tudo, trava o destino como "publicando" e dispara a publicação em segundo plano.
+ * `auto: true` é o relógio interno: só pega o que foi confirmado, está parado ("idle") e dentro da janela de tolerância.
+ */
+export async function startPublish(targetId: string, opts: { auto?: boolean } = {}): Promise<StartResult> {
+  const [t] = await listTargets({ targetId });
+  const check = await checkPublishable(t);
+  if (!check.ok) return check;
+  const { conn } = check;
+  if (opts.auto) {
+    const why = autoBlocker(t);
+    if (why) return { ok: false, error: why };
+  }
+
+  // Trava: só um clique (ou um relógio) vale. Um "publicando" parado há mais de 15 minutos conta como falha e pode ser refeito.
   const pool = await db();
   const lock = await pool.query(
-    `update post_targets set publish_state='publishing', publish_started_at=now(), publish_error=''
-      where id=$1 and status <> 'posted'
-        and (publish_state <> 'publishing' or publish_started_at < now() - interval '15 minutes')
-      returning id`,
+    opts.auto
+      ? `update post_targets set publish_state='publishing', publish_started_at=now(), publish_error=''
+          where id=$1 and status <> 'posted' and publish_state = 'idle' and auto_confirmed_at is not null
+            and scheduled_at <= now() and scheduled_at > now() - interval '${AUTO_WINDOW_MIN} minutes'
+          returning id`
+      : `update post_targets set publish_state='publishing', publish_started_at=now(), publish_error=''
+          where id=$1 and status <> 'posted'
+            and (publish_state <> 'publishing' or publish_started_at < now() - interval '15 minutes')
+          returning id`,
     [targetId],
   );
-  if (!lock.rows[0]) return { ok: false, error: "Este post já está sendo publicado." };
+  if (!lock.rows[0]) return { ok: false, error: "Este post já está sendo publicado.", skipped: !!opts.auto };
 
-  void runPublish(t, conn);
+  void runPublish(t, conn, !!opts.auto);
   return { ok: true };
 }
 
-async function runPublish(t: Target, conn: Connection): Promise<void> {
+async function runPublish(t: Target, conn: Connection, auto = false): Promise<void> {
   const pool = await db();
   try {
     // TikTok: o acesso dura poucas horas, então vem renovado (e o novo token de renovação já fica guardado).
@@ -110,5 +147,28 @@ async function runPublish(t: Target, conn: Connection): Promise<void> {
     await pool
       .query("update post_targets set publish_state='failed', publish_error=$2 where id=$1", [t.id, msg.slice(0, 500)])
       .catch(() => {});
+    if (auto) await alertProblem(t, "falhou", msg);
+  }
+}
+
+/** Avisa por e-mail (uma vez por destino) que a publicação automática falhou ou perdeu o horário. */
+export async function alertProblem(t: Pick<Target, "id" | "client_id" | "client_name" | "network" | "format" | "day" | "time">, kind: "falhou" | "perdeu", reason: string): Promise<void> {
+  try {
+    const pool = await db();
+    const claim = await pool.query("update post_targets set auto_notified_at=now() where id=$1 and auto_notified_at is null returning id", [t.id]);
+    if (!claim.rows[0]) return;
+    const base = process.env.APP_URL?.trim().replace(/\/$/, "");
+    await notifyProblem({
+      kind,
+      client: t.client_name,
+      network: t.network,
+      format: t.format,
+      day: t.day,
+      time: t.time,
+      reason,
+      link: base ? `${base}/clientes/${t.client_id}/dia/${t.day}` : undefined,
+    });
+  } catch (e) {
+    console.error(`[aviso] falha ao registrar o aviso: ${e instanceof Error ? e.message : "erro desconhecido"}`);
   }
 }

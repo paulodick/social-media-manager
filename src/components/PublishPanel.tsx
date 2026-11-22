@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { publishTarget } from "@/lib/actions";
+import { cancelConfirmation, confirmPublication, publishTarget } from "@/lib/actions";
+import type { AutoView } from "@/lib/auto-publish";
 
 export type PublishInfo = {
   /** Nome da conta conectada (ex.: @bestmedical), ou null se ainda não há conexão. */
@@ -10,6 +11,8 @@ export type PublishInfo = {
   state: "idle" | "publishing" | "published" | "failed" | "drafted";
   url: string;
   error: string;
+  /** Publicação automática por horário (só nas redes que o app publica sozinho). */
+  auto?: AutoView;
 };
 
 export default function PublishPanel(p: {
@@ -25,13 +28,14 @@ export default function PublishPanel(p: {
   captionSent?: boolean;
 }) {
   const router = useRouter();
-  const [confirming, setConfirming] = useState(false);
+  // "now" = confirmando "Publicar agora"; "auto" = confirmando a publicação automática no horário.
+  const [confirming, setConfirming] = useState<null | "now" | "auto">(null);
   const { info } = p;
 
   // Quando o resultado chega (publicou ou falhou), a confirmação aberta se fecha.
   useEffect(() => {
-    setConfirming(false);
-  }, [info.state, info.error]);
+    setConfirming(null);
+  }, [info.state, info.error, info.auto?.confirmed, info.auto?.missed]);
 
   // Enquanto publica, atualiza a tela sozinho até o resultado chegar.
   useEffect(() => {
@@ -43,6 +47,9 @@ export default function PublishPanel(p: {
   const draft = p.mode === "draft";
   const drafted = info.state === "drafted";
   const showForm = !!info.connected && !p.posted && info.state !== "published" && info.state !== "publishing";
+  const auto = info.auto?.eligible && !draft ? info.auto : undefined;
+  // Confirmado e ainda por publicar: o app publica sozinho no horário; "Publicar agora" some para não haver duas ordens.
+  const armed = !!auto && auto.confirmed && !auto.missed && info.state === "idle";
 
   return (
     <div className="col" style={{ gap: 8, padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--soft)" }} aria-label={`${draft ? "Enviar para" : "Publicar no"} ${p.networkLabel}`}>
@@ -70,18 +77,54 @@ export default function PublishPanel(p: {
           Depois de publicar, marque como postado aqui.
         </div>
       )}
-      {showForm && (
+      {showForm && armed && auto && (
+        <div className="col" style={{ gap: 8 }}>
+          <p className="alert ok" role="status" style={{ margin: 0 }}>
+            <b>Publicação confirmada.</b> O app publica sozinho em <b>{auto.when}</b>, em {info.connected} ({p.networkLabel}). Fique tranquilo: se faltar algo na hora, ele não publica e avisa.
+          </p>
+          {p.dirty && <p className="muted small" style={{ margin: 0 }}>Se você salvar mudanças neste post, a confirmação é desfeita e precisa ser feita de novo.</p>}
+          <div className="row">
+            <button className="btn" type="submit" formAction={cancelConfirmation.bind(null, p.id)} formNoValidate>Cancelar confirmação</button>
+          </div>
+        </div>
+      )}
+      {showForm && !armed && (
         <>
+          {auto?.missed && (
+            <p className="alert err" role="alert" style={{ margin: 0 }}>
+              <b>Perdeu o horário ({auto.when}).</b> O app não publicou, porque passou da tolerância. Ajuste o horário e confirme de novo, ou publique agora.
+            </p>
+          )}
           {info.state === "failed" && info.error && (
             <p className="alert err" role="alert" style={{ margin: 0 }}>{draft ? "Não enviou" : "Não publicou"}: {info.error}</p>
           )}
           {p.dirty && <p className="muted small" style={{ margin: 0 }}>Salve a legenda antes de {draft ? "enviar" : "publicar"}: o app usa o texto que está salvo.</p>}
-          {!confirming ? (
+          {confirming === null ? (
             <div className="row">
-              <button className={drafted ? "btn" : "btn primary"} type="button" disabled={p.dirty} onClick={() => setConfirming(true)}>
+              {auto && (
+                <button className="btn primary" type="button" disabled={p.dirty} onClick={() => setConfirming("auto")}>
+                  Confirmar publicação
+                </button>
+              )}
+              <button className={drafted || auto ? "btn" : "btn primary"} type="button" disabled={p.dirty} onClick={() => setConfirming("now")}>
                 {info.state === "failed" ? "Tentar de novo" : drafted ? "Enviar de novo" : draft ? "Enviar como rascunho" : "Publicar agora"}
               </button>
               <span className="muted small">em {info.connected}</span>
+              {auto?.missed && (
+                <button className="btn" type="submit" formAction={cancelConfirmation.bind(null, p.id)} formNoValidate>Remover confirmação</button>
+              )}
+            </div>
+          ) : confirming === "auto" && auto ? (
+            <div className="col" style={{ gap: 8 }}>
+              <p style={{ margin: 0 }}>
+                Confirmar que este post está pronto? O app vai publicar <b>sozinho</b>, em <b>{auto.when}</b>, em <b>{info.connected}</b> ({p.networkLabel}), com a legenda e a mídia que estão salvas. Se você mudar horário, legenda, mídia ou título depois, a confirmação é desfeita. Dá para cancelar antes do horário.
+              </p>
+              <div className="row">
+                <button className="btn primary" type="submit" formAction={confirmPublication.bind(null, p.id)} formNoValidate>
+                  Confirmar publicação
+                </button>
+                <button className="btn" type="button" onClick={() => setConfirming(null)}>Voltar</button>
+              </div>
             </div>
           ) : (
             <div className="col" style={{ gap: 8 }}>
@@ -100,7 +143,7 @@ export default function PublishPanel(p: {
                 <button className="btn primary" type="submit" formAction={publishTarget.bind(null, p.id)} formNoValidate>
                   {draft ? "Confirmar e enviar" : "Confirmar e publicar"}
                 </button>
-                <button className="btn" type="button" onClick={() => setConfirming(false)}>Cancelar</button>
+                <button className="btn" type="button" onClick={() => setConfirming(null)}>Cancelar</button>
               </div>
             </div>
           )}

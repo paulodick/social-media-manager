@@ -153,6 +153,16 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         check (publish_state in ('idle','publishing','published','failed','drafted'));
     `,
   },
+  {
+    version: 12,
+    sql: `
+      -- Publicação automática por horário: só publica sozinho o destino que a pessoa CONFIRMOU (auto_confirmed_at).
+      -- Nulo = não confirmado (o padrão, inclusive para tudo o que já existia). auto_notified_at evita avisar duas vezes.
+      alter table post_targets add column auto_confirmed_at timestamptz;
+      alter table post_targets add column auto_notified_at timestamptz;
+      create index post_targets_auto_idx on post_targets (scheduled_at) where auto_confirmed_at is not null;
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

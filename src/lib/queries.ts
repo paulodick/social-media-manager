@@ -1,6 +1,7 @@
 import { db } from "./db";
 import type { MediaMeta } from "./checks";
 import { TZ } from "./dates";
+import { AUTO_WINDOW_MIN } from "./auto-publish";
 
 export type Client = {
   id: string;
@@ -53,6 +54,10 @@ export type Target = {
   external_id: string | null;
   external_url: string;
   publish_error: string;
+  /** A pessoa confirmou a publicação automática (o app publica sozinho no horário). */
+  auto_confirmed: boolean;
+  /** Confirmado, mas o horário passou da janela de tolerância sem publicar. */
+  auto_missed: boolean;
 };
 
 const TARGET_SELECT = `
@@ -68,7 +73,10 @@ const TARGET_SELECT = `
          t.external_id, t.external_url,
          case when t.publish_state = 'publishing' and t.publish_started_at < now() - interval '15 minutes'
               then 'A publicação não terminou (o app pode ter reiniciado). Confira na rede antes de tentar de novo.'
-              else t.publish_error end as publish_error
+              else t.publish_error end as publish_error,
+         (t.auto_confirmed_at is not null) as auto_confirmed,
+         (t.auto_confirmed_at is not null and t.status <> 'posted' and t.publish_state = 'idle'
+            and t.scheduled_at < now() - interval '${AUTO_WINDOW_MIN} minutes') as auto_missed
   from post_targets t
   join posts p on p.id = t.post_id
   join clients c on c.id = p.client_id`;

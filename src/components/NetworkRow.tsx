@@ -287,7 +287,7 @@ export default function NetworkRow({
               <div className="row actions">
                 {primary && (
                   <button className="btn primary" type="submit" name="status" value={`${existing.id}:${primary}`}
-                    title={primary === "scheduled" ? "Só registra a situação. A publicação automática por horário ainda não existe." : undefined}>
+                    title={primary === "scheduled" ? "Só registra a situação. Para o app publicar sozinho no horário, use Confirmar publicação." : undefined}>
                     {LABEL[primary]}
                   </button>
                 )}
@@ -356,6 +356,9 @@ export default function NetworkRow({
             {o.networkLabel} · {o.formatLabel}
           </h3>
           <span className={`pill ${existing.late ? "late" : existing.status}`}>{existing.late ? "Atrasado" : STATUS_LABEL[existing.status]} · {existing.time}</span>
+          {existing.publish?.auto?.confirmed && existing.status !== "posted" && !existing.publish.auto.missed && existing.publish.state === "idle" && (
+            <span className="pill posted">Publica sozinho</span>
+          )}
         </div>
         <div className="target-fields">{fields}</div>
       </div>

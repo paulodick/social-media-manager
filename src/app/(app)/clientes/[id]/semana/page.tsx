@@ -157,6 +157,8 @@ export default async function ClientWeek({
                       <span className="tags">
                         <span className={`wtag ${r.state}`}>{r.label}</span>
                         {t.late && t.status !== "posted" && <span className="wtag late">Atrasado</span>}
+                        {t.auto_confirmed && t.status !== "posted" && t.publish_state === "idle" && !t.auto_missed && <span className="wtag ok">Publica sozinho</span>}
+                        {t.auto_missed && <span className="wtag late">Perdeu o horário</span>}
                         {t.publish_state === "publishing" && <span className="wtag warn">Publicando</span>}
                         {t.publish_state === "failed" && <span className="wtag late">Falhou ao publicar</span>}
                         {t.publish_state === "drafted" && t.status !== "posted" && <span className="wtag warn">Rascunho enviado</span>}

@@ -10,6 +10,7 @@ import ConnectionNotice from "@/components/ConnectionNotice";
 import { clientLinkedinHealth, clientMetaHealth, clientTiktokHealth } from "@/lib/connection-health";
 import { getClient, listConnected, listDayNotes, listTargets } from "@/lib/queries";
 import { canAutoPublish } from "@/lib/publisher";
+import { canAutoSchedule, whenLabel } from "@/lib/auto-publish";
 import { pickerOptions } from "@/lib/picker-options";
 
 export default async function DayPage({
@@ -74,7 +75,13 @@ export default async function DayPage({
             pathNote,
             folderId: t.post_folder_id,
             publish: canAutoPublish(t.network, t.format)
-              ? { connected: connected[t.network] ?? null, state: t.publish_state, url: t.external_url, error: t.publish_error }
+              ? {
+                  connected: connected[t.network] ?? null,
+                  state: t.publish_state,
+                  url: t.external_url,
+                  error: t.publish_error,
+                  auto: { eligible: canAutoSchedule(t.network, t.format), confirmed: t.auto_confirmed, missed: t.auto_missed, when: whenLabel(t.day, t.time) },
+                }
               : undefined,
           };
         }),
