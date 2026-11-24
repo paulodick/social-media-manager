@@ -184,7 +184,7 @@ export async function enqueueSlots(
           r.format,
           r.day,
           times[i],
-          r.caption_draft.slice(0, 4000),
+          r.caption_draft.slice(0, 70000),
           linkUrl,
           linkId,
           linkMeta ? JSON.stringify(linkMeta) : null,

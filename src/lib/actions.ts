@@ -333,7 +333,7 @@ export async function savePost(formData: FormData): Promise<void> {
     fresh.map(async (key) => {
       const [network, format] = key.split(":");
       const { day, time } = when(key);
-      const caption = text(formData, `caption__${key}`, 4000);
+      const caption = text(formData, `caption__${key}`, 70000);
       const driveUrl = text(formData, `drive__${key}`, 500);
       // Miniatura só existe nos formatos que a pedem (config `thumb`); título só nos que têm (config `title`).
       const thumbUrl = isNetwork(network) && NETWORKS[network].formats[format]?.thumb ? text(formData, `thumb__${key}`, 500) : "";
@@ -689,7 +689,7 @@ export async function generateCaption(input: {
     format,
     plan: String(input.plan ?? "").slice(0, 4000),
     brief: String(input.brief ?? "").slice(0, 4000),
-    captionDraft: String(input.draft ?? "").slice(0, 4000),
+    captionDraft: String(input.draft ?? "").slice(0, 70000),
     custom: String(input.custom ?? "").slice(0, 2000),
     tones: toneCheck.tones,
     bilingual: !!input.bilingual,

@@ -226,7 +226,7 @@ export default function NetworkRow({
 
         <div className="col">
           <label className="f" htmlFor={`${id}-c`}>{o.captionLabel} — {o.networkLabel} {o.formatLabel}</label>
-          <textarea id={`${id}-c`} ref={capRef} name={`caption__${k}`} rows={isNew ? 4 : 7} className="auto-grow" value={caption} disabled={off}
+          <textarea id={`${id}-c`} ref={capRef} name={`caption__${k}`} rows={isNew ? 4 : 7} maxLength={70000} className="auto-grow" value={caption} disabled={off}
             onChange={(e) => setCaption(e.target.value)} />
           <div className="row between small muted">
             <span style={{ fontVariantNumeric: "tabular-nums" }}>

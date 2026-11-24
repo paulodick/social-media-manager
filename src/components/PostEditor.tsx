@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { NETWORKS, folderGroup, isNetwork } from "@/config/networks";
 import { savePost } from "@/lib/actions";
+import { fmtNumber } from "@/lib/checks";
 import type { PickerOption } from "@/lib/picker-options";
 import type { PromptClient } from "@/lib/prompt";
 import NetworkRow, { type ExistingTarget, type Inherited } from "./NetworkRow";
@@ -137,11 +138,12 @@ export default function PostEditor({
         <h2 id={`${px}s1`}>1. Ideia do post e planejamento</h2>
         <div className="col">
           <label className="f" htmlFor={`${px}note`}>A ideia do post / o que está planejado para {editing ? "este dia" : "esta data"}</label>
-          <textarea id={`${px}note`} name="note" rows={4} value={planText} onChange={(e) => setPlanText(e.target.value)}
+          <textarea id={`${px}note`} name="note" rows={4} maxLength={4000} value={planText} onChange={(e) => setPlanText(e.target.value)}
             placeholder="Ex.: Reels sobre o plantão 24h. Pedir depoimento ao cliente." />
-          <span className="muted small">
-            Aparece no calendário{editing ? " e vale para o dia inteiro" : ""}. Dá para salvar só o texto, sem escolher rede, e voltar depois para subir mídia e legendas.
-          </span>
+          <div className="row between small muted">
+            <span>Aparece no calendário{editing ? " e vale para o dia inteiro" : ""}. Dá para salvar só o texto, sem escolher rede, e voltar depois para subir mídia e legendas.</span>
+            <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fmtNumber(planText.length)} de {fmtNumber(4000)}</span>
+          </div>
         </div>
         {!editing && (
           <div className="grid2">
@@ -167,12 +169,15 @@ export default function PostEditor({
         <ToneSelector initial={tones} onChange={setToneIds} />
         <div className="col">
           <label className="f" htmlFor={`${px}caption_brief`}>Descrição da legenda</label>
-          <textarea id={`${px}caption_brief`} name="caption_brief" rows={4} value={briefText} onChange={(e) => setBriefText(e.target.value)}
+          <textarea id={`${px}caption_brief`} name="caption_brief" rows={4} maxLength={4000} value={briefText} onChange={(e) => setBriefText(e.target.value)}
             placeholder="Ex.: Falar do plantão 24h, dizer que atendemos clínicas e hospitais e fechar chamando para o WhatsApp." />
-          <span className="muted small" style={{ maxWidth: "70ch" }}>
-            Escreva o que quer na legenda, nem que seja um rascunho. Ao gerar a legenda de cada rede, o app usa este texto junto com a
-            ideia do item 1, os tons de voz, o tom de voz e as observações do cadastro do cliente.
-          </span>
+          <div className="row between small muted">
+            <span style={{ maxWidth: "70ch" }}>
+              Escreva o que quer na legenda, nem que seja um rascunho. Ao gerar a legenda de cada rede, o app usa este texto junto com a
+              ideia do item 1, os tons de voz, o tom de voz e as observações do cadastro do cliente.
+            </span>
+            <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fmtNumber(briefText.length)} de {fmtNumber(4000)}</span>
+          </div>
         </div>
       </section>
 

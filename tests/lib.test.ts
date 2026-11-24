@@ -355,3 +355,10 @@ test("formatSavedPublishSummary resume arquivo e data/horário salvos", () => {
     "sem arquivo · 23/11 às 09:00",
   );
 });
+
+test("YouTube aceita legenda de 4.800 caracteres sem aviso", () => {
+  const ok = captionChecks("youtube", "a".repeat(4800));
+  assert.equal(ok[0].level, "ok");
+  const warn = captionChecks("youtube", "a".repeat(5001));
+  assert.equal(warn[0].level, "warn");
+});
