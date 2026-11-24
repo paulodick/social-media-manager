@@ -109,24 +109,22 @@ export default function PillarManager({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = (await res.json()) as { created?: Pillar[]; skipped_duplicates?: string[]; error?: string };
+      const j = (await res.json()) as { created?: Pillar[]; updated?: Pillar[]; error?: string };
       if (!res.ok) {
         setError(j.error ?? "Não foi possível importar os pilares.");
         return;
       }
       const created = j.created ?? [];
-      if (created.length) {
-        const next = [...pillars, ...created];
-        setPillars(next);
-        onChange?.(next);
-      }
+      const updated = j.updated ?? [];
+      const byId = new Map<string, Pillar>(pillars.map((p) => [p.id, p]));
+      for (const p of [...updated, ...created]) byId.set(p.id, p);
+      const next = Array.from(byId.values());
+      setPillars(next);
+      onChange?.(next);
       setJsonText("");
       setShowImport(false);
       setSuggestions([]);
-      setMsg(
-        `Pilares importados: ${created.length}.` +
-          (j.skipped_duplicates?.length ? ` Ignorados (já existiam): ${j.skipped_duplicates.join(", ")}.` : ""),
-      );
+      setMsg(`Pilares importados: ${created.length}. Atualizados: ${updated.length}.`);
     } catch {
       setError("Falha de conexão ao importar pilares.");
     } finally {

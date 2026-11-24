@@ -1,5 +1,5 @@
-import { isPgUniqueViolation, jsonError, readJsonBody, requireApiAuth, requireClient } from "@/lib/editorial-api";
-import { createPillar, listPillars } from "@/lib/editorial-queries";
+import { jsonError, readJsonBody, requireApiAuth, requireClient } from "@/lib/editorial-api";
+import { listPillars, upsertPillar } from "@/lib/editorial-queries";
 import { extractJsonPayload, parsePillarsInput } from "@/lib/editorial-rules";
 import type { Pillar } from "@/lib/editorial-types";
 
@@ -30,27 +30,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
   const existing = await listPillars(clientId);
   let nextPos = existing.length;
   const created: Pillar[] = [];
-  const skippedDuplicates: string[] = [];
+  const updated: Pillar[] = [];
 
   for (const p of parsed.pillars) {
-    try {
-      const row = await createPillar(clientId, {
-        name: p.name,
-        description: p.description,
-        color: p.color,
-        weight_pct: p.weight_pct,
-        weekly_target: p.weekly_target,
-        position: nextPos++,
-      });
-      created.push(row);
-    } catch (e) {
-      if (isPgUniqueViolation(e)) {
-        skippedDuplicates.push(p.name);
-      } else {
-        throw e;
-      }
-    }
+    const res = await upsertPillar(clientId, {
+      name: p.name,
+      description: p.description,
+      color: p.color,
+      weight_pct: p.weight_pct,
+      weekly_target: p.weekly_target,
+      position: nextPos++,
+    });
+    if (res.action === "created") created.push(res.pillar);
+    else updated.push(res.pillar);
   }
 
-  return Response.json({ created, skipped_duplicates: skippedDuplicates }, { status: 201 });
+  return Response.json({ created, updated }, { status: 201 });
 }

@@ -68,6 +68,37 @@ export async function createPillar(
   return r.rows[0];
 }
 
+export async function upsertPillar(
+  clientId: string,
+  input: { name: string; description?: string; color?: string; weight_pct?: number; weekly_target?: number | null; position?: number },
+): Promise<{ pillar: Pillar; action: "created" | "updated" }> {
+  const pool = await db();
+  const r = await pool.query<Pillar & { inserted: boolean }>(
+    `insert into content_pillars (client_id, name, description, color, weight_pct, weekly_target, position)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (client_id, name) do update
+       set description = excluded.description,
+           color = excluded.color,
+           weight_pct = excluded.weight_pct,
+           weekly_target = coalesce(excluded.weekly_target, content_pillars.weekly_target),
+           archived_at = null,
+           updated_at = now()
+     returning id, client_id, name, description, color, weight_pct, weekly_target, position,
+               archived_at::text as archived_at, (xmax = 0) as inserted`,
+    [
+      clientId,
+      input.name.trim(),
+      (input.description ?? "").trim(),
+      input.color ?? "#596579",
+      input.weight_pct ?? 0,
+      input.weekly_target ?? null,
+      input.position ?? 0,
+    ],
+  );
+  const { inserted, ...pillar } = r.rows[0];
+  return { pillar, action: inserted ? "created" : "updated" };
+}
+
 export async function updatePillar(
   id: string,
   patch: Partial<{
