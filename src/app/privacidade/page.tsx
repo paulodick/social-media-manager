@@ -8,6 +8,8 @@ export const metadata = { title: "Política de Privacidade · Social Media Manag
 // Página pública (fica fora do grupo (app), então não pede login). O endereço é o que a Meta pede no cadastro do app.
 export default function Privacidade() {
   const contato = process.env.PRIVACY_CONTACT_EMAIL?.trim();
+  const geminiOn = !!process.env.GEMINI_API_KEY?.trim();
+  const claudeOn = !!process.env.ANTHROPIC_API_KEY?.trim();
   return (
     <main id="conteudo" tabIndex={-1} className="legal">
       <h1>Política de Privacidade</h1>
@@ -59,10 +61,18 @@ export default function Privacidade() {
         <li><b>LinkedIn:</b> recebe o texto e a mídia do post e o token, para publicar no perfil autorizado.</li>
         <li><b>TikTok:</b> recebe o vídeo ou a foto do post (e, nas fotos, o texto) e o token, para entregar o rascunho na caixa de entrada da conta autorizada. A publicação é feita pela própria pessoa, no app do TikTok.</li>
         <li><b>Google Drive:</b> lê os arquivos de mídia e cria as pastas dos posts, com a permissão dada pela empresa.</li>
-        <li>
-          <b>Anthropic (Claude):</b> se o recurso &quot;Gerar legenda&quot; estiver ligado, o texto do pedido (dados de marca do cliente, ideia do
-          post e legenda) é enviado à API para gerar a legenda. Nenhuma mídia é enviada.
-        </li>
+        {geminiOn && (
+          <li>
+            <b>Google (Gemini):</b> quando os recursos de IA estiverem ligados, os textos dos pedidos (dados de marca do cliente,
+            ideia do post, roteiros e legendas) são enviados à API do Google Gemini para gerar ou refinar textos e cronogramas. Nenhuma mídia é enviada.
+          </li>
+        )}
+        {(claudeOn || !geminiOn) && (
+          <li>
+            <b>Anthropic (Claude):</b> se o recurso &quot;Gerar legenda&quot; estiver ligado, o texto do pedido (dados de marca do cliente, ideia do
+            post e legenda) é enviado à API para gerar a legenda. Nenhuma mídia é enviada.
+          </li>
+        )}
         <li><b>Render:</b> hospedagem do aplicativo e do banco de dados.</li>
       </ul>
 

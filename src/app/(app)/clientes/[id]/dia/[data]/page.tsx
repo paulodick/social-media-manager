@@ -5,8 +5,7 @@ import { BackLink, Flash } from "@/components/ui";
 import { acceptedFolders, isNetwork, targetFolders } from "@/config/networks";
 import { addDays, dayFolders, dayLabel, isDay, monthOf, weekStart } from "@/lib/dates";
 import { folderPathFromRoot } from "@/lib/drive";
-import { aiConfigured } from "@/lib/ai";
-import { editorialAiConfigured } from "@/lib/editorial-ai";
+import { activeAiProvider } from "@/lib/ai";
 import ConnectionNotice from "@/components/ConnectionNotice";
 import { clientLinkedinHealth, clientMetaHealth, clientTiktokHealth } from "@/lib/connection-health";
 import { getClient, listConnected, listDayNotes, listTargets } from "@/lib/queries";
@@ -128,7 +127,7 @@ export default async function DayPage({
           client={promptClient}
           canCreateFolder={!!client.drive_folder_id}
           options={options}
-          aiEnabled={aiConfigured() || editorialAiConfigured()}
+          aiEnabled={activeAiProvider() !== null}
           volta={volta}
           day={day}
           defaultTime={p.targets[0]?.time ?? "10:00"}

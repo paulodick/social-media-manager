@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import type { NetworkId } from "@/config/networks";
+import { buildCaptionPromptAction } from "@/lib/actions";
 import { buildCaptionPrompt, type PromptClient } from "@/lib/prompt";
 import GenerateButton from "./GenerateButton";
 
@@ -9,7 +10,7 @@ import GenerateButton from "./GenerateButton";
  * Ferramentas de legenda de um destino (rede/formato), usadas no novo post e na tela do dia:
  *  - "Gerar legenda": cria a legenda com a ideia do post (item 1), a descrição da legenda (item 2), o tom de voz e as
  *    observações do cliente e os tons de voz marcados para o post;
- *  - "Copiar pedido para a IA": o mesmo pedido, para colar no Claude ou no Gemini;
+ *  - "Copiar pedido para a IA": o mesmo pedido (montado no servidor, com a memória aprendida), para colar no Claude ou no Gemini;
  *  - "Personalizar legenda" (recolhido): pedidos de ajuste. Vale antes da primeira legenda e depois, e o botão
  *    "Nova legenda" refaz a legenda levando o ajuste em conta.
  */
@@ -40,20 +41,52 @@ export default function CaptionTools({
   const [custom, setCustom] = useState("");
   const [bilingual, setBilingual] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
   const customId = useId();
 
   async function copyPrompt() {
-    const text = buildCaptionPrompt({
-      client,
-      network: network as NetworkId,
-      format,
-      plan: getPlan(),
-      brief: getBrief(),
-      captionDraft: getCaption(),
-      custom,
-      tones: getTones(),
-      bilingual,
-    });
+    setCopying(true);
+    let text = "";
+    try {
+      const res = await buildCaptionPromptAction({
+        clientId,
+        network,
+        format,
+        plan: getPlan(),
+        brief: getBrief(),
+        draft: getCaption(),
+        custom,
+        tones: getTones(),
+        bilingual,
+      });
+      text = "prompt" in res
+        ? res.prompt
+        : buildCaptionPrompt({
+            client,
+            network: network as NetworkId,
+            format,
+            plan: getPlan(),
+            brief: getBrief(),
+            captionDraft: getCaption(),
+            custom,
+            tones: getTones(),
+            bilingual,
+          });
+    } catch {
+      text = buildCaptionPrompt({
+        client,
+        network: network as NetworkId,
+        format,
+        plan: getPlan(),
+        brief: getBrief(),
+        captionDraft: getCaption(),
+        custom,
+        tones: getTones(),
+        bilingual,
+      });
+    } finally {
+      setCopying(false);
+    }
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -80,8 +113,13 @@ export default function CaptionTools({
     <div className="col" style={{ gap: 8 }}>
       <div className="row" style={{ gap: 8 }}>
         {aiEnabled && <GenerateButton {...common} label="Gerar Legenda com IA" />}
-        <button type="button" className="btn" onClick={copyPrompt}>{copied ? "Copiado" : "Copiar pedido para a IA"}</button>
+        <button type="button" className="btn" disabled={copying} onClick={copyPrompt}>
+          {copying ? "Montando pedido…" : copied ? "Copiado" : "Copiar pedido para a IA"}
+        </button>
       </div>
+      <span className="muted small">
+        O app aprende com as edições feitas nas legendas geradas para adaptar os próximos pedidos deste cliente.
+      </span>
       <label className="opt" style={{ fontSize: 13 }}>
         <input type="checkbox" checked={bilingual} onChange={(e) => setBilingual(e.target.checked)} />
         <span>Versão bilíngue (Português + Inglês)</span>

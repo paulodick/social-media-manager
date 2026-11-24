@@ -6,7 +6,7 @@ import { captionChecks, mediaChecks, thumbChecks, titleChecks, readiness, countH
 import { hashPassword, verifyPassword, passwordProblem } from "../src/lib/password.ts";
 import sharp from "sharp";
 import { processLogo } from "../src/lib/logo-image.ts";
-import { explainAiError } from "../src/lib/ai.ts";
+import { activeAiProvider, explainAiError } from "../src/lib/ai.ts";
 import { buildCaptionPrompt, buildToneBlock, splitGenerated } from "../src/lib/prompt.ts";
 import { TONES, MAX_TONES, validateTones, toneBlockedReason } from "../src/config/tones.ts";
 import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders, weekStart, weekDays, weekLabel, weekdayShort } from "../src/lib/dates.ts";
@@ -382,4 +382,28 @@ test("deleteTargetBlocker: recusa publishing, published ou external_id preenchid
   assert.ok(deleteTargetBlocker({ publish_state: "publishing", external_id: null }));
   assert.ok(deleteTargetBlocker({ publish_state: "published", external_id: null }));
   assert.ok(deleteTargetBlocker({ publish_state: "idle", external_id: "17890" }));
+});
+
+test("activeAiProvider: prioriza Gemini, cai para Claude e devolve null sem chaves", () => {
+  const prevGemini = process.env.GEMINI_API_KEY;
+  const prevAnthropic = process.env.ANTHROPIC_API_KEY;
+  try {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    assert.equal(activeAiProvider(), null);
+
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    assert.equal(activeAiProvider(), "claude");
+
+    process.env.GEMINI_API_KEY = "AIza-test";
+    assert.equal(activeAiProvider(), "gemini");
+
+    delete process.env.ANTHROPIC_API_KEY;
+    assert.equal(activeAiProvider(), "gemini");
+  } finally {
+    if (prevGemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = prevGemini;
+    if (prevAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = prevAnthropic;
+  }
 });

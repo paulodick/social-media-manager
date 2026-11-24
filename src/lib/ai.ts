@@ -3,7 +3,16 @@
 
 export const AI_MODEL = "claude-haiku-5-5";
 
-export const aiConfigured = (): boolean => !!process.env.ANTHROPIC_API_KEY;
+export type AiProvider = "gemini" | "claude";
+
+/** Fornecedor de IA ativo para legendas: Gemini tem prioridade se GEMINI_API_KEY estiver definida. */
+export function activeAiProvider(): AiProvider | null {
+  if (process.env.GEMINI_API_KEY?.trim()) return "gemini";
+  if (process.env.ANTHROPIC_API_KEY?.trim()) return "claude";
+  return null;
+}
+
+export const aiConfigured = (): boolean => activeAiProvider() !== null;
 
 /** Traduz um erro da API para uma frase em português. Função pura, com teste. */
 export function explainAiError(status: number, message: string): string {

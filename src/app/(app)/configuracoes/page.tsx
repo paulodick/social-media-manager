@@ -3,6 +3,7 @@ import { hasPassword } from "@/lib/auth";
 import { driveConfigured, driveStatus, folderUrl, getFolderName, serviceAccountEmail } from "@/lib/drive";
 import { getDriveRoot } from "@/lib/drive-root";
 import { saveDriveRoot } from "@/lib/actions";
+import { activeAiProvider } from "@/lib/ai";
 import { Flash } from "@/components/ui";
 
 async function dbOk(): Promise<boolean> {
@@ -33,6 +34,8 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const password = database && (await hasPassword());
   const rootId = database ? await getDriveRoot().catch(() => null) : null;
   const root = rootId && driveConfigured() ? await getFolderName(rootId) : null;
+  const aiProvider = activeAiProvider();
+  const aiLabel = aiProvider === "gemini" ? "Gemini" : aiProvider === "claude" ? "Claude" : null;
   return (
     <main id="conteudo" tabIndex={-1} className="main narrow">
       <h1>Configurações</h1>
@@ -63,13 +66,13 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           }
         />
         <Row
-          ok={!!process.env.ANTHROPIC_API_KEY}
+          ok={aiProvider !== null}
           label="Legendas com IA"
-          good="ativas (botão Gerar legenda)."
-          problem='desligadas. Para ligar, defina a variável ANTHROPIC_API_KEY. Enquanto isso, "Copiar pedido para a IA" funciona.'
+          good={`ativas (${aiLabel}).`}
+          problem='desligadas. Para ligar, defina GEMINI_API_KEY ou ANTHROPIC_API_KEY. Enquanto isso, "Copiar pedido para a IA" funciona.'
         />
         <Row
-          ok={!!process.env.GEMINI_API_KEY}
+          ok={!!process.env.GEMINI_API_KEY?.trim()}
           label="Planejamento Editorial com IA (Gemini)"
           good="ativo (classificação e geração de calendário)."
           problem='desligado. Para ligar, defina a variável GEMINI_API_KEY. Enquanto isso, "Copiar pedido para a IA" funciona.'
@@ -93,7 +96,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <li>Senha: {process.env.APP_PASSWORD ? "definida pela variável APP_PASSWORD (tem prioridade)." : "guardada no banco, definida na primeira configuração."}</li>
             <li>Segurança do login: variável SESSION_SECRET.</li>
             <li>Google Drive: {driveConfigured() ? `conta de serviço ${serviceAccountEmail()}` : "variável GOOGLE_SERVICE_ACCOUNT_JSON."}</li>
-            <li>Legendas com IA: variável ANTHROPIC_API_KEY.</li>
+            <li>Legendas com IA: {aiProvider === "gemini" ? "Gemini (GEMINI_API_KEY)." : aiProvider === "claude" ? "Claude (ANTHROPIC_API_KEY)." : "variável GEMINI_API_KEY ou ANTHROPIC_API_KEY."}</li>
             <li>Planejamento Editorial com IA: variável GEMINI_API_KEY.</li>
             <li>Aviso por e-mail: variáveis RESEND_API_KEY e NOTIFY_EMAIL_TO.</li>
           </ul>

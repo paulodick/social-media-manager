@@ -11,9 +11,9 @@ import { ensureTargetFolders, folderNames, resolveDrive } from "./post-folders";
 import { formatMovedTargetsNotice, resolveEditRedirect } from "./post-redirect";
 import { insertPostIdempotent, parseSubmissionId } from "./post-submission";
 import { getDriveRoot, setDriveRoot } from "./drive-root";
-import { generateText, type AiResult } from "./ai";
+import { activeAiProvider, generateText, type AiResult } from "./ai";
 import { buildMemoryBlock, listRecentAiMemory, recordAiMemory, summarizeCaptionDiff } from "./ai-memory";
-import { editorialAiConfigured, generateGeminiText } from "./editorial-ai";
+import { generateGeminiText } from "./editorial-ai";
 import { buildCaptionPrompt } from "./prompt";
 import { autoBlocker, checkPublishable, startPublish } from "./publisher";
 import { canAutoSchedule } from "./auto-publish";
@@ -712,11 +712,7 @@ export async function deleteTarget(targetId: string, formData: FormData): Promis
   redirect(withParam(back, "ok", "Destino excluído."));
 }
 
-/**
- * Gera a legenda de um destino pela API. Chamada direto do navegador (botão "Gerar legenda").
- * O tom de voz vem do banco, não do navegador. Só o planejamento e o rascunho vêm da tela.
- */
-export async function generateCaption(input: {
+type CaptionPromptInput = {
   clientId: string;
   network: string;
   format: string;
@@ -734,12 +730,13 @@ export async function generateCaption(input: {
   bilingual?: boolean;
   /** Opcional: contexto editorial (pilar/formato/roteiro). */
   editorialContext?: string;
-}): Promise<AiResult> {
-  await requireAuth();
+};
+
+async function prepareCaptionPrompt(input: CaptionPromptInput): Promise<{ prompt: string; format: string; network: string } | { error: string }> {
   const network = String(input.network);
   const format = String(input.format);
   if (!isNetwork(network) || !isFormat(network, format)) return { error: "rede ou formato inválido." };
-  if (!/^[0-9a-f-]{36}$/i.test(String(input.clientId))) return { error: "cliente inválido." };
+  if (!isValidUuid(String(input.clientId))) return { error: "cliente inválido." };
   const toneCheck = validateTones(Array.isArray(input.tones) ? input.tones.map(String) : []);
   if ("error" in toneCheck) return { error: toneCheck.error };
   const pool = await db();
@@ -765,13 +762,37 @@ export async function generateCaption(input: {
     editorialContext: input.editorialContext,
     memoryBlock,
   });
-  const res = editorialAiConfigured() ? await generateGeminiText(prompt) : await generateText(prompt);
+  return { prompt, format, network };
+}
+
+/**
+ * Monta no servidor o mesmo pedido enviado à IA (incluindo o bloco de memória aprendida)
+ * para o botão "Copiar pedido para a IA".
+ */
+export async function buildCaptionPromptAction(input: CaptionPromptInput): Promise<{ prompt: string } | { error: string }> {
+  await requireAuth();
+  const prep = await prepareCaptionPrompt(input);
+  if ("error" in prep) return prep;
+  return { prompt: prep.prompt };
+}
+
+/**
+ * Gera a legenda de um destino pela API. Chamada direto do navegador (botão "Gerar legenda").
+ * O tom de voz vem do banco, não do navegador. Só o planejamento e o rascunho vêm da tela.
+ */
+export async function generateCaption(input: CaptionPromptInput): Promise<AiResult> {
+  await requireAuth();
+  const prep = await prepareCaptionPrompt(input);
+  if ("error" in prep) return prep;
+  const provider = activeAiProvider();
+  if (!provider) return { error: "a chave da IA ainda não foi cadastrada (GEMINI_API_KEY ou ANTHROPIC_API_KEY no Render)." };
+  const res = provider === "gemini" ? await generateGeminiText(prep.prompt) : await generateText(prep.prompt);
   if ("text" in res) {
     await recordAiMemory({
       workspaceId: input.clientId,
       eventType: "caption_generated",
-      format,
-      contentSummary: String(input.brief || input.plan || `${network}/${format}`).slice(0, 300),
+      format: prep.format,
+      contentSummary: String(input.brief || input.plan || `${prep.network}/${prep.format}`).slice(0, 300),
     }).catch(() => {});
   }
   return res;
