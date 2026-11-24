@@ -10,6 +10,7 @@ import { ensureClientFolders, ensureFolderPath, folderUrl, getFolderName, parseD
 import { ensureTargetFolders, folderNames, resolveDrive } from "./post-folders";
 import { formatMovedTargetsNotice, resolveEditRedirect } from "./post-redirect";
 import { insertPostIdempotent, parseSubmissionId } from "./post-submission";
+import { resolveDayNoteSave } from "./day-note";
 import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { activeAiProvider, generateText, type AiResult } from "./ai";
 import { buildMemoryBlock, listRecentAiMemory, recordAiMemory, summarizeCaptionDiff } from "./ai-memory";
@@ -241,9 +242,10 @@ export async function savePost(formData: FormData): Promise<void> {
   const back = editing ? safePath(text(formData, "volta", 300), "/") : newPath;
   const fail = (msg: string): never => redirect(withParam(back, "erro", msg));
 
-  const note = text(formData, "note", 4000);
+  const hasNoteField = formData.has("note");
+  const note = hasNoteField ? text(formData, "note", 4000) : "";
   const noteDay = editing ? text(formData, "note_day", 10) : text(formData, "date", 10);
-  if (!isDay(noteDay)) fail("Informe uma data válida.");
+  if ((!editing || hasNoteField) && !isDay(noteDay)) fail("Informe uma data válida.");
 
   const keys = formData
     .getAll("target")
@@ -265,17 +267,15 @@ export async function savePost(formData: FormData): Promise<void> {
   if (!owner?.rowCount) redirect("/");
   const root = owner.rows[0].drive_folder_id;
 
-  // Nota do dia. Novo post: a ideia já salva para a data vem preenchida (note_from); se a data é a mesma, o texto
-  // enviado é a ideia inteira (substitui); em outra data, acrescenta. Edição: substitui quando a pessoa mudou o texto.
+  // Nota do dia: só grava quando o texto foi realmente editado em relação ao original (note_orig).
   const noteFrom = text(formData, "note_from", 10);
   const noteOrig = text(formData, "note_orig", 4000);
-  const noteChanged = editing ? note !== noteOrig : note !== "";
-  const noteReplace = editing || noteFrom === noteDay;
+  const noteDecision = resolveDayNoteSave({ editing, hasNoteField, note, noteOrig, noteFrom, noteDay });
 
   // Só planejamento: guarda o texto na data e volta para o dia. Não cria post nem pasta.
   if (!editing && !newKeys.length) {
-    if (!note) fail("Escreva o planejamento do dia ou escolha pelo menos uma rede e um formato.");
-    await saveNote(pool, clientId, noteDay, note, noteReplace);
+    if (!note && !noteDecision.shouldSave) fail("Escreva o planejamento do dia ou escolha pelo menos uma rede e um formato.");
+    if (noteDecision.shouldSave) await saveNote(pool, clientId, noteDay, note, noteDecision.replace);
     revalidatePath("/", "layout");
     redirect(`/clientes/${clientId}?mes=${monthOf(noteDay)}`);
   }
@@ -457,7 +457,7 @@ export async function savePost(formData: FormData): Promise<void> {
   if (duplicate) {
     redirect(`/clientes/${clientId}/dia/${created[0]?.day ?? noteDay}`);
   }
-  if (noteChanged) await saveNote(pool, clientId, noteDay, note, noteReplace);
+  if (noteDecision.shouldSave) await saveNote(pool, clientId, noteDay, note, noteDecision.replace);
 
   // Assimilação contínua: compara a última legenda gerada pela IA com a versão final salva.
   for (const u of updates) {
@@ -533,6 +533,32 @@ async function saveNote(pool: Awaited<ReturnType<typeof db>>, clientId: string, 
        updated_at = now()`,
     [clientId, day, body, replace],
   );
+}
+
+/** Lê a nota de planejamento de um dia específico (usado no Novo post ao trocar a data). */
+export async function getDayNote(clientId: string, day: string): Promise<string> {
+  await requireAuth();
+  if (!isValidUuid(clientId) || !isDay(day)) return "";
+  const pool = await db();
+  const r = await pool.query<{ body: string }>(
+    "select body from day_notes where client_id = $1 and day = $2::date",
+    [clientId, day],
+  );
+  return r.rows[0]?.body ?? "";
+}
+
+/** Salva a nota de planejamento do dia diretamente a partir do cartão no topo da tela do dia. */
+export async function saveDayNote(formData: FormData): Promise<void> {
+  await requireAuth();
+  const clientId = text(formData, "client_id", 40);
+  const day = text(formData, "day", 10);
+  const volta = safePath(text(formData, "volta", 300), `/clientes/${clientId}/dia/${day}`);
+  if (!isValidUuid(clientId) || !isDay(day)) redirect("/");
+  const note = text(formData, "note", 4000);
+  const pool = await db();
+  await saveNote(pool, clientId, day, note, true);
+  revalidatePath("/", "layout");
+  redirect(withParam(volta, "nota", "1"));
 }
 
 /** Cria (ou encontra) no Drive a pasta de um destino que ainda não tem pasta. */

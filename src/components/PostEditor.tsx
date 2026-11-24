@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NETWORKS, folderGroup, isNetwork } from "@/config/networks";
-import { savePost } from "@/lib/actions";
+import { getDayNote, savePost } from "@/lib/actions";
 import { fmtNumber } from "@/lib/checks";
 import type { PickerOption } from "@/lib/picker-options";
 import type { PromptClient } from "@/lib/prompt";
@@ -26,7 +26,8 @@ function makeSubmissionId(): string {
 
 /**
  * Tela única do post, a mesma para criar (Novo post) e para editar (página do dia):
- *  1. ideia do post e planejamento do dia;  2. nome, tom de voz e descrição da legenda;  3. redes.
+ *  1. ideia do post e planejamento do dia (só no Novo post; na tela do dia fica uma vez só no topo);
+ *  2. nome, tom de voz e descrição da legenda;  3. redes.
  * As redes que o post já tem vêm marcadas e abertas; as outras ficam desmarcadas e abrem ao marcar.
  * Um Salvar grava tudo (`savePost`). Os botões de situação, publicar, pasta e excluir de cada rede usam `formAction`
  * dentro deste mesmo formulário (não há formulários aninhados).
@@ -71,12 +72,45 @@ export default function PostEditor({
   const px = postId ? `${postId}-` : "";
   const [submissionId] = useState(() => makeSubmissionId());
   const [planText, setPlanText] = useState(note);
+  const [noteOrig, setNoteOrig] = useState(note);
+  const [noteFrom, setNoteFrom] = useState(day);
+  const [loadingNote, setLoadingNote] = useState(false);
+  const noteReqRef = useRef(0);
+  const noteEditedRef = useRef(false);
   const [postNameText, setPostNameText] = useState(postName);
   const [briefText, setBriefText] = useState(brief);
   const [toneIds, setToneIds] = useState<string[]>(tones);
   const [date, setDate] = useState(day);
   const [time, setTime] = useState(defaultTime);
   const [on, setOn] = useState<Set<string>>(new Set());
+
+  const handleDateChange = (nextDate: string) => {
+    setDate(nextDate);
+    noteReqRef.current += 1;
+    const reqId = noteReqRef.current;
+    noteEditedRef.current = false;
+    // Limpa imediatamente para nunca copiar a nota do dia anterior para a nova data.
+    setPlanText("");
+    setNoteOrig("");
+    setNoteFrom(nextDate);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      setLoadingNote(false);
+      return;
+    }
+    setLoadingNote(true);
+    getDayNote(client.id, nextDate)
+      .then((loaded) => {
+        if (noteReqRef.current !== reqId) return;
+        setLoadingNote(false);
+        setNoteOrig(loaded);
+        setNoteFrom(nextDate);
+        if (!noteEditedRef.current) setPlanText(loaded);
+      })
+      .catch(() => {
+        if (noteReqRef.current === reqId) setLoadingNote(false);
+      });
+  };
+
   const toggle = (key: string) =>
     setOn((prev) => {
       const next = new Set(prev);
@@ -107,7 +141,7 @@ export default function PostEditor({
     clientId: client.id,
     clientName: client.name,
     aiEnabled,
-    getPlan: () => planText,
+    getPlan: () => (editing ? note : planText),
     getBrief: () => briefText,
     getTones: () => toneIds,
     canCreateFolder,
@@ -121,46 +155,52 @@ export default function PostEditor({
       <input type="hidden" name="client_id" value={client.id} />
       <input type="hidden" name="post_id" value={postId ?? ""} />
       <input type="hidden" name="volta" value={volta} />
-      {editing ? (
-        <>
-          <input type="hidden" name="note_day" value={day} />
-          <input type="hidden" name="note_orig" value={note} />
-        </>
-      ) : (
+      {!editing && (
         <>
           <input type="hidden" name="submission_id" value={submissionId} />
-          <input type="hidden" name="note_from" value={note ? day : ""} />
+          <input type="hidden" name="note_from" value={noteFrom} />
+          <input type="hidden" name="note_orig" value={noteOrig} />
         </>
       )}
       {saved && <p className="alert ok" role="status">Salvo.</p>}
 
-      <section className="card" aria-labelledby={`${px}s1`}>
-        <h2 id={`${px}s1`}>1. Ideia do post e planejamento</h2>
-        <div className="col">
-          <label className="f" htmlFor={`${px}note`}>A ideia do post / o que está planejado para {editing ? "este dia" : "esta data"}</label>
-          <textarea id={`${px}note`} name="note" rows={4} maxLength={4000} value={planText} onChange={(e) => setPlanText(e.target.value)}
-            placeholder="Ex.: Reels sobre o plantão 24h. Pedir depoimento ao cliente." />
-          <div className="row between small muted">
-            <span>Aparece no calendário{editing ? " e vale para o dia inteiro" : ""}. Dá para salvar só o texto, sem escolher rede, e voltar depois para subir mídia e legendas.</span>
-            <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fmtNumber(planText.length)} de {fmtNumber(4000)}</span>
+      {!editing && (
+        <section className="card" aria-labelledby={`${px}s1`}>
+          <h2 id={`${px}s1`}>1. Ideia do post e planejamento</h2>
+          <div className="col">
+            <label className="f" htmlFor={`${px}note`}>A ideia do post / o que está planejado para esta data</label>
+            <textarea
+              id={`${px}note`}
+              name="note"
+              rows={4}
+              maxLength={4000}
+              value={planText}
+              onChange={(e) => {
+                noteEditedRef.current = true;
+                setPlanText(e.target.value);
+              }}
+              placeholder={loadingNote ? "Carregando planejamento da data…" : "Ex.: Reels sobre o plantão 24h. Pedir depoimento ao cliente."}
+            />
+            <div className="row between small muted">
+              <span>Aparece no calendário. Dá para salvar só o texto, sem escolher rede, e voltar depois para subir mídia e legendas.</span>
+              <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fmtNumber(planText.length)} de {fmtNumber(4000)}</span>
+            </div>
           </div>
-        </div>
-        {!editing && (
           <div className="grid2">
             <div className="col">
               <label className="f" htmlFor="date">Data</label>
-              <input id="date" name="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+              <input id="date" name="date" type="date" value={date} onChange={(e) => handleDateChange(e.target.value)} required />
             </div>
             <div className="col">
               <label className="f" htmlFor="time">Horário dos posts</label>
               <input id="time" name="time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
             </div>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       <section className="card" aria-labelledby={`${px}s2`}>
-        <h2 id={`${px}s2`}>2. Nome do post, tom de voz e descrição da legenda</h2>
+        <h2 id={`${px}s2`}>{editing ? "1" : "2"}. Nome do post, tom de voz e descrição da legenda</h2>
         <div className="col">
           <label className="f" htmlFor={`${px}post_name`}>Nome do post (opcional)</label>
           <input id={`${px}post_name`} name="post_name" type="text" maxLength={120} value={postNameText} onChange={(e) => setPostNameText(e.target.value)} placeholder="Ex.: Reels do plantão técnico" />
@@ -174,7 +214,7 @@ export default function PostEditor({
           <div className="row between small muted">
             <span style={{ maxWidth: "70ch" }}>
               Escreva o que quer na legenda, nem que seja um rascunho. Ao gerar a legenda de cada rede, o app usa este texto junto com a
-              ideia do item 1, os tons de voz, o tom de voz e as observações do cadastro do cliente.
+              ideia do dia, os tons de voz, o tom de voz e as observações do cadastro do cliente.
             </span>
             <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fmtNumber(briefText.length)} de {fmtNumber(4000)}</span>
           </div>
@@ -182,7 +222,7 @@ export default function PostEditor({
       </section>
 
       <section className="card" aria-labelledby={`${px}s3`}>
-        <h2 id={`${px}s3`}>3. Redes, legendas e vídeos</h2>
+        <h2 id={`${px}s3`}>{editing ? "2" : "3"}. Redes, legendas e vídeos</h2>
         <p className="muted small" style={{ maxWidth: "70ch" }}>
           Marque cada rede e formato em que o post vai sair. Cada um ganha a sua legenda (e o seu título, nas redes que têm), o seu link de vídeo e a prévia.
           As redes que já estão no post aparecem abertas; marque outra para abrir os campos dela. A orientação ao lado é a medida ideal sugerida, não uma regra da rede.

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import DayNoteCard from "@/components/DayNoteCard";
 import PostEditor, { type EditorTarget } from "@/components/PostEditor";
 import { BackLink, Flash } from "@/components/ui";
 import { acceptedFolders, isNetwork, targetFolders } from "@/config/networks";
@@ -120,6 +121,7 @@ export default async function DayPage({
       <ConnectionNotice health={health} clientId={id} quiet />
       <ConnectionNotice health={liHealth} clientId={id} quiet provider="linkedin" />
       <ConnectionNotice health={ttHealth} clientId={id} quiet provider="tiktok" />
+      <DayNoteCard clientId={id} day={day} volta={volta} initialNote={note} />
       {posts.map((p) => (
         <PostEditor
           key={p.postId}
