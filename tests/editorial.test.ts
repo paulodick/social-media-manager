@@ -240,11 +240,24 @@ test("generateEditorialJson envia responseMimeType application/json para o Gemin
 });
 
 test("parsePillarsInput aceita array direto e { pillars } e buildPillarsPrompt inclui marca", () => {
-  const fromArr = parsePillarsInput([{ name: "Educativo", weight_pct: 60 }, { name: "Oferta", weight_pct: 40, color: "#c2410c" }]);
+  const fromArr = parsePillarsInput([
+    { name: "Educativo", weight_pct: 60 },
+    { name: "Oferta", weight_pct: 40, color: "#c2410c" },
+  ]);
   assert.equal(fromArr.ok, true);
   if (fromArr.ok) {
     assert.equal(fromArr.pillars.length, 2);
     assert.equal(fromArr.pillars[1].color, "#c2410c");
+  }
+
+  const fromTargetShare = parsePillarsInput([
+    { name: "Reparar antes de trocar", target_share: 35, description: "Critérios de decisão." },
+    { name: "Disponibilidade", target_share: 25, description: "Suporte 24h." },
+  ]);
+  assert.equal(fromTargetShare.ok, true);
+  if (fromTargetShare.ok) {
+    assert.equal(fromTargetShare.pillars[0].weight_pct, 35);
+    assert.equal(fromTargetShare.pillars[1].weight_pct, 25);
   }
 
   const fromObj = parsePillarsInput({ pillars: [{ name: "Bastidores", weight_pct: 100 }] });

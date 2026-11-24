@@ -61,12 +61,23 @@ export function summarizePillarWeights(weights: number[]): { total: number; bala
   return { total, balanced: total === 100 };
 }
 
-/** Extrai JSON de resposta do LLM (aceita bloco ```json ... ``` ou JSON puro). */
+/** Extrai JSON de resposta do LLM ou texto colado (aceita bloco ```json ... ``` ou JSON cercado por texto). */
 export function extractJsonPayload(raw: string): unknown {
   const trimmed = raw.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  const text = fenced ? fenced[1].trim() : trimmed;
-  return JSON.parse(text);
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = fenced ? fenced[1].trim() : trimmed;
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    const firstBracket = candidate.search(/[\[{]/);
+    const lastSquare = candidate.lastIndexOf("]");
+    const lastCurly = candidate.lastIndexOf("}");
+    const lastBracket = Math.max(lastSquare, lastCurly);
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      return JSON.parse(candidate.slice(firstBracket, lastBracket + 1));
+    }
+    throw new SyntaxError("JSON inválido");
+  }
 }
 
 /** Valida e normaliza o JSON de classificação de itens existentes retornado pelo LLM. */
@@ -254,7 +265,7 @@ export function parsePillarsInput(
       ? rawColor
       : DEFAULT_PILLAR_COLORS[i % DEFAULT_PILLAR_COLORS.length];
 
-    const rawWeight = Number(r.weight_pct ?? 0);
+    const rawWeight = Number(r.weight_pct ?? r.target_share ?? r.weight ?? r.peso ?? r.percentage ?? 0);
     const weight_pct = Number.isFinite(rawWeight) ? Math.min(100, Math.max(0, Math.round(rawWeight))) : 0;
 
     let weekly_target: number | null = null;
