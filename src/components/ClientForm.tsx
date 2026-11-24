@@ -7,6 +7,7 @@ import { getDriveRoot } from "@/lib/drive-root";
 import AutoTextarea from "./AutoTextarea";
 import ClientNetworkField from "./ClientNetworkField";
 import DriveFolderField from "./DriveFolderField";
+import SubmitButton from "./SubmitButton";
 import { ClientAvatar } from "./ui";
 
 const PH: Record<string, { acc: string; url: string }> = {
@@ -122,7 +123,7 @@ export default async function ClientForm({ client, networks }: { client?: Client
 
       <div className="savebar">
         <Link href={client ? `/clientes/${client.id}` : "/"} className="btn">Cancelar</Link>
-        <button type="submit" className="btn primary">Salvar cliente</button>
+        <SubmitButton className="btn primary" pendingLabel="Salvando…">Salvar cliente</SubmitButton>
       </div>
     </form>
   );

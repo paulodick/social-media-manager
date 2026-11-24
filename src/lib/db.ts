@@ -340,6 +340,16 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         ));
     `,
   },
+  {
+    version: 16,
+    sql: `
+      -- 16: Proteção contra duplicata na criação de post (duplo clique no formulário).
+      alter table posts add column if not exists submission_id uuid;
+      create unique index if not exists posts_submission_id_uq
+        on posts (submission_id)
+        where submission_id is not null;
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

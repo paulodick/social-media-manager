@@ -11,6 +11,7 @@ import CaptionTools from "./CaptionTools";
 import CopyButton from "./CopyButton";
 import PostPreview from "./Previews";
 import PublishPanel, { type PublishInfo } from "./PublishPanel";
+import SubmitButton from "./SubmitButton";
 import { NetDot } from "./ui";
 import { formatSavedPublishSummary, isTargetDirty } from "@/lib/target-dirty";
 
@@ -306,10 +307,10 @@ export default function NetworkRow({
               )}
               <div className="row actions">
                 {primary && (
-                  <button className="btn primary" type="submit" name="status" value={`${existing.id}:${primary}`}
+                  <SubmitButton className="btn primary" name="status" value={`${existing.id}:${primary}`} pendingLabel="Salvando…"
                     title={primary === "scheduled" ? "Só registra a situação. Para o app publicar sozinho no horário, use Confirmar publicação." : undefined}>
                     {LABEL[primary]}
-                  </button>
+                  </SubmitButton>
                 )}
                 <CopyButton text={caption} />
                 {downloadable && <a className="btn" href={`/api/media/${video.fileId}?download=1`}>Baixar mídia</a>}
@@ -317,24 +318,24 @@ export default function NetworkRow({
                   <summary className="btn">Mais ações</summary>
                   <div className="menu">
                     {inMenu.map((st) => (
-                      <button key={st} type="submit" name="status" value={`${existing.id}:${st}`}>{LABEL[st]}</button>
+                      <SubmitButton key={st} name="status" value={`${existing.id}:${st}`} pendingLabel="Salvando…">{LABEL[st]}</SubmitButton>
                     ))}
                     {existing.folderId ? (
                       <a href={`https://drive.google.com/drive/folders/${existing.folderId}`} target="_blank" rel="noopener noreferrer">Abrir pasta no Drive</a>
                     ) : canCreateFolder ? (
-                      <button type="submit" formAction={ensureTargetFolder.bind(null, existing.id)} formNoValidate>Criar pasta no Drive</button>
+                      <SubmitButton formAction={ensureTargetFolder.bind(null, existing.id)} formNoValidate pendingLabel="Criando pasta…">Criar pasta no Drive</SubmitButton>
                     ) : null}
-                    <button
+                    <SubmitButton
                       className="danger"
-                      type="submit"
                       formAction={deleteTarget.bind(null, existing.id)}
                       formNoValidate
+                      pendingLabel="Excluindo…"
                       onClick={(e) => {
                         if (!window.confirm(`Excluir o destino ${o.networkLabel} ${o.formatLabel} deste post? Não dá para desfazer.`)) e.preventDefault();
                       }}
                     >
                       Excluir este destino
-                    </button>
+                    </SubmitButton>
                   </div>
                 </details>
               </div>

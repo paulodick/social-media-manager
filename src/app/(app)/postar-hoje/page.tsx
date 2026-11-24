@@ -1,5 +1,6 @@
 import Link from "next/link";
 import CopyButton from "@/components/CopyButton";
+import SubmitButton from "@/components/SubmitButton";
 import { NetChip, StatusPill } from "@/components/ui";
 import { markPosted } from "@/lib/actions";
 import { dayLabel, todaySP } from "@/lib/dates";
@@ -40,7 +41,7 @@ export default async function PostToday() {
               <form action={markPosted}>
                 <input type="hidden" name="id" value={t.id} />
                 <input type="hidden" name="volta" value="/postar-hoje" />
-                <button className="btn primary wide" type="submit">3. Marcar como postado</button>
+                <SubmitButton className="btn primary wide" pendingLabel="Salvando…">3. Marcar como postado</SubmitButton>
               </form>
             </div>
             <Link href={`/clientes/${t.client_id}/dia/${t.day}#t-${t.id}`} style={{ textDecoration: "underline", fontWeight: 600 }} className="small">{connected.get(t.client_id)?.[t.network] ? "Revisar e publicar" : "Ver prévia e editar"}</Link>

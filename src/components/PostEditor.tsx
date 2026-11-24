@@ -7,9 +7,21 @@ import { savePost } from "@/lib/actions";
 import type { PickerOption } from "@/lib/picker-options";
 import type { PromptClient } from "@/lib/prompt";
 import NetworkRow, { type ExistingTarget, type Inherited } from "./NetworkRow";
+import SubmitButton from "./SubmitButton";
 import ToneSelector from "./ToneSelector";
 
 export type EditorTarget = ExistingTarget & { network: string; format: string };
+
+function makeSubmissionId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (ch) => {
+    const r = Math.floor(Math.random() * 16);
+    const v = ch === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 /**
  * Tela única do post, a mesma para criar (Novo post) e para editar (página do dia):
@@ -56,7 +68,9 @@ export default function PostEditor({
 }) {
   const editing = !!postId;
   const px = postId ? `${postId}-` : "";
+  const [submissionId] = useState(() => makeSubmissionId());
   const [planText, setPlanText] = useState(note);
+  const [postNameText, setPostNameText] = useState(postName);
   const [briefText, setBriefText] = useState(brief);
   const [toneIds, setToneIds] = useState<string[]>(tones);
   const [date, setDate] = useState(day);
@@ -102,7 +116,7 @@ export default function PostEditor({
   return (
     <form action={savePost} className="col" style={{ gap: 20 }}>
       {/* Primeiro botão do formulário: é o que o Enter aciona. Salva sem mudar a situação de nenhuma rede. */}
-      <button type="submit" className="sr" tabIndex={-1} aria-hidden="true">Salvar</button>
+      <SubmitButton className="sr" tabIndex={-1} aria-hidden={true}>Salvar</SubmitButton>
       <input type="hidden" name="client_id" value={client.id} />
       <input type="hidden" name="post_id" value={postId ?? ""} />
       <input type="hidden" name="volta" value={volta} />
@@ -112,7 +126,10 @@ export default function PostEditor({
           <input type="hidden" name="note_orig" value={note} />
         </>
       ) : (
-        <input type="hidden" name="note_from" value={note ? day : ""} />
+        <>
+          <input type="hidden" name="submission_id" value={submissionId} />
+          <input type="hidden" name="note_from" value={note ? day : ""} />
+        </>
       )}
       {saved && <p className="alert ok" role="status">Salvo.</p>}
 
@@ -144,7 +161,7 @@ export default function PostEditor({
         <h2 id={`${px}s2`}>2. Nome do post, tom de voz e descrição da legenda</h2>
         <div className="col">
           <label className="f" htmlFor={`${px}post_name`}>Nome do post (opcional)</label>
-          <input id={`${px}post_name`} name="post_name" type="text" maxLength={120} defaultValue={postName} placeholder="Ex.: Reels do plantão técnico" />
+          <input id={`${px}post_name`} name="post_name" type="text" maxLength={120} value={postNameText} onChange={(e) => setPostNameText(e.target.value)} placeholder="Ex.: Reels do plantão técnico" />
           <span className="muted small">Só para você achar o post depois (calendário, semana, listas). Não vai para a rede.</span>
         </div>
         <ToneSelector initial={tones} onChange={setToneIds} />
@@ -188,7 +205,7 @@ export default function PostEditor({
 
       <div className="savebar">
         {!editing && <Link href={`/clientes/${client.id}`} className="btn">Cancelar</Link>}
-        <button type="submit" className="btn primary" data-save>Salvar</button>
+        <SubmitButton className="btn primary" pendingLabel="Salvando…" data-save>Salvar</SubmitButton>
       </div>
     </form>
   );

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelConfirmation, confirmPublication, publishTarget } from "@/lib/actions";
 import type { AutoView } from "@/lib/auto-publish";
+import SubmitButton from "./SubmitButton";
 
 export type PublishInfo = {
   /** Nome da conta conectada (ex.: @bestmedical), ou null se ainda não há conexão. */
@@ -91,7 +92,7 @@ export default function PublishPanel(p: {
           </p>
           {p.dirty && <p className="muted small" style={{ margin: 0 }}>Se você salvar mudanças neste post, a confirmação é desfeita e precisa ser feita de novo.</p>}
           <div className="row">
-            <button className="btn" type="submit" formAction={cancelConfirmation.bind(null, p.id)} formNoValidate>Cancelar confirmação</button>
+            <SubmitButton className="btn" formAction={cancelConfirmation.bind(null, p.id)} formNoValidate pendingLabel="Cancelando…">Cancelar confirmação</SubmitButton>
           </div>
         </div>
       )}
@@ -125,7 +126,7 @@ export default function PublishPanel(p: {
                 {p.savedSummary ? ` · ${p.savedSummary}` : ""}
               </span>
               {auto?.missed && (
-                <button className="btn" type="submit" formAction={cancelConfirmation.bind(null, p.id)} formNoValidate>Remover confirmação</button>
+                <SubmitButton className="btn" formAction={cancelConfirmation.bind(null, p.id)} formNoValidate pendingLabel="Removendo…">Remover confirmação</SubmitButton>
               )}
             </div>
           ) : confirming === "auto" && auto ? (
@@ -134,9 +135,9 @@ export default function PublishPanel(p: {
                 Confirmar que este post está pronto? O app vai publicar <b>sozinho</b>, em <b>{auto.when}</b>, em <b>{info.connected}</b> ({p.networkLabel}), com a legenda e a mídia que estão salvas. Se você mudar horário, legenda, mídia ou título depois, a confirmação é desfeita. Dá para cancelar antes do horário.
               </p>
               <div className="row">
-                <button className="btn primary" type="submit" formAction={confirmPublication.bind(null, p.id)} formNoValidate disabled={p.dirty}>
+                <SubmitButton className="btn primary" formAction={confirmPublication.bind(null, p.id)} formNoValidate disabled={p.dirty} pendingLabel="Confirmando…">
                   Confirmar publicação
-                </button>
+                </SubmitButton>
                 <button className="btn" type="button" onClick={() => setConfirming(null)}>Voltar</button>
               </div>
             </div>
@@ -154,9 +155,9 @@ export default function PublishPanel(p: {
                 )}
               </p>
               <div className="row">
-                <button className="btn primary" type="submit" formAction={publishTarget.bind(null, p.id)} formNoValidate disabled={p.dirty}>
+                <SubmitButton className="btn primary" formAction={publishTarget.bind(null, p.id)} formNoValidate disabled={p.dirty} pendingLabel={draft ? "Enviando…" : "Publicando…"}>
                   {draft ? "Confirmar e enviar" : "Confirmar e publicar"}
-                </button>
+                </SubmitButton>
                 <button className="btn" type="button" onClick={() => setConfirming(null)}>Cancelar</button>
               </div>
             </div>

@@ -9,6 +9,7 @@ import { TZ, isDay, isTime, monthOf } from "./dates";
 import { ensureClientFolders, ensureFolderPath, folderUrl, getFolderName, parseDriveUrl } from "./drive";
 import { ensureTargetFolders, folderNames, resolveDrive } from "./post-folders";
 import { formatMovedTargetsNotice, resolveEditRedirect } from "./post-redirect";
+import { insertPostIdempotent, parseSubmissionId } from "./post-submission";
 import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { generateText, type AiResult } from "./ai";
 import { buildMemoryBlock, listRecentAiMemory, recordAiMemory, summarizeCaptionDiff } from "./ai-memory";
@@ -380,61 +381,80 @@ export async function savePost(formData: FormData): Promise<void> {
   const statusId = statusAsk[0];
   const status = ["draft", "scheduled", "posted"].includes(statusAsk[1]) ? statusAsk[1] : "";
 
+  const submissionId = editing ? null : parseSubmissionId(text(formData, "submission_id", 40));
+
   const c = await pool.connect();
   let savedPostId = postId;
   let droppedConfirm = 0;
+  let duplicate = false;
   try {
     await c.query("begin");
     if (editing) {
       await c.query("update posts set title = $1, idea = $2, tones = $3 where id = $4", [postName, brief, tones, postId]);
     } else {
-      const p = await c.query<{ id: string }>("insert into posts (client_id, title, idea, tones) values ($1,$2,$3,$4) returning id", [clientId, postName, brief, tones]);
-      savedPostId = p.rows[0].id;
-    }
-    for (const u of updates) {
-      const nextFolderId = u.day !== u.e.day ? (movedFolderById.get(u.e.id) ?? null) : u.e.post_folder_id;
-      // Mudou horário, legenda, mídia, miniatura ou título de um destino confirmado: a confirmação cai e a pessoa
-      // confirma de novo. Assim o app nunca publica algo diferente do que ela viu quando confirmou.
-      const upd = await c.query<{ still: boolean }>(
-        `update post_targets set
-            auto_confirmed_at = case when auto_confirmed_at is not null and (
-                caption is distinct from $1 or scheduled_at is distinct from (($2::date + $3::time) at time zone '${TZ}')
-                or drive_file_id is distinct from $5 or thumb_file_id is distinct from $8 or title is distinct from $10
-              ) then null else auto_confirmed_at end,
-            caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
-            drive_url=$4, drive_file_id=$5, drive_meta=$6, thumb_url=$7, thumb_file_id=$8, thumb_meta=$9, title=$10,
-            post_folder_id = $11
-          where id=$12
-        returning (auto_confirmed_at is not null) as still`,
-        [u.caption, u.day, u.time, u.driveUrl, u.fileId, u.meta ? JSON.stringify(u.meta) : null, u.thumbUrl, u.thumbFileId, u.thumbMeta ? JSON.stringify(u.thumbMeta) : null, u.title, nextFolderId, u.e.id],
-      );
-      if (u.e.confirmed && upd.rows[0] && !upd.rows[0].still) droppedConfirm++;
-      if (status && u.e.id === statusId) {
-        // Voltar para rascunho ou marcar como postado também desfaz a confirmação.
-        await c.query(
-          `update post_targets set status=$1, posted_at = case when $1='posted' then coalesce(posted_at, now()) else null end,
-                  auto_confirmed_at = case when $1='scheduled' then auto_confirmed_at else null end where id=$2`,
-          [status, u.e.id],
-        );
+      const ins = await insertPostIdempotent(c, {
+        clientId,
+        title: postName,
+        idea: brief,
+        tones,
+        submissionId,
+      });
+      if (!ins.created) {
+        await c.query("rollback");
+        duplicate = true;
+      } else {
+        savedPostId = ins.id;
       }
     }
-    for (const [i, t] of created.entries()) {
-      await c.query(
-        `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id,
-                                   thumb_url, thumb_file_id, thumb_meta, title)
-         values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-        [
-          savedPostId, t.network, t.format, t.day, t.time, t.caption, t.driveUrl, t.fileId, t.meta ? JSON.stringify(t.meta) : null, folderIds[i],
-          t.thumbUrl, t.thumbFileId, t.thumbMeta ? JSON.stringify(t.thumbMeta) : null, t.title,
-        ],
-      );
+    if (!duplicate) {
+      for (const u of updates) {
+        const nextFolderId = u.day !== u.e.day ? (movedFolderById.get(u.e.id) ?? null) : u.e.post_folder_id;
+        // Mudou horário, legenda, mídia, miniatura ou título de um destino confirmado: a confirmação cai e a pessoa
+        // confirma de novo. Assim o app nunca publica algo diferente do que ela viu quando confirmou.
+        const upd = await c.query<{ still: boolean }>(
+          `update post_targets set
+              auto_confirmed_at = case when auto_confirmed_at is not null and (
+                  caption is distinct from $1 or scheduled_at is distinct from (($2::date + $3::time) at time zone '${TZ}')
+                  or drive_file_id is distinct from $5 or thumb_file_id is distinct from $8 or title is distinct from $10
+                ) then null else auto_confirmed_at end,
+              caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
+              drive_url=$4, drive_file_id=$5, drive_meta=$6, thumb_url=$7, thumb_file_id=$8, thumb_meta=$9, title=$10,
+              post_folder_id = $11
+            where id=$12
+          returning (auto_confirmed_at is not null) as still`,
+          [u.caption, u.day, u.time, u.driveUrl, u.fileId, u.meta ? JSON.stringify(u.meta) : null, u.thumbUrl, u.thumbFileId, u.thumbMeta ? JSON.stringify(u.thumbMeta) : null, u.title, nextFolderId, u.e.id],
+        );
+        if (u.e.confirmed && upd.rows[0] && !upd.rows[0].still) droppedConfirm++;
+        if (status && u.e.id === statusId) {
+          // Voltar para rascunho ou marcar como postado também desfaz a confirmação.
+          await c.query(
+            `update post_targets set status=$1, posted_at = case when $1='posted' then coalesce(posted_at, now()) else null end,
+                    auto_confirmed_at = case when $1='scheduled' then auto_confirmed_at else null end where id=$2`,
+            [status, u.e.id],
+          );
+        }
+      }
+      for (const [i, t] of created.entries()) {
+        await c.query(
+          `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id,
+                                     thumb_url, thumb_file_id, thumb_meta, title)
+           values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [
+            savedPostId, t.network, t.format, t.day, t.time, t.caption, t.driveUrl, t.fileId, t.meta ? JSON.stringify(t.meta) : null, folderIds[i],
+            t.thumbUrl, t.thumbFileId, t.thumbMeta ? JSON.stringify(t.thumbMeta) : null, t.title,
+          ],
+        );
+      }
+      await c.query("commit");
     }
-    await c.query("commit");
   } catch (e) {
     await c.query("rollback").catch(() => {});
     throw e;
   } finally {
     c.release();
+  }
+  if (duplicate) {
+    redirect(`/clientes/${clientId}/dia/${created[0]?.day ?? noteDay}`);
   }
   if (noteChanged) await saveNote(pool, clientId, noteDay, note, noteReplace);
 
