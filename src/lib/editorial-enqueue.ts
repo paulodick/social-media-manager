@@ -9,6 +9,58 @@ export type EnqueueResult =
   | { ok: true; post_id: string; post_target_ids: string[]; day: string; warnings: string[] }
   | { ok: false; status: 400 | 404 | 409; error: string };
 
+export type ApprovalGroupFailure = { slot_ids: string[]; error: string };
+
+export type ApprovalBatchResult = {
+  approved_slot_ids: string[];
+  enqueued_targets: number;
+  warnings: string[];
+  failed: ApprovalGroupFailure[];
+};
+
+/**
+ * Calcula o horário efetivo de um slot:
+ * prioridade: horário explícito (`opts.time`) > horário planejado do slot > fallback (`opts.fallbackTime`).
+ */
+export function resolveSlotTime(
+  plannedTime: string | null,
+  opts: { time?: string; fallbackTime?: string } = {},
+): string | null {
+  return opts.time ?? plannedTime ?? opts.fallbackTime ?? null;
+}
+
+/**
+ * Processa o envio em lote dos grupos de um cronograma.
+ * Marca como aprovados apenas os grupos cujo envio deu certo e coleta falhas sem esconder erros.
+ */
+export async function processScheduleApproval(
+  groups: string[][],
+  enqueueFn: (slotIds: string[]) => Promise<EnqueueResult>,
+): Promise<ApprovalBatchResult> {
+  const approvedSlotIds: string[] = [];
+  let enqueuedTargets = 0;
+  const warnings: string[] = [];
+  const failed: ApprovalGroupFailure[] = [];
+
+  for (const groupSlotIds of groups) {
+    const res = await enqueueFn(groupSlotIds);
+    if (res.ok) {
+      approvedSlotIds.push(...groupSlotIds);
+      enqueuedTargets += res.post_target_ids.length;
+      warnings.push(...res.warnings);
+    } else {
+      failed.push({ slot_ids: groupSlotIds, error: res.error });
+    }
+  }
+
+  return {
+    approved_slot_ids: approvedSlotIds,
+    enqueued_targets: enqueuedTargets,
+    warnings,
+    failed,
+  };
+}
+
 type SlotRow = {
   id: string;
   content_item_id: string;
@@ -39,12 +91,15 @@ type SlotRow = {
 export async function enqueueSlots(
   clientId: string,
   slotIds: string[],
-  opts: { time?: string } = {},
+  opts: { time?: string; fallbackTime?: string } = {},
 ): Promise<EnqueueResult> {
   if (!isUuid(clientId) || !slotIds.length || !slotIds.every((s) => isUuid(s))) {
     return { ok: false, status: 400, error: "Pedido inválido." };
   }
   if (opts.time !== undefined && !isTime(opts.time)) {
+    return { ok: false, status: 400, error: "Horário inválido." };
+  }
+  if (opts.fallbackTime !== undefined && !isTime(opts.fallbackTime)) {
     return { ok: false, status: 400, error: "Horário inválido." };
   }
 
@@ -80,7 +135,7 @@ export async function enqueueSlots(
   if (rows.some((r) => !isNetwork(r.network) || !isFormat(r.network, r.format))) {
     return { ok: false, status: 400, error: "Rede ou formato inválido." };
   }
-  const times = rows.map((r) => opts.time ?? r.time);
+  const times = rows.map((r) => resolveSlotTime(r.time, opts));
   if (times.some((t) => !t)) {
     return { ok: false, status: 400, error: "Informe o horário para enviar à fila." };
   }

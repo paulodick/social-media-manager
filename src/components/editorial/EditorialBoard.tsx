@@ -55,6 +55,9 @@ export default function EditorialBoard({
   const [newFormat, setNewFormat] = useState<ContentFormat>("video");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
+  const [unapproving, setUnapproving] = useState(false);
+  const [confirmApprove, setConfirmApprove] = useState(false);
+  const [failedApprovals, setFailedApprovals] = useState<{ slot_ids: string[]; error: string }[]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [styleNotes, setStyleNotes] = useState(initialStyleNotes);
   const [savingNotes, setSavingNotes] = useState(false);
@@ -91,6 +94,28 @@ export default function EditorialBoard({
   const unclassified = items.filter((it) => !it.pillar_id && it.status !== "archived");
   const allApproved = chronological.length > 0 && chronological.every((s) => s.plan_status === "approved");
   const draftCount = chronological.filter((s) => s.plan_status !== "approved").length;
+  const pendingToApprove = chronological.filter((s) => s.status === "planned" && !s.target);
+  const approvedWithoutTarget = chronological.filter((s) => s.plan_status === "approved" && !s.target);
+
+  const activeFilters: string[] = [];
+  if (filterSource === "existing_ready") activeFilters.push("Origem: Pronto (acervo)");
+  if (filterSource === "needs_creation") activeFilters.push("Origem: Criar / Gravar");
+  if (filterPillar) {
+    const pName = pillars.find((p) => p.id === filterPillar)?.name;
+    activeFilters.push(`Pilar: ${pName ?? "selecionado"}`);
+  }
+  const activeFilterLabel = activeFilters.join(" · ");
+
+  function fmtDayBr(day: string): string {
+    const [y, m, d] = day.split("-");
+    return y && m && d ? `${d}/${m}/${y}` : day;
+  }
+
+  const approvalPeriod = pendingToApprove.length
+    ? pendingToApprove[0].day === pendingToApprove[pendingToApprove.length - 1].day
+      ? fmtDayBr(pendingToApprove[0].day)
+      : `${fmtDayBr(pendingToApprove[0].day)} a ${fmtDayBr(pendingToApprove[pendingToApprove.length - 1].day)}`
+    : initialMonth;
 
   function toItemCard(it: ContentItem): ItemCard {
     const p = pillars.find((x) => x.id === it.pillar_id);
@@ -266,23 +291,29 @@ export default function EditorialBoard({
   }
 
   async function approveSchedule() {
-    if (!chronological.length) return;
+    if (!pendingToApprove.length) return;
+    setConfirmApprove(false);
     setApproving(true);
     setErr("");
     setMsg("");
+    setFailedApprovals([]);
     try {
       const res = await fetch(`/api/editorial/clients/${clientId}/schedule/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slot_ids: chronological.map((s) => s.id) }),
+        body: JSON.stringify({ slot_ids: pendingToApprove.map((s) => s.id) }),
       });
       const j = (await res.json()) as {
         approved_count?: number;
         enqueued_targets?: number;
         warnings?: string[];
+        failed?: { slot_ids: string[]; error: string }[];
         slots?: SlotView[];
         error?: string;
       };
+      if (j.failed?.length) {
+        setFailedApprovals(j.failed);
+      }
       if (!res.ok) {
         setErr(j.error ?? "Não foi possível aprovar o cronograma.");
         return;
@@ -292,13 +323,47 @@ export default function EditorialBoard({
         setSlots((prev) => prev.map((x) => byId.get(x.id) ?? x));
       }
       const warn = j.warnings?.length ? ` Avisos: ${j.warnings.join(" ")}` : "";
+      const approvedCount = j.approved_count ?? 0;
+      const enqueuedCount = j.enqueued_targets ?? 0;
       setMsg(
-        `Cronograma oficial aprovado! ${j.approved_count ?? chronological.length} item(ns) oficializados e ${j.enqueued_targets ?? 0} destino(s) prontos na fila de agendamento/mídias.${warn}`,
+        `Cronograma aprovado: ${approvedCount} item(ns) oficializados e ${enqueuedCount} rascunho(s) criados na fila.${warn}`,
       );
     } catch {
       setErr("Falha de conexão ao aprovar cronograma.");
     } finally {
       setApproving(false);
+    }
+  }
+
+  async function unapproveSchedule() {
+    if (!approvedWithoutTarget.length) return;
+    setUnapproving(true);
+    setErr("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/schedule/approve`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slot_ids: approvedWithoutTarget.map((s) => s.id) }),
+      });
+      const j = (await res.json()) as {
+        unapproved_count?: number;
+        slots?: SlotView[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setErr(j.error ?? "Não foi possível desfazer a aprovação.");
+        return;
+      }
+      if (j.slots?.length) {
+        const byId = new Map(j.slots.map((s) => [s.id, s]));
+        setSlots((prev) => prev.map((x) => byId.get(x.id) ?? x));
+      }
+      setMsg(`Aprovação desfeita para ${j.unapproved_count ?? approvedWithoutTarget.length} item(ns).`);
+    } catch {
+      setErr("Falha de conexão ao desfazer aprovação.");
+    } finally {
+      setUnapproving(false);
     }
   }
 
@@ -410,6 +475,26 @@ export default function EditorialBoard({
 
       {err && <p className="alert err" role="alert">{err}</p>}
       {msg && <p className="alert ok" role="status">{msg}</p>}
+      {failedApprovals.length > 0 && (
+        <div className="alert err col" role="alert" style={{ gap: 6 }}>
+          <strong>Alguns itens não puderam ser enviados para a fila:</strong>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {failedApprovals.map((f, idx) => {
+              const names = f.slot_ids
+                .map((id) => {
+                  const s = slots.find((x) => x.id === id);
+                  return s ? `${fmtDayBr(s.day)} (${s.item.title})` : id;
+                })
+                .join(", ");
+              return (
+                <li key={idx}>
+                  {names}: {f.error}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       <section className="card col" style={{ gap: 14 }}>
         <div className="row between">
@@ -669,16 +754,34 @@ export default function EditorialBoard({
           {chronological.length > 0 && (
             <div className="row between" style={{ paddingTop: 8 }}>
               <span className="muted small">
-                Ao aprovar, os itens são promovidos para a fila oficial de agendamento e mídias do cliente.
+                Ao aprovar, os itens pendentes viram rascunhos na fila de agendamento e mídias do cliente.
               </span>
-              <button
-                type="button"
-                className="btn primary"
-                onClick={approveSchedule}
-                disabled={approving}
-              >
-                {approving ? "Aprovando cronograma..." : allApproved ? "Sincronizar cronograma aprovado" : "Aprovar cronograma"}
-              </button>
+              <div className="row" style={{ gap: 8 }}>
+                {approvedWithoutTarget.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={unapproveSchedule}
+                    disabled={unapproving || approving}
+                  >
+                    {unapproving
+                      ? "Desfazendo…"
+                      : `Desfazer aprovação (${approvedWithoutTarget.length})`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => setConfirmApprove(true)}
+                  disabled={approving || pendingToApprove.length === 0}
+                >
+                  {approving
+                    ? "Aprovando cronograma…"
+                    : allApproved
+                      ? "Sincronizar cronograma aprovado"
+                      : "Aprovar cronograma"}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -749,6 +852,35 @@ export default function EditorialBoard({
           ))}
         </div>
       </section>
+
+      {confirmApprove && (
+        <div className="ed-modal-back" role="dialog" aria-modal="true" aria-label="Confirmar aprovação do cronograma">
+          <div className="ed-modal" style={{ maxWidth: 520 }}>
+            <h2>Confirmar aprovação do cronograma</h2>
+            <p>
+              Você vai aprovar e enviar <strong>{pendingToApprove.length}</strong>{" "}
+              {pendingToApprove.length === 1 ? "item" : "itens"} do período{" "}
+              <strong>{approvalPeriod}</strong>.
+            </p>
+            {activeFilterLabel && (
+              <p className="alert warn" role="status">
+                Você está aprovando só os {pendingToApprove.length} itens do filtro {activeFilterLabel}.
+              </p>
+            )}
+            <p className="muted small">
+              Isso cria rascunhos na fila do cliente mantendo o horário planejado de cada item (itens sem horário usam 09:00). Nada é publicado automaticamente.
+            </p>
+            <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="btn" onClick={() => setConfirmApprove(false)} disabled={approving}>
+                Cancelar
+              </button>
+              <button type="button" className="btn primary" onClick={approveSchedule} disabled={approving}>
+                {approving ? "Aprovando…" : "Confirmar e criar rascunhos"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showGen && (
         <CalendarGeneratorModal

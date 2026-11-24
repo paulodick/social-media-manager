@@ -17,6 +17,8 @@ import { buildCalendarPrompt, buildClassificationPrompt, buildPillarsPrompt } fr
 import { editorialAiConfigured, explainGeminiError, generateEditorialJson } from "../src/lib/editorial-ai.ts";
 import { buildMemoryBlock, summarizeCaptionDiff } from "../src/lib/ai-memory.ts";
 import { buildCaptionPrompt } from "../src/lib/prompt.ts";
+import { enqueueSlots, processScheduleApproval, resolveSlotTime } from "../src/lib/editorial-enqueue.ts";
+import { db } from "../src/lib/db.ts";
 
 test("normalizeThemeKey gera slug ASCII sem acentos", () => {
   assert.equal(normalizeThemeKey("5 Erros em Manutenção!"), "5-erros-em-manutencao");
@@ -412,5 +414,89 @@ test("parseAiRecreatedTopic evita tema repetido e parseAiRefinedDraft extrai cam
   if (refined.ok) {
     assert.ok(refined.draft.script_dev.includes("Tópico 1"));
     assert.equal(refined.draft.caption_draft, "Legenda evoluída.");
+  }
+});
+
+test("resolveSlotTime respeita prioridade: time explícito > horário planejado > fallbackTime", () => {
+  assert.equal(resolveSlotTime("08:15", { fallbackTime: "09:00" }), "08:15");
+  assert.equal(resolveSlotTime("17:40", { fallbackTime: "09:00" }), "17:40");
+  assert.equal(resolveSlotTime(null, { fallbackTime: "09:00" }), "09:00");
+  assert.equal(resolveSlotTime("08:15", { time: "14:30", fallbackTime: "09:00" }), "14:30");
+  assert.equal(resolveSlotTime(null, {}), null);
+});
+
+test("processScheduleApproval retorna resultado parcial quando um grupo falha e outro passa", async () => {
+  const s1 = "11111111-1111-4111-8111-111111111111";
+  const s2 = "22222222-2222-4222-8222-222222222222";
+  const s3 = "33333333-3333-4333-8333-333333333333";
+
+  const batch = await processScheduleApproval([[s1, s2], [s3]], async (ids) => {
+    if (ids.includes(s3)) {
+      return { ok: false, status: 409, error: "Algum horário já foi enviado para a fila." };
+    }
+    return {
+      ok: true,
+      post_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      post_target_ids: ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"],
+      day: "2026-12-01",
+      warnings: ["Aviso teste"],
+    };
+  });
+
+  assert.deepEqual(batch.approved_slot_ids, [s1, s2]);
+  assert.equal(batch.enqueued_targets, 2);
+  assert.deepEqual(batch.warnings, ["Aviso teste"]);
+  assert.deepEqual(batch.failed, [{ slot_ids: [s3], error: "Algum horário já foi enviado para a fila." }]);
+});
+
+test("enqueueSlots com fallbackTime mantém 08:15 e 17:40 nos post_targets criados e usa fallback só quando nulo", { skip: !process.env.DATABASE_URL }, async () => {
+  const pool = await db();
+  const cRes = await pool.query<{ id: string }>(
+    `insert into clients (name) values ($1) returning id`,
+    [`Teste Editorial Horários ${Date.now()}`],
+  );
+  const clientId = cRes.rows[0].id;
+  try {
+    const iRes = await pool.query<{ id: string }>(
+      `insert into content_items (client_id, title, theme_key, source_kind, status, caption_draft)
+       values ($1, 'Item A', 'item-a', 'needs_creation', 'idea', 'Legenda A'),
+              ($1, 'Item B', 'item-b', 'needs_creation', 'idea', 'Legenda B'),
+              ($1, 'Item C', 'item-c', 'needs_creation', 'idea', 'Legenda C')
+       returning id`,
+      [clientId],
+    );
+    const [itemA, itemB, itemC] = iRes.rows.map((r) => r.id);
+    const sRes = await pool.query<{ id: string }>(
+      `insert into editorial_schedule (client_id, content_item_id, planned_day, planned_time, network, format)
+       values ($1, $2, '2026-12-10', '08:15', 'instagram', 'reels'),
+              ($1, $3, '2026-12-11', '17:40', 'instagram', 'reels'),
+              ($1, $4, '2026-12-12', null, 'instagram', 'reels')
+       returning id`,
+      [clientId, itemA, itemB, itemC],
+    );
+    const [slotA, slotB, slotC] = sRes.rows.map((r) => r.id);
+
+    const rA = await enqueueSlots(clientId, [slotA], { fallbackTime: "09:00" });
+    const rB = await enqueueSlots(clientId, [slotB], { fallbackTime: "09:00" });
+    const rC = await enqueueSlots(clientId, [slotC], { fallbackTime: "09:00" });
+
+    assert.equal(rA.ok, true);
+    assert.equal(rB.ok, true);
+    assert.equal(rC.ok, true);
+
+    if (rA.ok && rB.ok && rC.ok) {
+      const { rows } = await pool.query<{ id: string; hhmm: string }>(
+        `select id, to_char(scheduled_at at time zone 'America/Sao_Paulo', 'HH24:MI') as hhmm
+           from post_targets
+          where id = any($1::uuid[])`,
+        [[rA.post_target_ids[0], rB.post_target_ids[0], rC.post_target_ids[0]]],
+      );
+      const byId = new Map(rows.map((r) => [r.id, r.hhmm]));
+      assert.equal(byId.get(rA.post_target_ids[0]), "08:15");
+      assert.equal(byId.get(rB.post_target_ids[0]), "17:40");
+      assert.equal(byId.get(rC.post_target_ids[0]), "09:00");
+    }
+  } finally {
+    await pool.query("delete from clients where id = $1", [clientId]);
   }
 });
