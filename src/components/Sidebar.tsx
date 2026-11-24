@@ -2,10 +2,11 @@
 
 import BrandLogo from "./BrandLogo";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { logout } from "@/lib/actions";
 import { ClientAvatar } from "@/components/ui";
+import { useDialogFocusTrap } from "./useDialogFocusTrap";
 
 type C = { id: string; name: string; logo_v: number | null };
 
@@ -13,14 +14,12 @@ export default function Sidebar({ clients, due, problems = 0 }: { clients: C[]; 
   const path = usePathname();
   const on = (p: string, exact = false) => (exact ? path === p : path === p || path.startsWith(p + "/"));
   const [menu, setMenu] = useState(false);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const closeMenu = useCallback(() => setMenu(false), []);
   // No celular o menu completo (clientes, configurações, sair) abre numa folha; fecha ao trocar de página ou com Esc.
   useEffect(() => setMenu(false), [path]);
-  useEffect(() => {
-    if (!menu) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenu(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menu]);
+  useDialogFocusTrap({ open: menu, onClose: closeMenu, containerRef: sheetRef, returnFocusRef: menuBtnRef });
   const inClients = path.startsWith("/clientes") || on("/configuracoes");
   const problemLabel =
     problems === 1 ? "1 publicação precisa de atenção" : `${problems} publicações precisam de atenção`;
@@ -87,13 +86,13 @@ export default function Sidebar({ clients, due, problems = 0 }: { clients: C[]; 
       <Link href="/posts/novo" className={on("/posts/novo") ? "on" : ""} aria-current={on("/posts/novo") ? "page" : undefined}>
         <span className="ico" aria-hidden="true">＋</span>Novo post
       </Link>
-      <button type="button" className={menu || inClients ? "on" : ""} aria-expanded={menu} aria-controls="folha-menu" onClick={() => setMenu((v) => !v)}>
+      <button ref={menuBtnRef} type="button" className={menu || inClients ? "on" : ""} aria-expanded={menu} aria-controls="folha-menu" onClick={() => setMenu((v) => !v)}>
         <span className="ico" aria-hidden="true">☰</span>Menu
       </button>
     </nav>
     {menu && (
-      <div className="sheet-back" onClick={() => setMenu(false)}>
-        <div id="folha-menu" className="sheet" role="dialog" aria-label="Menu" onClick={(e) => e.stopPropagation()}>
+      <div className="sheet-back" onClick={closeMenu}>
+        <div ref={sheetRef} id="folha-menu" className="sheet" role="dialog" aria-modal="true" aria-label="Menu" tabIndex={-1} onClick={(e) => e.stopPropagation()}>
           <nav className="nav" aria-label="Clientes (celular)">
             <span className="label">Clientes</span>
             {clients.map((c) => (
@@ -107,7 +106,7 @@ export default function Sidebar({ clients, due, problems = 0 }: { clients: C[]; 
             <Link href="/configuracoes" className={on("/configuracoes") ? "on" : ""}>Configurações</Link>
             <form action={logout}><button type="submit">Sair</button></form>
           </nav>
-          <button type="button" className="btn" onClick={() => setMenu(false)}>Fechar</button>
+          <button type="button" className="btn" onClick={closeMenu}>Fechar</button>
         </div>
       </div>
     )}

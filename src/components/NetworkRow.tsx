@@ -358,9 +358,14 @@ export default function NetworkRow({
                 <dialog
                   ref={deleteDialogRef}
                   className="confirm-dialog"
+                  aria-modal="true"
                   aria-labelledby={`${id}-del-title`}
                   aria-describedby={`${id}-del-desc`}
-                  onClose={() => deleteTriggerRef.current?.focus()}
+                  onClose={() => {
+                    const summary = moreRef.current?.querySelector("summary");
+                    if (summary instanceof HTMLElement) summary.focus();
+                    else deleteTriggerRef.current?.focus();
+                  }}
                   onClick={(e) => {
                     if (e.target === deleteDialogRef.current) deleteDialogRef.current.close();
                   }}

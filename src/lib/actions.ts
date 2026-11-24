@@ -2,7 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { checkPassword, createSession, destroySession, hasPassword, requireAuth } from "./auth";
+import { checkLoginRateLimit, extractClientIp, recordLoginFailure, resetLoginRateLimit } from "./login-rate-limit";
 import { hashPassword, passwordProblem } from "./password";
 import { db } from "./db";
 import { TZ, isDay, isTime, monthOf } from "./dates";
@@ -44,11 +46,19 @@ function withParam(path: string, key: string, value: string): string {
 // ---------- acesso ----------
 
 export async function login(formData: FormData): Promise<void> {
-  const ok = await checkPassword(text(formData, "senha", 200));
-  if (!ok) {
+  const ip = extractClientIp(await headers());
+  const gate = checkLoginRateLimit(ip);
+  if (!gate.allowed) {
     await new Promise((r) => setTimeout(r, 600));
     redirect("/login?erro=1");
   }
+  const ok = await checkPassword(text(formData, "senha", 200));
+  if (!ok) {
+    const { delayMs } = recordLoginFailure(ip);
+    await new Promise((r) => setTimeout(r, delayMs));
+    redirect("/login?erro=1");
+  }
+  resetLoginRateLimit(ip);
   await createSession();
   redirect("/");
 }

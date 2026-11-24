@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClientAvatar, Flash, NetDot } from "@/components/ui";
 import { NETWORKS, NETWORK_IDS, STATUS_LABEL, isNetwork } from "@/config/networks";
-import { addMonths, isMonth, monthGrid, monthLabel, monthOf, todaySP } from "@/lib/dates";
+import { addMonths, dayLabel, isMonth, monthGrid, monthLabel, monthOf, todaySP } from "@/lib/dates";
 import { getClient, listDayNotes, listTargets, type Target } from "@/lib/queries";
 
 const WEEK = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -124,7 +124,7 @@ export default async function ClientCalendar({
                   key={c.day}
                   href={href}
                   className={`cell ${c.inMonth ? "" : "out"} ${c.day === today ? "today" : ""}`}
-                  aria-label={`${c.day}, ${list.length} ${list.length === 1 ? "post" : "posts"}${note ? `, planejamento: ${note}` : ""}`}
+                  aria-label={`${dayLabel(c.day)}, ${list.length} ${list.length === 1 ? "post" : "posts"}${note ? `, planejamento: ${note}` : ""}`}
                 >
                   <span className="n">{c.inMonth ? c.n : `${c.n}/${c.day.slice(5, 7)}`}</span>
                   {note && (

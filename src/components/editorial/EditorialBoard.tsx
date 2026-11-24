@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { NetDot, StatusPill } from "@/components/ui";
+import { useDialogFocusTrap } from "@/components/useDialogFocusTrap";
 import { NETWORKS, isNetwork } from "@/config/networks";
 import { addDays, monthGrid, todaySP } from "@/lib/dates";
 import type {
@@ -57,6 +58,11 @@ export default function EditorialBoard({
   const [approving, setApproving] = useState(false);
   const [unapproving, setUnapproving] = useState(false);
   const [confirmApprove, setConfirmApprove] = useState(false);
+  const approveModalRef = useRef<HTMLDivElement>(null);
+  const closeApproveModal = useCallback(() => {
+    if (!approving) setConfirmApprove(false);
+  }, [approving]);
+  useDialogFocusTrap({ open: confirmApprove, onClose: closeApproveModal, containerRef: approveModalRef });
   const [failedApprovals, setFailedApprovals] = useState<{ slot_ids: string[]; error: string }[]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [styleNotes, setStyleNotes] = useState(initialStyleNotes);
@@ -854,8 +860,14 @@ export default function EditorialBoard({
       </section>
 
       {confirmApprove && (
-        <div className="ed-modal-back" role="dialog" aria-modal="true" aria-label="Confirmar aprovação do cronograma">
-          <div className="ed-modal" style={{ maxWidth: 520 }}>
+        <div
+          className="ed-modal-back"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirmar aprovação do cronograma"
+          onClick={closeApproveModal}
+        >
+          <div ref={approveModalRef} className="ed-modal" style={{ maxWidth: 520 }} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
             <h2>Confirmar aprovação do cronograma</h2>
             <p>
               Você vai aprovar e enviar <strong>{pendingToApprove.length}</strong>{" "}
