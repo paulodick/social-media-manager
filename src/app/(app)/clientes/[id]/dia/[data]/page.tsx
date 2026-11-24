@@ -4,7 +4,7 @@ import DayNoteCard from "@/components/DayNoteCard";
 import PostEditor, { type EditorTarget } from "@/components/PostEditor";
 import { BackLink, Flash } from "@/components/ui";
 import { acceptedFolders, isNetwork, targetFolders } from "@/config/networks";
-import { addDays, dayFolders, dayLabel, isDay, monthOf, weekStart } from "@/lib/dates";
+import { DEFAULT_POST_TIME, addDays, dayFolders, dayLabel, isDay, monthOf, weekStart } from "@/lib/dates";
 import { folderPathFromRoot } from "@/lib/drive";
 import { activeAiProvider } from "@/lib/ai";
 import ConnectionNotice from "@/components/ConnectionNotice";
@@ -134,7 +134,7 @@ export default async function DayPage({
           aiEnabled={activeAiProvider() !== null}
           volta={volta}
           day={day}
-          defaultTime={p.targets[0]?.time ?? "10:00"}
+          defaultTime={p.targets[0]?.time ?? DEFAULT_POST_TIME}
           note={note}
           postName={p.first?.title ?? ""}
           brief={p.first?.idea ?? ""}

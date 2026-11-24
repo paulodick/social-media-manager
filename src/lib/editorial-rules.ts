@@ -443,3 +443,13 @@ export function parseAiRefinedDraft(input: unknown): { ok: true; draft: AiRefine
     },
   };
 }
+
+/**
+ * Valida a lista de dias da semana (0..6) do gerador editorial.
+ * Exige ao menos um dia válido, sem fallback silencioso.
+ */
+export function parseGenerateWeekdays(raw: unknown): number[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const valid = [...new Set(raw.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))];
+  return valid.length > 0 ? valid : null;
+}

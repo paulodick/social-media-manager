@@ -5,11 +5,12 @@ import { useCallback, useRef, useState } from "react";
 import { NetDot, StatusPill } from "@/components/ui";
 import { useDialogFocusTrap } from "@/components/useDialogFocusTrap";
 import { NETWORKS, isNetwork } from "@/config/networks";
-import { addDays, monthGrid, todaySP } from "@/lib/dates";
+import { DEFAULT_POST_TIME, addDays, isTime, monthGrid, todaySP } from "@/lib/dates";
 import type {
   ContentFormat,
   ContentItem,
   ContentSourceKind,
+  ContentStatus,
   ItemCard,
   Pillar,
   SlotView,
@@ -24,6 +25,13 @@ const FORMAT_LABEL: Record<ContentFormat, string> = {
   video: "Vídeo",
   carousel: "Carrossel",
   static_image: "Estático",
+};
+
+const CONTENT_STATUS_LABEL: Record<ContentStatus, string> = {
+  idea: "Ideia",
+  drafting: "Em produção",
+  ready: "Pronto",
+  archived: "Arquivado",
 };
 
 export default function EditorialBoard({
@@ -54,6 +62,7 @@ export default function EditorialBoard({
   const [newTitle, setNewTitle] = useState("");
   const [newPillar, setNewPillar] = useState("");
   const [newFormat, setNewFormat] = useState<ContentFormat>("video");
+  const [addingItem, setAddingItem] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [unapproving, setUnapproving] = useState(false);
@@ -63,6 +72,35 @@ export default function EditorialBoard({
     if (!approving) setConfirmApprove(false);
   }, [approving]);
   useDialogFocusTrap({ open: confirmApprove, onClose: closeApproveModal, containerRef: approveModalRef });
+
+  const [manualRecreate, setManualRecreate] = useState<{ slot: SlotView; prompt: string } | null>(null);
+  const [manualRecreateJson, setManualRecreateJson] = useState("");
+  const [recreateCopied, setRecreateCopied] = useState(false);
+  const [recreateErr, setRecreateErr] = useState("");
+  const [applyingRecreate, setApplyingRecreate] = useState(false);
+  const recreateModalRef = useRef<HTMLDivElement>(null);
+  const closeRecreateModal = useCallback(() => {
+    if (!applyingRecreate) {
+      setManualRecreate(null);
+      setManualRecreateJson("");
+      setRecreateErr("");
+      setRecreateCopied(false);
+    }
+  }, [applyingRecreate]);
+  useDialogFocusTrap({ open: !!manualRecreate, onClose: closeRecreateModal, containerRef: recreateModalRef });
+
+  const [enqueueModalSlot, setEnqueueModalSlot] = useState<SlotView | null>(null);
+  const [enqueueTime, setEnqueueTime] = useState(DEFAULT_POST_TIME);
+  const [enqueueTimeErr, setEnqueueTimeErr] = useState("");
+  const enqueueModalRef = useRef<HTMLDivElement>(null);
+  const closeEnqueueModal = useCallback(() => {
+    if (!busyId) {
+      setEnqueueModalSlot(null);
+      setEnqueueTimeErr("");
+    }
+  }, [busyId]);
+  useDialogFocusTrap({ open: !!enqueueModalSlot, onClose: closeEnqueueModal, containerRef: enqueueModalRef });
+
   const [failedApprovals, setFailedApprovals] = useState<{ slot_ids: string[]; error: string }[]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [styleNotes, setStyleNotes] = useState(initialStyleNotes);
@@ -160,7 +198,8 @@ export default function EditorialBoard({
 
   async function createQuickItem(e: React.FormEvent) {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || addingItem) return;
+    setAddingItem(true);
     setErr("");
     setMsg("");
     try {
@@ -182,8 +221,11 @@ export default function EditorialBoard({
       }
       setItems((prev) => [toItemCard(j.item!), ...prev]);
       setNewTitle("");
+      setMsg(`Pauta "${j.item.title}" adicionada ao banco de pautas.`);
     } catch {
       setErr("Falha ao criar o item.");
+    } finally {
+      setAddingItem(false);
     }
   }
 
@@ -280,7 +322,10 @@ export default function EditorialBoard({
       }
       if (!j.slot || !j.item) {
         if (j.prompt) {
-          window.prompt("Chave do Gemini não configurada. Copie o pedido para a IA:", j.prompt);
+          setManualRecreate({ slot, prompt: j.prompt });
+          setManualRecreateJson("");
+          setRecreateErr("");
+          setRecreateCopied(false);
         }
         return;
       }
@@ -293,6 +338,51 @@ export default function EditorialBoard({
       setErr("Falha de conexão ao recriar tópico.");
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function copyRecreatePrompt() {
+    if (!manualRecreate) return;
+    try {
+      await navigator.clipboard.writeText(manualRecreate.prompt);
+      setRecreateCopied(true);
+      setTimeout(() => setRecreateCopied(false), 2000);
+    } catch {
+      setRecreateErr("Não foi possível copiar automaticamente. Selecione e copie o texto do pedido.");
+    }
+  }
+
+  async function applyManualRecreate() {
+    if (!manualRecreate || !manualRecreateJson.trim()) return;
+    setApplyingRecreate(true);
+    setRecreateErr("");
+    try {
+      const res = await fetch(`/api/editorial/schedule/${manualRecreate.slot.id}/recreate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "prompt_only", manual_json: manualRecreateJson }),
+      });
+      const j = (await res.json()) as {
+        slot?: SlotView | null;
+        item?: ContentItem | null;
+        reason_why?: string;
+        error?: string;
+      };
+      if (!res.ok || !j.slot || !j.item) {
+        setRecreateErr(j.error ?? "Não foi possível aplicar o JSON retornado.");
+        return;
+      }
+      setSlots((prev) => prev.map((x) => (x.id === j.slot!.id ? j.slot! : x)));
+      setItems((prev) => [toItemCard(j.item!), ...prev]);
+      setMsg(
+        `Tópico recriado: "${j.item.title}".${j.reason_why ? ` Motivo: ${j.reason_why}` : ""}`,
+      );
+      setManualRecreate(null);
+      setManualRecreateJson("");
+    } catch {
+      setRecreateErr("Falha de conexão ao aplicar o JSON.");
+    } finally {
+      setApplyingRecreate(false);
     }
   }
 
@@ -392,15 +482,25 @@ export default function EditorialBoard({
   }
 
   async function enqueueSlot(slot: SlotView) {
-    let time = slot.time;
-    if (!time) {
-      const prompted = window.prompt("Informe o horário (HH:MM) para enviar à fila:", "09:30");
-      if (!prompted) return;
-      time = prompted.trim();
+    if (!slot.time) {
+      setEnqueueTime(DEFAULT_POST_TIME);
+      setEnqueueTimeErr("");
+      setEnqueueModalSlot(slot);
+      return;
+    }
+    await submitEnqueueSlot(slot, slot.time);
+  }
+
+  async function submitEnqueueSlot(slot: SlotView, rawTime: string) {
+    const time = rawTime.trim();
+    if (!isTime(time)) {
+      setEnqueueTimeErr("Informe um horário válido no formato HH:MM.");
+      return;
     }
     setBusyId(slot.id);
     setErr("");
     setMsg("");
+    setEnqueueTimeErr("");
     try {
       const res = await fetch(`/api/editorial/clients/${clientId}/schedule/enqueue`, {
         method: "POST",
@@ -414,7 +514,9 @@ export default function EditorialBoard({
         error?: string;
       };
       if (!res.ok || !j.post_target_ids?.length) {
-        setErr(j.error ?? "Não foi possível enviar para a fila.");
+        const errorMsg = j.error ?? "Não foi possível enviar para a fila.";
+        if (enqueueModalSlot?.id === slot.id) setEnqueueTimeErr(errorMsg);
+        else setErr(errorMsg);
         return;
       }
       setSlots((prev) =>
@@ -433,10 +535,13 @@ export default function EditorialBoard({
             : x,
         ),
       );
+      setEnqueueModalSlot(null);
       const warnText = j.warnings?.length ? ` Avisos: ${j.warnings.join(" ")}` : "";
       setMsg(`Enviado como rascunho para a fila do dia ${j.day}.${warnText}`);
     } catch {
-      setErr("Falha ao enviar para a fila.");
+      const errorMsg = "Falha ao enviar para a fila.";
+      if (enqueueModalSlot?.id === slot.id) setEnqueueTimeErr(errorMsg);
+      else setErr(errorMsg);
     } finally {
       setBusyId(null);
     }
@@ -820,8 +925,8 @@ export default function EditorialBoard({
               </option>
             ))}
           </select>
-          <button type="submit" className="btn primary">
-            Adicionar pauta
+          <button type="submit" className="btn primary" disabled={addingItem || !newTitle.trim()}>
+            {addingItem ? "Adicionando…" : "Adicionar pauta"}
           </button>
         </form>
 
@@ -841,7 +946,7 @@ export default function EditorialBoard({
                       {it.pillar.name}
                     </span>
                   )}
-                  <span className="muted small">Status: {it.status}</span>
+                  <span className="muted small">Situação: {CONTENT_STATUS_LABEL[it.status] ?? it.status}</span>
                 </div>
                 <strong style={{ fontSize: 16 }}>{it.title}</strong>
                 {it.hook && <span className="muted small">Gancho: {it.hook}</span>}
@@ -880,7 +985,7 @@ export default function EditorialBoard({
               </p>
             )}
             <p className="muted small">
-              Isso cria rascunhos na fila do cliente mantendo o horário planejado de cada item (itens sem horário usam 09:00). Nada é publicado automaticamente.
+              Isso cria rascunhos na fila do cliente mantendo o horário planejado de cada item (itens sem horário usam {DEFAULT_POST_TIME}). Nada é publicado automaticamente.
             </p>
             <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
               <button type="button" className="btn" onClick={() => setConfirmApprove(false)} disabled={approving}>
@@ -890,6 +995,107 @@ export default function EditorialBoard({
                 {approving ? "Aprovando…" : "Confirmar e criar rascunhos"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {manualRecreate && (
+        <div
+          className="ed-modal-back"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Recriar tópico manualmente"
+          onClick={closeRecreateModal}
+        >
+          <div ref={recreateModalRef} className="ed-modal" style={{ maxWidth: 640 }} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+            <div className="row between">
+              <h2>Recriar tópico manualmente</h2>
+              <button type="button" className="btn" onClick={closeRecreateModal} disabled={applyingRecreate}>
+                Fechar
+              </button>
+            </div>
+            <p className="muted small" style={{ margin: 0 }}>
+              A chave do Gemini não está configurada. Copie o pedido abaixo, cole na sua IA e depois cole o JSON retornado para substituir <strong>{manualRecreate.slot.item.title}</strong>.
+            </p>
+            {recreateErr && <p className="alert err" role="alert">{recreateErr}</p>}
+            <div className="col" style={{ gap: 8 }}>
+              <div className="row between" style={{ alignItems: "center" }}>
+                <span className="small" style={{ fontWeight: 600 }}>Pedido estruturado</span>
+                <button type="button" className="btn" onClick={copyRecreatePrompt}>
+                  {recreateCopied ? "Copiado!" : "Copiar pedido"}
+                </button>
+              </div>
+              <textarea rows={5} readOnly value={manualRecreate.prompt} aria-label="Pedido estruturado para recriar tópico" />
+              <label className="f">
+                <span>Colar JSON retornado pela IA</span>
+                <textarea
+                  rows={5}
+                  value={manualRecreateJson}
+                  onChange={(e) => setManualRecreateJson(e.target.value)}
+                  placeholder='{"title":"...","theme_key":"...","hook":"..."}'
+                />
+              </label>
+            </div>
+            <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="btn" onClick={closeRecreateModal} disabled={applyingRecreate}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={applyManualRecreate}
+                disabled={!manualRecreateJson.trim() || applyingRecreate}
+              >
+                {applyingRecreate ? "Aplicando…" : "Aplicar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {enqueueModalSlot && (
+        <div
+          className="ed-modal-back"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Definir horário para enviar à fila"
+          onClick={closeEnqueueModal}
+        >
+          <div ref={enqueueModalRef} className="ed-modal" style={{ maxWidth: 440 }} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+            <h2>Definir horário para enviar à fila</h2>
+            <p className="muted small" style={{ margin: 0 }}>
+              O item <strong>{enqueueModalSlot.item.title}</strong> ({enqueueModalSlot.day}) ainda está sem horário. Informe um horário no formato HH:MM.
+            </p>
+            {enqueueTimeErr && <p className="alert err" role="alert">{enqueueTimeErr}</p>}
+            <form
+              className="col"
+              style={{ gap: 12 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitEnqueueSlot(enqueueModalSlot, enqueueTime);
+              }}
+            >
+              <label className="f">
+                <span>Horário (HH:MM)</span>
+                <input
+                  type="time"
+                  value={enqueueTime}
+                  onChange={(e) => {
+                    setEnqueueTime(e.target.value);
+                    setEnqueueTimeErr("");
+                  }}
+                  required
+                />
+              </label>
+              <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="btn" onClick={closeEnqueueModal} disabled={busyId === enqueueModalSlot.id}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn primary" disabled={busyId === enqueueModalSlot.id}>
+                  {busyId === enqueueModalSlot.id ? "Enviando…" : "Enviar para a fila"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

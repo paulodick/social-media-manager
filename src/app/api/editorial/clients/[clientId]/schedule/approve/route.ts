@@ -1,4 +1,5 @@
 import { recordAiMemory } from "@/lib/ai-memory";
+import { DEFAULT_POST_TIME } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { jsonError, readJsonBody, requireApiAuth, requireClient } from "@/lib/editorial-api";
 import { enqueueSlots, processScheduleApproval } from "@/lib/editorial-enqueue";
@@ -22,7 +23,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
 
   const defaultTime = body?.default_time && /^([01]\d|2[0-3]):[0-5]\d$/.test(body.default_time)
     ? body.default_time
-    : "09:00";
+    : DEFAULT_POST_TIME;
 
   // Promove para a fila oficial (posts + post_targets em draft, sem auto_confirmed_at) agrupando por item + dia.
   const allSlots = await listEditorialSlots({ clientId });

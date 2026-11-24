@@ -11,7 +11,7 @@ import {
   listPillars,
   listRecentThemeKeys,
 } from "@/lib/editorial-queries";
-import { extractJsonPayload, isUuid, parseAiCalendar } from "@/lib/editorial-rules";
+import { extractJsonPayload, isUuid, parseAiCalendar, parseGenerateWeekdays } from "@/lib/editorial-rules";
 import type { ContentItem, SlotView } from "@/lib/editorial-types";
 
 export const dynamic = "force-dynamic";
@@ -38,12 +38,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
   const diff = Math.round((new Date(body.to + "T00:00:00Z").getTime() - new Date(body.from + "T00:00:00Z").getTime()) / 86_400_000);
   if (diff < 0 || diff > 62) return jsonError("O período de geração deve ter entre 1 e 62 dias.", 400);
 
-  const weekdays = new Set(
-    (Array.isArray(body.weekdays) && body.weekdays.length ? body.weekdays : [1, 3, 5]).filter(
-      (d) => Number.isInteger(d) && d >= 0 && d <= 6,
-    ),
-  );
-  if (!weekdays.size) return jsonError("Selecione ao menos um dia da semana.", 400);
+  const validWeekdays = parseGenerateWeekdays(body.weekdays);
+  if (!validWeekdays) return jsonError("Selecione ao menos um dia da semana.", 400);
+  const weekdays = new Set(validWeekdays);
 
   if (!Array.isArray(body.targets) || !body.targets.length) {
     return jsonError("Selecione ao menos uma rede e formato.", 400);

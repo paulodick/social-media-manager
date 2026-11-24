@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import PostEditor from "@/components/PostEditor";
 import { BackLink, ClientAvatar, Flash } from "@/components/ui";
 import { activeAiProvider } from "@/lib/ai";
-import { isDay, todaySP } from "@/lib/dates";
+import { DEFAULT_POST_TIME, isDay, todaySP } from "@/lib/dates";
 import { pickerOptions } from "@/lib/picker-options";
 import { getClient, listClients, listDayNotes } from "@/lib/queries";
 
@@ -74,7 +74,7 @@ export default async function NewPost({
           aiEnabled={activeAiProvider() !== null}
           volta="/posts/novo"
           day={date}
-          defaultTime="10:00"
+          defaultTime={DEFAULT_POST_TIME}
           note={savedNote}
           postName=""
           brief=""

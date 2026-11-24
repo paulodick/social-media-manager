@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useDialogFocusTrap } from "@/components/useDialogFocusTrap";
 import { NETWORKS, isNetwork } from "@/config/networks";
+import { DEFAULT_POST_TIME } from "@/lib/dates";
 import type { ContentItem, SlotView } from "@/lib/editorial-types";
 
 const WEEKDAYS = [
@@ -29,31 +31,73 @@ export default function CalendarGeneratorModal({
   onClose: () => void;
   onGenerated: (createdItems: ContentItem[], createdSlots: SlotView[]) => void;
 }) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  useDialogFocusTrap({ open: true, onClose, containerRef: modalRef });
+
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(defaultTo);
   const [weekdays, setWeekdays] = useState<number[]>([1, 3, 5]);
   const availableNets = clientNetworks.filter(isNetwork);
-  const firstNet = availableNets[0] ?? "instagram";
-  const firstFmt = Object.keys(NETWORKS[firstNet].formats)[0] ?? "reels";
+  const netsToShow = availableNets.length
+    ? availableNets
+    : (Object.keys(NETWORKS) as (keyof typeof NETWORKS)[]);
 
-  const [network, setNetwork] = useState<string>(firstNet);
-  const [format, setFormat] = useState<string>(firstFmt);
-  const [defaultTime, setDefaultTime] = useState("09:30");
+  const targetOptions = netsToShow.flatMap((n) =>
+    Object.entries(NETWORKS[n].formats).map(([fKey, fmt]) => ({
+      key: `${n}:${fKey}`,
+      network: n,
+      format: fKey,
+      label: `${NETWORKS[n].label} · ${fmt.label}`,
+    })),
+  );
+
+  const [selectedTargets, setSelectedTargets] = useState<string[]>(() =>
+    targetOptions[0] ? [targetOptions[0].key] : [],
+  );
+  const [defaultTime, setDefaultTime] = useState(DEFAULT_POST_TIME);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [copied, setCopied] = useState(false);
   const [manualJson, setManualJson] = useState("");
-
-  const formats = isNetwork(network) ? Object.entries(NETWORKS[network].formats) : [];
 
   function toggleWeekday(d: number) {
     setWeekdays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
   }
 
+  function toggleTarget(key: string) {
+    setSelectedTargets((prev) =>
+      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key],
+    );
+  }
+
+  async function copyPrompt() {
+    if (!prompt) return;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setErr("Não foi possível copiar automaticamente. Selecione e copie o texto do pedido.");
+    }
+  }
+
   async function generate(mode: "ai" | "prompt_only", useManual = false) {
+    if (weekdays.length === 0) {
+      setErr("Selecione ao menos um dia da semana.");
+      return;
+    }
+    if (selectedTargets.length === 0) {
+      setErr("Selecione ao menos uma rede e formato.");
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
+      const targets = selectedTargets.map((key) => {
+        const [network, format] = key.split(":");
+        return { network, format, default_time: defaultTime || null };
+      });
       const res = await fetch(`/api/editorial/clients/${clientId}/schedule/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -61,7 +105,7 @@ export default function CalendarGeneratorModal({
           from,
           to,
           weekdays,
-          targets: [{ network, format, default_time: defaultTime || null }],
+          targets,
           mode,
           manual_json: useManual ? manualJson : undefined,
         }),
@@ -89,8 +133,19 @@ export default function CalendarGeneratorModal({
   }
 
   return (
-    <div className="ed-modal-back" role="dialog" aria-modal="true" aria-label="Gerar calendário sem repetição">
-      <div className="ed-modal">
+    <div
+      className="ed-modal-back"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Gerar calendário sem repetição"
+      onClick={onClose}
+    >
+      <div
+        ref={modalRef}
+        className="ed-modal"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="row between">
           <h2>Gerar calendário inteligente</h2>
           <button type="button" className="btn" onClick={onClose}>
@@ -99,7 +154,7 @@ export default function CalendarGeneratorModal({
         </div>
 
         <p className="muted small" style={{ margin: 0 }}>
-          Cruza os conteúdos já prontos (<code>existing_ready</code>) com temas inéditos (<code>needs_creation</code>) sem repetir assuntos recentes.
+          Cruza os conteúdos prontos do acervo com temas inéditos (a criar/gravar) sem repetir assuntos recentes.
         </p>
 
         {err && <p className="alert err" role="alert">{err}</p>}
@@ -114,57 +169,56 @@ export default function CalendarGeneratorModal({
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
           <label className="f">
-            <span>Rede</span>
-            <select
-              value={network}
-              onChange={(e) => {
-                const n = e.target.value;
-                setNetwork(n);
-                if (isNetwork(n)) setFormat(Object.keys(NETWORKS[n].formats)[0] ?? "");
-              }}
-            >
-              {(availableNets.length ? availableNets : (Object.keys(NETWORKS) as (keyof typeof NETWORKS)[])).map((n) => (
-                <option key={n} value={n}>
-                  {NETWORKS[n].label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="f">
-            <span>Formato</span>
-            <select value={format} onChange={(e) => setFormat(e.target.value)}>
-              {formats.map(([k, f]) => (
-                <option key={k} value={k}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="f">
             <span>Horário padrão</span>
             <input type="time" value={defaultTime} onChange={(e) => setDefaultTime(e.target.value)} />
           </label>
         </div>
 
         <div className="col" style={{ gap: 6 }}>
+          <span className="small" style={{ fontWeight: 600 }}>
+            Redes e formatos ({selectedTargets.length} selecionado{selectedTargets.length === 1 ? "" : "s"})
+          </span>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {targetOptions.map((opt) => {
+              const active = selectedTargets.includes(opt.key);
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  className={`filter ${active ? "on" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => toggleTarget(opt.key)}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="col" style={{ gap: 6 }}>
           <span className="small" style={{ fontWeight: 600 }}>Dias da semana</span>
           <div className="row" style={{ gap: 6 }}>
-            {WEEKDAYS.map((w) => (
-              <button
-                key={w.id}
-                type="button"
-                className={`filter ${weekdays.includes(w.id) ? "on" : ""}`}
-                onClick={() => toggleWeekday(w.id)}
-              >
-                {w.label}
-              </button>
-            ))}
+            {WEEKDAYS.map((w) => {
+              const active = weekdays.includes(w.id);
+              return (
+                <button
+                  key={w.id}
+                  type="button"
+                  className={`filter ${active ? "on" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => toggleWeekday(w.id)}
+                >
+                  {w.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="row" style={{ gap: 8 }}>
           <button type="button" className="btn primary" onClick={() => generate("ai")} disabled={busy}>
-            {busy ? "Gerando..." : "Gerar com IA"}
+            {busy ? "Gerando…" : "Gerar com IA"}
           </button>
           <button type="button" className="btn" onClick={() => generate("prompt_only")} disabled={busy}>
             Copiar pedido para a IA
@@ -173,10 +227,13 @@ export default function CalendarGeneratorModal({
 
         {prompt && (
           <div className="col" style={{ gap: 8 }}>
-            <label className="f">
-              <span>Pedido estruturado</span>
-              <textarea rows={5} readOnly value={prompt} />
-            </label>
+            <div className="row between" style={{ alignItems: "center" }}>
+              <span className="small" style={{ fontWeight: 600 }}>Pedido estruturado</span>
+              <button type="button" className="btn" onClick={copyPrompt}>
+                {copied ? "Copiado!" : "Copiar pedido"}
+              </button>
+            </div>
+            <textarea rows={5} readOnly value={prompt} aria-label="Pedido estruturado" />
             <label className="f">
               <span>Colar JSON retornado pela IA</span>
               <textarea

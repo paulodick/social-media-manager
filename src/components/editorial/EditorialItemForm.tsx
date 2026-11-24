@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import ToneSelector from "@/components/ToneSelector";
-import { NETWORKS, isNetwork } from "@/config/networks";
+import { NETWORKS, STATUS_LABEL, isNetwork } from "@/config/networks";
+import { DEFAULT_POST_TIME } from "@/lib/dates";
 import type { ContentFormat, ContentItem, ContentSourceKind, ContentStatus, Pillar, SlotView } from "@/lib/editorial-types";
 
 export default function EditorialItemForm({
@@ -42,7 +43,7 @@ export default function EditorialItemForm({
   const availableNets = clientNetworks.filter(isNetwork);
   const firstNet = availableNets[0] ?? "instagram";
   const [slotDay, setSlotDay] = useState("");
-  const [slotTime, setSlotTime] = useState("09:30");
+  const [slotTime, setSlotTime] = useState(DEFAULT_POST_TIME);
   const [slotNet, setSlotNet] = useState<string>(firstNet);
   const [slotFmt, setSlotFmt] = useState<string>(Object.keys(NETWORKS[firstNet].formats)[0] ?? "reels");
 
@@ -188,9 +189,18 @@ export default function EditorialItemForm({
   async function removeItem() {
     if (!window.confirm("Excluir este item editorial? Destinos já enviados à fila não serão apagados.")) return;
     setBusy(true);
+    setErr("");
+    setMsg("");
     try {
       const res = await fetch(`/api/editorial/items/${initialItem.id}`, { method: "DELETE" });
-      if (res.ok) router.push(`/clientes/${clientId}/editorial`);
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setErr(j.error ?? "Não foi possível excluir o item.");
+        return;
+      }
+      router.push(`/clientes/${clientId}/editorial`);
+    } catch {
+      setErr("Falha de conexão ao excluir o item.");
     } finally {
       setBusy(false);
     }
@@ -379,14 +389,19 @@ export default function EditorialItemForm({
         <h2>Datas planejadas na agenda</h2>
         <div className="ed-list">
           {slots.length === 0 && <span className="muted small">Ainda não agendado em nenhum dia.</span>}
-          {slots.map((s) => (
-            <div key={s.id} className="ed-item-card">
-              <span>
-                <strong>{s.day}</strong> {s.time ?? "--:--"} · {s.network} / {s.format}
-              </span>
-              <span className="muted small">{s.target ? `Na fila (${s.target.status})` : "Planejado"}</span>
-            </div>
-          ))}
+          {slots.map((s) => {
+            const netLabel = isNetwork(s.network) ? NETWORKS[s.network].label : s.network;
+            const fmtLabel = isNetwork(s.network) ? (NETWORKS[s.network].formats[s.format]?.label ?? s.format) : s.format;
+            const stLabel = s.target ? (STATUS_LABEL[s.target.status as keyof typeof STATUS_LABEL] ?? s.target.status) : null;
+            return (
+              <div key={s.id} className="ed-item-card">
+                <span>
+                  <strong>{s.day}</strong> {s.time ?? "--:--"} · {netLabel} / {fmtLabel}
+                </span>
+                <span className="muted small">{stLabel ? `Na fila (${stLabel})` : "Planejado"}</span>
+              </div>
+            );
+          })}
         </div>
 
         <form onSubmit={addSlot} className="row" style={{ gap: 8 }}>

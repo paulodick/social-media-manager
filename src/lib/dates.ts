@@ -1,5 +1,7 @@
 // Datas do app são sempre "dia local" no fuso de São Paulo, como texto AAAA-MM-DD.
 export const TZ = "America/Sao_Paulo";
+/** Horário padrão único usado no Novo post, gerador editorial e aprovação de cronograma. */
+export const DEFAULT_POST_TIME = "10:00";
 
 export function todaySP(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(now);
