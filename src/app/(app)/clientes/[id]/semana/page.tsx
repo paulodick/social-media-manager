@@ -96,6 +96,7 @@ export default async function ClientWeek({
       <nav className="tabs" aria-label="Seções do cliente">
         <Link href={`/clientes/${id}`}>Calendário</Link>
         <Link href={`/clientes/${id}/semana`} className="on">Semana</Link>
+        <Link href={`/clientes/${id}/editorial`}>Editorial</Link>
         <Link href={`/clientes/${id}/editar`}>Cadastro e redes</Link>
       </nav>
 

@@ -1,0 +1,418 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { NetDot, StatusPill } from "@/components/ui";
+import { NETWORKS, isNetwork } from "@/config/networks";
+import { addDays, monthGrid, todaySP } from "@/lib/dates";
+import type { ContentItem, ContentSourceKind, ItemCard, Pillar, SlotView } from "@/lib/editorial-types";
+import CalendarGeneratorModal from "./CalendarGeneratorModal";
+import DriveImportPanel from "./DriveImportPanel";
+import PillarManager from "./PillarManager";
+
+const WEEK = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+export default function EditorialBoard({
+  clientId,
+  clientNetworks,
+  hasDriveFolder,
+  initialMonth,
+  initialPillars,
+  initialItems,
+  initialSlots,
+}: {
+  clientId: string;
+  clientNetworks: string[];
+  hasDriveFolder: boolean;
+  initialMonth: string;
+  initialPillars: Pillar[];
+  initialItems: ItemCard[];
+  initialSlots: SlotView[];
+}) {
+  const [pillars, setPillars] = useState<Pillar[]>(initialPillars);
+  const [items, setItems] = useState<ItemCard[]>(initialItems);
+  const [slots, setSlots] = useState<SlotView[]>(initialSlots);
+  const [filterPillar, setFilterPillar] = useState<string>("");
+  const [filterSource, setFilterSource] = useState<"" | ContentSourceKind>("");
+  const [showGen, setShowGen] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newPillar, setNewPillar] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  const today = todaySP();
+  const cells = monthGrid(initialMonth);
+  const slotsByDay = new Map<string, SlotView[]>();
+  for (const s of slots) {
+    if (filterPillar && s.item.pillar_id !== filterPillar) continue;
+    if (filterSource && s.item.source_kind !== filterSource) continue;
+    slotsByDay.set(s.day, [...(slotsByDay.get(s.day) ?? []), s]);
+  }
+
+  const filteredItems = items.filter((it) => {
+    if (it.status === "archived") return false;
+    if (filterPillar && it.pillar_id !== filterPillar) return false;
+    if (filterSource && it.source_kind !== filterSource) return false;
+    return true;
+  });
+
+  const unclassified = items.filter((it) => !it.pillar_id && it.status !== "archived");
+
+  function toItemCard(it: ContentItem): ItemCard {
+    const p = pillars.find((x) => x.id === it.pillar_id);
+    return {
+      ...it,
+      pillar: p ? { id: p.id, name: p.name, color: p.color } : null,
+      assets_count: 0,
+      slots_count: 0,
+      in_queue_count: 0,
+    };
+  }
+
+  async function createQuickItem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+    setErr("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          pillar_id: newPillar || null,
+          source_kind: "needs_creation",
+          status: "idea",
+        }),
+      });
+      const j = (await res.json()) as { item?: ContentItem; error?: string };
+      if (!res.ok || !j.item) {
+        setErr(j.error ?? "Não foi possível criar o item.");
+        return;
+      }
+      setItems((prev) => [toItemCard(j.item!), ...prev]);
+      setNewTitle("");
+    } catch {
+      setErr("Falha ao criar o item.");
+    }
+  }
+
+  async function moveSlot(slot: SlotView, deltaDays: number) {
+    setBusyId(slot.id);
+    setErr("");
+    setMsg("");
+    const targetDay = addDays(slot.day, deltaDays);
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/schedule/reorder`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          moves: [{ slot_id: slot.id, planned_day: targetDay, planned_time: slot.time, position: slot.position }],
+        }),
+      });
+      const j = (await res.json()) as { slots?: SlotView[]; error?: string };
+      if (!res.ok || !j.slots?.length) {
+        setErr(j.error ?? "Não foi possível mover o horário.");
+        return;
+      }
+      const updated = j.slots[0];
+      setSlots((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    } catch {
+      setErr("Falha ao reordenar o calendário.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function removeSlot(slot: SlotView) {
+    setBusyId(slot.id);
+    setErr("");
+    try {
+      const res = await fetch(`/api/editorial/schedule/${slot.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setErr(j.error ?? "Não foi possível remover o horário.");
+        return;
+      }
+      setSlots((prev) => prev.filter((x) => x.id !== slot.id));
+    } catch {
+      setErr("Falha ao remover o horário.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function enqueueSlot(slot: SlotView) {
+    let time = slot.time;
+    if (!time) {
+      const prompted = window.prompt("Informe o horário (HH:MM) para enviar à fila:", "09:30");
+      if (!prompted) return;
+      time = prompted.trim();
+    }
+    setBusyId(slot.id);
+    setErr("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/schedule/enqueue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slot_ids: [slot.id], time }),
+      });
+      const j = (await res.json()) as {
+        post_target_ids?: string[];
+        day?: string;
+        warnings?: string[];
+        error?: string;
+      };
+      if (!res.ok || !j.post_target_ids?.length) {
+        setErr(j.error ?? "Não foi possível enviar para a fila.");
+        return;
+      }
+      setSlots((prev) =>
+        prev.map((x) =>
+          x.id === slot.id
+            ? {
+                ...x,
+                time,
+                target: {
+                  id: j.post_target_ids![0],
+                  status: "draft",
+                  publish_state: "idle",
+                  auto_confirmed: false,
+                },
+              }
+            : x,
+        ),
+      );
+      const warnText = j.warnings?.length ? ` Avisos: ${j.warnings.join(" ")}` : "";
+      setMsg(`Enviado como rascunho para a fila do dia ${j.day}.${warnText}`);
+    } catch {
+      setErr("Falha ao enviar para a fila.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="col" style={{ gap: 20 }}>
+      <PillarManager clientId={clientId} initialPillars={pillars} onChange={setPillars} />
+
+      <DriveImportPanel
+        clientId={clientId}
+        hasDriveFolder={hasDriveFolder}
+        unclassifiedItems={unclassified}
+        onImported={(created) => setItems((prev) => [...created.map(toItemCard), ...prev])}
+        onClassified={(updated) => {
+          const map = new Map(updated.map((u) => [u.id, toItemCard(u)]));
+          setItems((prev) => prev.map((it) => map.get(it.id) ?? it));
+        }}
+      />
+
+      {err && <p className="alert err" role="alert">{err}</p>}
+      {msg && <p className="alert ok" role="status">{msg}</p>}
+
+      <section className="card col" style={{ gap: 14 }}>
+        <div className="row between">
+          <div className="col" style={{ gap: 2 }}>
+            <h2>3. Calendário editorial visual</h2>
+            <span className="muted small">
+              Reordene os dias, revise o que já está pronto vs. o que precisa gravar/criar e envie para a fila como rascunho.
+            </span>
+          </div>
+          <button type="button" className="btn primary" onClick={() => setShowGen(true)}>
+            Gerar calendário sem repetição
+          </button>
+        </div>
+
+        <div className="row" style={{ gap: "10px 24px" }}>
+          <div className="row" style={{ gap: 6 }}>
+            <span className="muted small" style={{ fontWeight: 600 }}>Origem:</span>
+            <button type="button" className={`filter ${filterSource === "" ? "on" : ""}`} onClick={() => setFilterSource("")}>
+              Todas
+            </button>
+            <button
+              type="button"
+              className={`filter ${filterSource === "existing_ready" ? "on" : ""}`}
+              onClick={() => setFilterSource("existing_ready")}
+            >
+              Pronto (acervo)
+            </button>
+            <button
+              type="button"
+              className={`filter ${filterSource === "needs_creation" ? "on" : ""}`}
+              onClick={() => setFilterSource("needs_creation")}
+            >
+              Criar / Gravar
+            </button>
+          </div>
+
+          <div className="row" style={{ gap: 6 }}>
+            <span className="muted small" style={{ fontWeight: 600 }}>Pilar:</span>
+            <button type="button" className={`filter ${filterPillar === "" ? "on" : ""}`} onClick={() => setFilterPillar("")}>
+              Todos
+            </button>
+            {pillars.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`filter ${filterPillar === p.id ? "on" : ""}`}
+                onClick={() => setFilterPillar(p.id)}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="cal">
+          <div className="cal-in">
+            <div className="cal-head">
+              {WEEK.map((d) => (
+                <span key={d}>{d}</span>
+              ))}
+            </div>
+            <div className="cal-body">
+              {cells.map((c) => {
+                const list = slotsByDay.get(c.day) ?? [];
+                return (
+                  <div
+                    key={c.day}
+                    className={`cell ${c.inMonth ? "" : "out"} ${c.day === today ? "today" : ""}`}
+                    style={{ cursor: "default" }}
+                  >
+                    <span className="n">{c.inMonth ? c.n : `${c.n}/${c.day.slice(5, 7)}`}</span>
+                    {list.map((s) => {
+                      const netLabel = isNetwork(s.network) ? NETWORKS[s.network].label : s.network;
+                      return (
+                        <div key={s.id} className={`ed-slot ${s.target ? "queued" : ""}`}>
+                          <div className="row between" style={{ gap: 4 }}>
+                            <span className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+                              <NetDot network={s.network} />
+                              <span className="small" style={{ fontWeight: 600 }}>
+                                {s.time ?? "--:--"}
+                              </span>
+                            </span>
+                            <span className={s.item.source_kind === "existing_ready" ? "ed-badge-ready" : "ed-badge-create"}>
+                              {s.item.source_kind === "existing_ready" ? "Pronto" : "Criar"}
+                            </span>
+                          </div>
+                          <Link
+                            href={`/clientes/${clientId}/editorial/${s.content_item_id}`}
+                            style={{ fontWeight: 600, color: "var(--ink)", textDecoration: "none", lineHeight: 1.25 }}
+                          >
+                            {s.item.title}
+                          </Link>
+                          <span className="muted small">
+                            {netLabel} · {s.format}
+                            {s.item.pillar_name ? ` · ${s.item.pillar_name}` : ""}
+                          </span>
+                          {s.target ? (
+                            <div className="ed-slot-actions">
+                              <StatusPill status={s.target.status} />
+                              <Link href={`/clientes/${clientId}/dia/${s.day}`}>Ver na fila</Link>
+                            </div>
+                          ) : (
+                            <div className="ed-slot-actions">
+                              <button type="button" onClick={() => moveSlot(s, -1)} disabled={busyId === s.id} title="Mover 1 dia antes">
+                                ‹
+                              </button>
+                              <button type="button" onClick={() => moveSlot(s, 1)} disabled={busyId === s.id} title="Mover 1 dia depois">
+                                ›
+                              </button>
+                              <button type="button" onClick={() => enqueueSlot(s)} disabled={busyId === s.id}>
+                                Enviar p/ fila
+                              </button>
+                              <button type="button" onClick={() => removeSlot(s)} disabled={busyId === s.id} title="Remover da agenda">
+                                ×
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="card col" style={{ gap: 14 }}>
+        <div className="row between">
+          <h2>4. Fila de produção &amp; banco de pautas ({filteredItems.length})</h2>
+        </div>
+
+        <form onSubmit={createQuickItem} className="row" style={{ gap: 8 }}>
+          <input
+            type="text"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="Nova pauta rápida (ex.: 3 erros ao escolher...)"
+            maxLength={160}
+            style={{ flex: 2, minWidth: 220 }}
+          />
+          <select value={newPillar} onChange={(e) => setNewPillar(e.target.value)} style={{ flex: 1, minWidth: 160 }}>
+            <option value="">Sem pilar</option>
+            {pillars.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="btn primary">
+            Adicionar pauta
+          </button>
+        </form>
+
+        <div className="ed-list">
+          {filteredItems.length === 0 && <span className="muted small">Nenhum item encontrado para este filtro.</span>}
+          {filteredItems.map((it) => (
+            <div key={it.id} className="ed-item-card">
+              <div className="col" style={{ gap: 4, flex: 1, minWidth: 240 }}>
+                <div className="row" style={{ gap: 8 }}>
+                  <span className={it.source_kind === "existing_ready" ? "ed-badge-ready" : "ed-badge-create"}>
+                    {it.source_kind === "existing_ready" ? "Pronto (acervo)" : "Criar / Gravar"}
+                  </span>
+                  {it.pillar && (
+                    <span className="chip">
+                      <span className="dot" style={{ background: it.pillar.color }} aria-hidden="true" />
+                      {it.pillar.name}
+                    </span>
+                  )}
+                  <span className="muted small">Status: {it.status}</span>
+                </div>
+                <strong style={{ fontSize: 16 }}>{it.title}</strong>
+                {it.hook && <span className="muted small">Gancho: {it.hook}</span>}
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <span className="muted small">
+                  {it.assets_count} ativo(s) · {it.slots_count} dia(s) · {it.in_queue_count} na fila
+                </span>
+                <Link href={`/clientes/${clientId}/editorial/${it.id}`} className="btn">
+                  Abrir editor
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {showGen && (
+        <CalendarGeneratorModal
+          clientId={clientId}
+          clientNetworks={clientNetworks}
+          defaultFrom={today}
+          defaultTo={addDays(today, 14)}
+          onClose={() => setShowGen(false)}
+          onGenerated={(newItems, newSlots) => {
+            if (newItems.length) setItems((prev) => [...newItems.map(toItemCard), ...prev]);
+            if (newSlots.length) setSlots((prev) => [...prev, ...newSlots]);
+            setMsg(`${newSlots.length} horário(s) adicionados ao calendário.`);
+          }}
+        />
+      )}
+    </div>
+  );
+}

@@ -71,6 +71,7 @@ export default async function ClientCalendar({
       <nav className="tabs" aria-label="Seções do cliente">
         <Link href={`/clientes/${id}`} className="on">Calendário</Link>
         <Link href={`/clientes/${id}/semana`}>Semana</Link>
+        <Link href={`/clientes/${id}/editorial`}>Editorial</Link>
         <Link href={`/clientes/${id}/editar`}>Cadastro e redes</Link>
       </nav>
 
