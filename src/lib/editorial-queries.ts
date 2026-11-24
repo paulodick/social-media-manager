@@ -84,7 +84,7 @@ export async function upsertPillar(
            archived_at = null,
            updated_at = now()
      returning id, client_id, name, description, color, weight_pct, weekly_target, position,
-               archived_at::text as archived_at, (xmax = 0) as inserted`,
+               archived_at::text as archived_at, (xmax::text = '0') as inserted`,
     [
       clientId,
       input.name.trim(),
