@@ -201,10 +201,12 @@ test("explainGeminiError traduz erros HTTP em frases em português", () => {
   assert.match(explainGeminiError(503, "Unavailable"), /instável/);
 });
 
-test("generateEditorialJson envia responseMimeType application/json para o Gemini", async () => {
+test("generateEditorialJson envia responseMimeType application/json e faz fallback em 404", async () => {
   let receivedMime = "";
   let receivedKey = "";
+  let calls = 0;
   const srv = createServer(async (req, res) => {
+    calls++;
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     receivedKey = url.searchParams.get("key") ?? "";
     const chunks: Buffer[] = [];
@@ -213,6 +215,11 @@ test("generateEditorialJson envia responseMimeType application/json para o Gemin
       generationConfig?: { responseMimeType?: string };
     };
     receivedMime = body.generationConfig?.responseMimeType ?? "";
+    if (calls === 1) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "not found" } }));
+      return;
+    }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"entries":[]}' }] } }] }));
   });
@@ -228,6 +235,7 @@ test("generateEditorialJson envia responseMimeType application/json para o Gemin
     assert.equal(editorialAiConfigured(), true);
     const out = await generateEditorialJson("Monte o calendário");
     assert.deepEqual(out, { text: '{"entries":[]}' });
+    assert.equal(calls, 2);
     assert.equal(receivedMime, "application/json");
     assert.equal(receivedKey, "test-gemini-key");
   } finally {
