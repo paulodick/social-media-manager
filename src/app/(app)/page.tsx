@@ -1,13 +1,14 @@
 import Link from "next/link";
+import ProblemsAlert from "@/components/ProblemsAlert";
 import { NetChip, ClientAvatar, Flash, StatusPill } from "@/components/ui";
 import { isNetwork } from "@/config/networks";
 import { dayLabel, todaySP } from "@/lib/dates";
-import { listClients, listTargets } from "@/lib/queries";
+import { listClients, listProblemTargets, listTargets } from "@/lib/queries";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ erro?: string; ok?: string; aviso?: string }> }) {
   const { erro, ok, aviso } = await searchParams;
   const today = todaySP();
-  const [clients, due] = await Promise.all([listClients(), listTargets({ dueUntil: today })]);
+  const [clients, due, problems] = await Promise.all([listClients(), listTargets({ dueUntil: today }), listProblemTargets()]);
   return (
     <main id="conteudo" tabIndex={-1} className="main">
       <header className="row between">
@@ -18,6 +19,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
         </div>
       </header>
       <Flash erro={erro} ok={ok} aviso={aviso} />
+      <ProblemsAlert items={problems} />
 
       <section className="card" aria-labelledby="hoje">
         <div className="row between">

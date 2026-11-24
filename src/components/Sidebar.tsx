@@ -9,7 +9,7 @@ import { ClientAvatar } from "@/components/ui";
 
 type C = { id: string; name: string; logo_v: number | null };
 
-export default function Sidebar({ clients, due }: { clients: C[]; due: number }) {
+export default function Sidebar({ clients, due, problems = 0 }: { clients: C[]; due: number; problems?: number }) {
   const path = usePathname();
   const on = (p: string, exact = false) => (exact ? path === p : path === p || path.startsWith(p + "/"));
   const [menu, setMenu] = useState(false);
@@ -22,6 +22,8 @@ export default function Sidebar({ clients, due }: { clients: C[]; due: number })
     return () => window.removeEventListener("keydown", onKey);
   }, [menu]);
   const inClients = path.startsWith("/clientes") || on("/configuracoes");
+  const problemLabel =
+    problems === 1 ? "1 publicação precisa de atenção" : `${problems} publicações precisam de atenção`;
   return (
     <>
     <header className="topbar"><BrandLogo size={28} /><b>Social Media Manager</b></header>
@@ -34,7 +36,17 @@ export default function Sidebar({ clients, due }: { clients: C[]; due: number })
       <nav className="nav" aria-label="Principal">
         <Link href="/" className={on("/", true) ? "on" : ""}>Início</Link>
         <Link href="/postar-hoje" className={on("/postar-hoje") ? "on" : ""}>
-          Postar hoje {due > 0 && <span className="badge" aria-label={`${due} para postar`}>{due}</span>}
+          <span>Postar hoje</span>
+          {(due > 0 || problems > 0) && (
+            <span className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+              {problems > 0 && (
+                <span className="badge err" title={problemLabel} aria-label={problemLabel}>
+                  {problems}
+                </span>
+              )}
+              {due > 0 && <span className="badge" aria-label={`${due} para postar`}>{due}</span>}
+            </span>
+          )}
         </Link>
         <Link href="/posts/novo" className={on("/posts/novo") ? "on" : ""}>Novo post</Link>
       </nav>
@@ -63,8 +75,14 @@ export default function Sidebar({ clients, due }: { clients: C[]; due: number })
         <span className="ico" aria-hidden="true">⌂</span>Início
       </Link>
       <Link href="/postar-hoje" className={on("/postar-hoje") ? "on" : ""} aria-current={on("/postar-hoje") ? "page" : undefined}>
-        <span className="ico" aria-hidden="true">✓{due > 0 && <i className="dot" />}</span>
-        Postar hoje{due > 0 && <span className="sr"> ({due} para postar)</span>}
+        <span className="ico" aria-hidden="true">
+          {problems > 0 && <i className="dot err" />}
+          ✓
+          {due > 0 && <i className="dot" />}
+        </span>
+        Postar hoje
+        {problems > 0 && <span className="sr"> ({problemLabel})</span>}
+        {due > 0 && <span className="sr"> ({due} para postar)</span>}
       </Link>
       <Link href="/posts/novo" className={on("/posts/novo") ? "on" : ""} aria-current={on("/posts/novo") ? "page" : undefined}>
         <span className="ico" aria-hidden="true">＋</span>Novo post

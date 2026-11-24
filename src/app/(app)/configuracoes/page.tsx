@@ -74,6 +74,19 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           good="ativo (classificação e geração de calendário)."
           problem='desligado. Para ligar, defina a variável GEMINI_API_KEY. Enquanto isso, "Copiar pedido para a IA" funciona.'
         />
+        {(() => {
+          const missing: string[] = [];
+          if (!process.env.RESEND_API_KEY?.trim()) missing.push("RESEND_API_KEY");
+          if (!process.env.NOTIFY_EMAIL_TO?.trim()) missing.push("NOTIFY_EMAIL_TO");
+          return (
+            <Row
+              ok={missing.length === 0}
+              label="Aviso por e-mail"
+              good="ativo (envia e-mail se uma publicação automática falhar ou perder o horário)."
+              problem={`desligado. Para ligar, defina ${missing.join(" e ")}.`}
+            />
+          );
+        })()}
         <details className="personalize">
           <summary>Detalhes técnicos</summary>
           <ul className="muted small" style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4, paddingTop: 8 }}>
@@ -82,6 +95,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <li>Google Drive: {driveConfigured() ? `conta de serviço ${serviceAccountEmail()}` : "variável GOOGLE_SERVICE_ACCOUNT_JSON."}</li>
             <li>Legendas com IA: variável ANTHROPIC_API_KEY.</li>
             <li>Planejamento Editorial com IA: variável GEMINI_API_KEY.</li>
+            <li>Aviso por e-mail: variáveis RESEND_API_KEY e NOTIFY_EMAIL_TO.</li>
           </ul>
         </details>
       </section>

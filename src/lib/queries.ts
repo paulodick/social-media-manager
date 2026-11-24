@@ -1,7 +1,7 @@
-import { db } from "./db";
-import type { MediaMeta } from "./checks";
-import { TZ } from "./dates";
-import { AUTO_WINDOW_MIN } from "./auto-publish";
+import { db } from "./db.ts";
+import type { MediaMeta } from "./checks.ts";
+import { TZ } from "./dates.ts";
+import { AUTO_WINDOW_MIN } from "./auto-publish.ts";
 
 export type Client = {
   id: string;
@@ -154,6 +154,30 @@ export async function countDue(today: string): Promise<number> {
     `select count(*)::int as n from post_targets
       where status <> 'posted' and scheduled_at < (($1::date + 1)::timestamp) at time zone '${TZ}'`,
     [today],
+  );
+  return r.rows[0]?.n ?? 0;
+}
+
+const PROBLEM_WHERE = `t.status <> 'posted' and (
+  t.publish_state = 'failed'
+  or (t.publish_state = 'publishing' and t.publish_started_at < now() - interval '15 minutes')
+  or (t.auto_confirmed_at is not null and t.publish_state = 'idle' and t.scheduled_at < now() - interval '${AUTO_WINDOW_MIN} minutes')
+)`;
+
+/** Destinos não postados que falharam ao publicar (ou travaram > 15 min) ou perderam o horário automático. */
+export async function listProblemTargets(): Promise<Target[]> {
+  const pool = await db();
+  const r = await pool.query<Target>(
+    `${TARGET_SELECT} where ${PROBLEM_WHERE} order by t.scheduled_at, t.network, t.format`,
+  );
+  return r.rows;
+}
+
+/** Quantidade de destinos não postados que precisam de atenção (falha ou horário perdido). */
+export async function countProblems(): Promise<number> {
+  const pool = await db();
+  const r = await pool.query<{ n: number }>(
+    `select count(*)::int as n from post_targets t where ${PROBLEM_WHERE}`,
   );
   return r.rows[0]?.n ?? 0;
 }
