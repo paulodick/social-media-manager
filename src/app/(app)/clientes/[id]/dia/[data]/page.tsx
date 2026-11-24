@@ -19,7 +19,7 @@ export default async function DayPage({
   searchParams,
 }: {
   params: Promise<{ id: string; data: string }>;
-  searchParams: Promise<{ salvo?: string; erro?: string; aviso?: string; pasta?: string; nota?: string }>;
+  searchParams: Promise<{ salvo?: string; erro?: string; aviso?: string; ok?: string; pasta?: string; nota?: string }>;
 }) {
   const { id, data: day } = await params;
   const sp = await searchParams;
@@ -117,7 +117,7 @@ export default async function DayPage({
           <Link href={`/clientes/${id}/dia/${addDays(day, 1)}`} className="btn" aria-label="Próximo dia" style={{ width: 44, padding: 0 }}>›</Link>
         </div>
       </header>
-      <Flash erro={sp.erro} aviso={sp.aviso} ok={sp.pasta ? "Pasta do Drive pronta." : sp.nota ? "Planejamento do dia salvo." : undefined} />
+      <Flash erro={sp.erro} aviso={sp.aviso} ok={sp.ok ?? (sp.pasta ? "Pasta do Drive pronta." : sp.nota ? "Planejamento do dia salvo." : undefined)} />
       <ConnectionNotice health={health} clientId={id} quiet />
       <ConnectionNotice health={liHealth} clientId={id} quiet provider="linkedin" />
       <ConnectionNotice health={ttHealth} clientId={id} quiet provider="tiktok" />

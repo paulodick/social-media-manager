@@ -14,3 +14,14 @@ export function canMarkPosted(publishState: string): { ok: true } | { ok: false;
 export function isUndoableStatus(status: string): status is "draft" | "scheduled" {
   return status === "draft" || status === "scheduled";
 }
+
+export function deleteTargetBlocker(t: { publish_state: string; external_id: string | null }): string | null {
+  if (t.publish_state === "publishing") {
+    return "Este destino está sendo publicado agora. Aguarde concluir antes de excluir.";
+  }
+  if (t.publish_state === "published" || (t.external_id ?? "").trim() !== "") {
+    return "Este destino já foi publicado na rede e não pode ser excluído aqui. Para remover, exclua diretamente na rede.";
+  }
+  return null;
+}
+

@@ -12,7 +12,7 @@ export default async function ClientCalendar({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ mes?: string; rede?: string; status?: string; aviso?: string }>;
+  searchParams: Promise<{ mes?: string; rede?: string; status?: string; aviso?: string; ok?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -66,7 +66,7 @@ export default async function ClientCalendar({
         <Link href={`/posts/novo?cliente=${id}`} className="btn primary">Novo post</Link>
       </header>
 
-      <Flash aviso={sp.aviso} />
+      <Flash ok={sp.ok} aviso={sp.aviso} />
 
       <nav className="tabs" aria-label="Seções do cliente">
         <Link href={`/clientes/${id}`} className="on">Calendário</Link>

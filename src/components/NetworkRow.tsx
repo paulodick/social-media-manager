@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NETWORKS, STATUS_LABEL, targetFolders, type NetworkId } from "@/config/networks";
 import { captionChecks, countHashtags, fmtNumber, mediaChecks, thumbChecks, titleChecks, type Check, type MediaMeta } from "@/lib/checks";
-import { dayFolders, isDay } from "@/lib/dates";
+import { dayFolders, dayLabel, isDay } from "@/lib/dates";
 import { deleteTarget, ensureTargetFolder, inspectDrive } from "@/lib/actions";
 import type { PickerOption } from "@/lib/picker-options";
 import type { PromptClient } from "@/lib/prompt";
@@ -96,6 +96,7 @@ export default function NetworkRow({
   profile,
   canCreateFolder,
   idPrefix,
+  isLastTarget = false,
 }: {
   o: PickerOption;
   existing?: ExistingTarget;
@@ -114,6 +115,7 @@ export default function NetworkRow({
   profile: { name: string; handle: string };
   canCreateFolder: boolean;
   idPrefix: string;
+  isLastTarget?: boolean;
 }) {
   const isNew = !existing;
   const k = existing ? existing.id : o.key; // chave dos campos do formulário
@@ -151,6 +153,10 @@ export default function NetworkRow({
   const thumbPlayable = existing && thumbUrl.trim() === existing.thumbUrl && existing.thumbUrl ? thumb.fileId : null;
 
   const capRef = useRef<HTMLTextAreaElement>(null);
+  const moreRef = useRef<HTMLDetailsElement>(null);
+  const deleteDialogRef = useRef<HTMLDialogElement>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   // A caixa da legenda cresce com o texto (até 60% da altura da tela; depois rola por dentro).
   useEffect(() => {
     const el = capRef.current;
@@ -314,7 +320,7 @@ export default function NetworkRow({
                 )}
                 <CopyButton text={caption} />
                 {downloadable && <a className="btn" href={`/api/media/${video.fileId}?download=1`}>Baixar mídia</a>}
-                <details className="more">
+                <details className="more" ref={moreRef}>
                   <summary className="btn">Mais ações</summary>
                   <div className="menu">
                     {inMenu.map((st) => (
@@ -325,19 +331,57 @@ export default function NetworkRow({
                     ) : canCreateFolder ? (
                       <SubmitButton formAction={ensureTargetFolder.bind(null, existing.id)} formNoValidate pendingLabel="Criando pasta…">Criar pasta no Drive</SubmitButton>
                     ) : null}
-                    <SubmitButton
+                    <button
+                      ref={deleteTriggerRef}
                       className="danger"
-                      formAction={deleteTarget.bind(null, existing.id)}
-                      formNoValidate
-                      pendingLabel="Excluindo…"
-                      onClick={(e) => {
-                        if (!window.confirm(`Excluir o destino ${o.networkLabel} ${o.formatLabel} deste post? Não dá para desfazer.`)) e.preventDefault();
+                      type="button"
+                      onClick={() => {
+                        if (moreRef.current) moreRef.current.open = false;
+                        deleteDialogRef.current?.showModal();
+                        deleteCancelRef.current?.focus();
                       }}
                     >
                       Excluir este destino
-                    </SubmitButton>
+                    </button>
                   </div>
                 </details>
+                <dialog
+                  ref={deleteDialogRef}
+                  className="confirm-dialog"
+                  aria-labelledby={`${id}-del-title`}
+                  aria-describedby={`${id}-del-desc`}
+                  onClose={() => deleteTriggerRef.current?.focus()}
+                  onClick={(e) => {
+                    if (e.target === deleteDialogRef.current) deleteDialogRef.current.close();
+                  }}
+                >
+                  <h3 id={`${id}-del-title`}>Excluir destino?</h3>
+                  <div id={`${id}-del-desc`} className="col" style={{ gap: 10 }}>
+                    <p style={{ margin: 0 }}>
+                      Você está prestes a excluir <b>{o.networkLabel} · {o.formatLabel}</b> de <b>{clientName}</b> no dia <b>{dayLabel(existing.day)}</b>.
+                    </p>
+                    {isLastTarget && (
+                      <p className="alert warn" style={{ margin: 0 }}>
+                        Este é o último destino do post. Excluir este destino também apagará o post inteiro.
+                      </p>
+                    )}
+                    <p className="muted small" style={{ margin: 0 }}>Essa ação não pode ser desfeita.</p>
+                  </div>
+                  <div className="row" style={{ justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+                    <button ref={deleteCancelRef} type="button" className="btn" onClick={() => deleteDialogRef.current?.close()}>
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn danger"
+                      formAction={deleteTarget.bind(null, existing.id)}
+                      formNoValidate
+                      onClick={() => deleteDialogRef.current?.close()}
+                    >
+                      Excluir destino
+                    </button>
+                  </div>
+                </dialog>
               </div>
             </>
           );

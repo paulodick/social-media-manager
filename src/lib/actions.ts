@@ -24,7 +24,7 @@ import { clearPending, readPending } from "./meta-pending";
 import { listPages } from "./publish/meta-oauth";
 import { fetchLogo } from "./logo";
 import type { MediaMeta } from "./checks";
-import { canMarkPosted, isUndoableStatus, isValidUuid } from "./target-rules";
+import { canMarkPosted, deleteTargetBlocker, isUndoableStatus, isValidUuid } from "./target-rules";
 import { validateTones } from "@/config/tones";
 import { NETWORKS, NETWORK_IDS, folderGroup, hasTitle, isFormat, isNetwork } from "@/config/networks";
 
@@ -660,16 +660,56 @@ export async function deleteTarget(targetId: string, formData: FormData): Promis
   await requireAuth();
   // O id vem da ligação do botão (bind), não de campo do formulário: o React troca o `name` de botões com formAction.
   const id = String(targetId).slice(0, 40);
-  if (!/^[0-9a-f-]{36}$/i.test(id)) redirect("/");
+  if (!isValidUuid(id)) redirect("/");
   const back = safePath(text(formData, "volta", 300), "/");
   const pool = await db();
-  const r = await pool.query<{ post_id: string }>("delete from post_targets where id=$1 returning post_id", [id]);
-  const postId = r.rows[0]?.post_id;
-  if (postId) {
-    await pool.query("delete from posts p where p.id=$1 and not exists (select 1 from post_targets t where t.post_id=p.id)", [postId]);
+  const cur = await pool.query<{
+    post_id: string;
+    client_id: string;
+    day: string;
+    publish_state: string;
+    external_id: string | null;
+  }>(
+    `select t.post_id, p.client_id,
+            to_char(t.scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day,
+            t.publish_state, t.external_id
+       from post_targets t
+       join posts p on p.id = t.post_id
+      where t.id = $1`,
+    [id],
+  );
+  const row = cur.rows[0];
+  if (!row) redirect(back);
+  const blocker = deleteTargetBlocker(row);
+  if (blocker) redirect(withParam(back, "erro", blocker) + `#t-${id}`);
+
+  const r = await pool.query<{ post_id: string }>(
+    `delete from post_targets
+      where id = $1
+        and publish_state not in ('publishing', 'published')
+        and coalesce(external_id, '') = ''
+      returning post_id`,
+    [id],
+  );
+  if (!r.rowCount) {
+    redirect(withParam(back, "erro", "Este destino não pode ser excluído.") + `#t-${id}`);
   }
+  await pool.query("delete from posts p where p.id=$1 and not exists (select 1 from post_targets t where t.post_id=p.id)", [row.post_id]);
+
+  const left = await pool.query(
+    `select 1
+       from post_targets t
+       join posts p on p.id = t.post_id
+      where p.client_id = $1
+        and to_char(t.scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') = $2
+      limit 1`,
+    [row.client_id, row.day],
+  );
   revalidatePath("/", "layout");
-  redirect(back);
+  if (!left.rowCount) {
+    redirect(withParam(`/clientes/${row.client_id}?mes=${monthOf(row.day)}`, "ok", "Destino excluído."));
+  }
+  redirect(withParam(back, "ok", "Destino excluído."));
 }
 
 /**

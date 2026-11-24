@@ -11,7 +11,7 @@ import { buildCaptionPrompt, buildToneBlock, splitGenerated } from "../src/lib/p
 import { TONES, MAX_TONES, validateTones, toneBlockedReason } from "../src/config/tones.ts";
 import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders, weekStart, weekDays, weekLabel, weekdayShort } from "../src/lib/dates.ts";
 import { formatSavedPublishSummary, isTargetDirty } from "../src/lib/target-dirty.ts";
-import { isValidUuid, canMarkPosted, isUndoableStatus } from "../src/lib/target-rules.ts";
+import { isValidUuid, canMarkPosted, isUndoableStatus, deleteTargetBlocker } from "../src/lib/target-rules.ts";
 
 test("parseDriveUrl", () => {
   assert.deepEqual(parseDriveUrl("https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing"), { id: "1AbCdEfGhIjKlMnOp", kind: "file" });
@@ -374,4 +374,12 @@ test("markPosted: valida UUID, recusa publish_state='publishing' e aceita desfaz
   assert.equal(isUndoableStatus("draft"), true);
   assert.equal(isUndoableStatus("scheduled"), true);
   assert.equal(isUndoableStatus("posted"), false);
+});
+
+test("deleteTargetBlocker: recusa publishing, published ou external_id preenchido", () => {
+  assert.equal(deleteTargetBlocker({ publish_state: "idle", external_id: "" }), null);
+  assert.equal(deleteTargetBlocker({ publish_state: "failed", external_id: null }), null);
+  assert.ok(deleteTargetBlocker({ publish_state: "publishing", external_id: null }));
+  assert.ok(deleteTargetBlocker({ publish_state: "published", external_id: null }));
+  assert.ok(deleteTargetBlocker({ publish_state: "idle", external_id: "17890" }));
 });

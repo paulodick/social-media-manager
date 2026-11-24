@@ -200,6 +200,7 @@ export default function PostEditor({
                 onToggle={() => toggle(o.key)}
                 defaults={defaults}
                 inherited={ex ? undefined : inheritFor(o.key)}
+                isLastTarget={ex ? targets.length === 1 : false}
                 profile={profile}
                 {...common}
               />
