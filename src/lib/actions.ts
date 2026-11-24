@@ -8,6 +8,7 @@ import { db } from "./db";
 import { TZ, isDay, isTime, monthOf } from "./dates";
 import { ensureClientFolders, ensureFolderPath, folderUrl, getFolderName, parseDriveUrl } from "./drive";
 import { ensureTargetFolders, folderNames, resolveDrive } from "./post-folders";
+import { formatMovedTargetsNotice, resolveEditRedirect } from "./post-redirect";
 import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { generateText, type AiResult } from "./ai";
 import { buildMemoryBlock, listRecentAiMemory, recordAiMemory, summarizeCaptionDiff } from "./ai-memory";
@@ -342,13 +343,31 @@ export async function savePost(formData: FormData): Promise<void> {
     }),
   );
 
-  // Pasta no Drive de cada destino novo. Se falhar, o post é salvo mesmo assim e a tela avisa; dá para criar depois.
+  // Pasta no Drive de destinos que mudaram de dia e de destinos novos.
+  // Se falhar, o post é salvo mesmo assim e a tela avisa; dá para criar depois.
+  const movedUpdates = updates.filter((u) => u.day !== u.e.day);
+  const movedIds = new Set(movedUpdates.map((u) => u.e.id));
   const reuse = new Map<string, string>();
   for (const e of existing) {
+    if (movedIds.has(e.id)) continue;
     const g = folderGroup(e.network, e.format);
     if (g && e.post_folder_id && !reuse.has(`${g.id}|${e.day}`)) reuse.set(`${g.id}|${e.day}`, e.post_folder_id);
   }
-  const { ids: folderIds, error: folderError } = await ensureTargetFolders(root, created, reuse);
+  const movedFolders = movedUpdates.length
+    ? await ensureTargetFolders(
+        root,
+        movedUpdates.map((u) => ({ network: u.e.network, format: u.e.format, day: u.day })),
+        reuse,
+      )
+    : { ids: [] as (string | null)[], error: null as string | null };
+  const movedFolderById = new Map<string, string | null>();
+  movedUpdates.forEach((u, i) => movedFolderById.set(u.e.id, movedFolders.ids[i] ?? null));
+
+  const createdFolders = created.length
+    ? await ensureTargetFolders(root, created, reuse)
+    : { ids: [] as (string | null)[], error: null as string | null };
+  const folderIds = createdFolders.ids;
+  const folderError = movedFolders.error ?? createdFolders.error;
 
   // Nome interno do post: serve só para achar o post, não vai para nenhuma rede.
   const postName =
@@ -373,6 +392,7 @@ export async function savePost(formData: FormData): Promise<void> {
       savedPostId = p.rows[0].id;
     }
     for (const u of updates) {
+      const nextFolderId = u.day !== u.e.day ? (movedFolderById.get(u.e.id) ?? null) : u.e.post_folder_id;
       // Mudou horário, legenda, mídia, miniatura ou título de um destino confirmado: a confirmação cai e a pessoa
       // confirma de novo. Assim o app nunca publica algo diferente do que ela viu quando confirmou.
       const upd = await c.query<{ still: boolean }>(
@@ -383,10 +403,10 @@ export async function savePost(formData: FormData): Promise<void> {
               ) then null else auto_confirmed_at end,
             caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
             drive_url=$4, drive_file_id=$5, drive_meta=$6, thumb_url=$7, thumb_file_id=$8, thumb_meta=$9, title=$10,
-            post_folder_id = case when $11::boolean then null else post_folder_id end
+            post_folder_id = $11
           where id=$12
         returning (auto_confirmed_at is not null) as still`,
-        [u.caption, u.day, u.time, u.driveUrl, u.fileId, u.meta ? JSON.stringify(u.meta) : null, u.thumbUrl, u.thumbFileId, u.thumbMeta ? JSON.stringify(u.thumbMeta) : null, u.title, u.day !== u.e.day, u.e.id],
+        [u.caption, u.day, u.time, u.driveUrl, u.fileId, u.meta ? JSON.stringify(u.meta) : null, u.thumbUrl, u.thumbFileId, u.thumbMeta ? JSON.stringify(u.thumbMeta) : null, u.title, nextFolderId, u.e.id],
       );
       if (u.e.confirmed && upd.rows[0] && !upd.rows[0].still) droppedConfirm++;
       if (status && u.e.id === statusId) {
@@ -456,8 +476,21 @@ export async function savePost(formData: FormData): Promise<void> {
 
   revalidatePath("/", "layout");
   if (editing) {
-    const url = withParam(back, "salvo", savedPostId);
+    const remainingDays = (
+      await pool.query<{ day: string }>(
+        `select distinct to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day
+           from post_targets
+          where post_id = $1
+          order by day`,
+        [savedPostId],
+      )
+    ).rows.map((r) => r.day);
+    const movedDays = movedUpdates.map((u) => u.day);
+    const dest = resolveEditRedirect({ clientId, back, remainingDays, movedDays });
+    const url = withParam(dest, "salvo", savedPostId);
     const notes: string[] = [];
+    const movedNotice = formatMovedTargetsNotice(movedDays);
+    if (movedNotice) notes.push(movedNotice);
     if (droppedConfirm) notes.push(droppedConfirm === 1 ? "Você mudou algo de um post confirmado: a confirmação da publicação automática foi desfeita. Confirme de novo." : `Você mudou algo de ${droppedConfirm} posts confirmados: as confirmações da publicação automática foram desfeitas. Confirme de novo.`);
     if (folderError) notes.push(`Salvo, mas a pasta no Drive não foi criada: ${folderError}`);
     redirect(notes.length ? withParam(url, "aviso", notes.join(" ")) : url);

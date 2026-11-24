@@ -4,10 +4,55 @@ import { pathToFileURL } from "node:url";
 
 export function startMockDrive(PORT = 4030) {
   const seen = [];
+  const folders = new Map(); // key: `${parentId}|${name}` -> id
+  const createdFolders = [];
+  let seq = 1;
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
+    seen.push({ method: req.method, path: url.pathname, query: url.search, auth: req.headers.authorization, range: req.headers.range });
+
+    // Busca de pastas: GET /files?q='PARENT' in parents and name = 'NAME' ...
+    if (req.method === "GET" && (url.pathname === "/files" || url.pathname === "/drive/v3/files")) {
+      const q = url.searchParams.get("q") ?? "";
+      const pm = q.match(/'([^']+)' in parents/);
+      const nm = q.match(/name = '((?:\\'|[^'])+)'/);
+      const parentId = pm?.[1] ?? "";
+      const name = nm ? nm[1].replace(/\\'/g, "'").replace(/\\\\/g, "\\") : "";
+      if (parentId === "ROOT_FORBIDDEN") {
+        res.statusCode = 403;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: { code: 403, message: "Forbidden" } }));
+        return;
+      }
+      const foundId = folders.get(`${parentId}|${name}`);
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ files: foundId ? [{ id: foundId }] : [] }));
+      return;
+    }
+
+    // Criação de pasta: POST /files
+    if (req.method === "POST" && (url.pathname === "/files" || url.pathname === "/drive/v3/files")) {
+      let raw = "";
+      req.on("data", (c) => { raw += c; });
+      req.on("end", () => {
+        const body = JSON.parse(raw || "{}");
+        const parentId = body.parents?.[0] ?? "";
+        if (parentId === "ROOT_READONLY") {
+          res.statusCode = 403;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ error: { code: 403, message: "Read only" } }));
+          return;
+        }
+        const id = `FOLDER_${String(seq++).padStart(8, "0")}`;
+        folders.set(`${parentId}|${body.name}`, id);
+        createdFolders.push({ id, parentId, name: body.name });
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ id }));
+      });
+      return;
+    }
+
     const id = url.pathname.split("/").filter(Boolean).pop() ?? "";
-    seen.push({ path: url.pathname, query: url.search, auth: req.headers.authorization, range: req.headers.range });
     const video = id.startsWith("VIDEO");
     const image = id.startsWith("IMAGE");
     if (!video && !image) { res.statusCode = 404; res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ error: { code: 404, message: "File not found" } })); return; }
@@ -35,7 +80,7 @@ export function startMockDrive(PORT = 4030) {
       ...(video ? { videoMediaMetadata: { width: 1080, height: 1920, durationMillis: "20000" } } : { imageMediaMetadata: { width: 1080, height: 1350 } }),
     }));
   });
-  return new Promise((resolve) => server.listen(PORT, () => resolve({ server, seen, port: PORT, close: () => new Promise((r) => server.close(r)) })));
+  return new Promise((resolve) => server.listen(PORT, () => resolve({ server, seen, createdFolders, port: PORT, close: () => new Promise((r) => server.close(r)) })));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
