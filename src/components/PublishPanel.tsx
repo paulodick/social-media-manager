@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { cancelConfirmation, confirmPublication, publishTarget } from "@/lib/actions";
+import { cancelConfirmation, confirmPublication, getTargetPublishState, publishTarget } from "@/lib/actions";
 import type { AutoView } from "@/lib/auto-publish";
 import SubmitButton from "./SubmitButton";
 
@@ -45,12 +45,31 @@ export default function PublishPanel(p: {
     if (p.dirty) setConfirming(null);
   }, [p.dirty]);
 
-  // Enquanto publica, atualiza a tela sozinho até o resultado chegar.
+  // Enquanto publica, consulta só o estado do destino (ação leve) e só recarrega a tela quando o estado mudar.
   useEffect(() => {
     if (info.state !== "publishing") return;
-    const t = setInterval(() => router.refresh(), 4000);
-    return () => clearInterval(t);
-  }, [info.state, router]);
+    let active = true;
+    let inFlight = false;
+    const poll = async () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      try {
+        const next = await getTargetPublishState(p.id);
+        if (active && next && next !== "publishing") {
+          router.refresh();
+        }
+      } catch {
+        // Ignora erro transitório; tenta novamente no próximo intervalo.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const t = setInterval(poll, 4000);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
+  }, [info.state, p.id, router]);
 
   const draft = p.mode === "draft";
   const drafted = info.state === "drafted";

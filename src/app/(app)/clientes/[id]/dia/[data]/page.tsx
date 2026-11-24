@@ -33,10 +33,12 @@ export default async function DayPage({
   const note = (await listDayNotes(id, day, day))[day] ?? "";
   const volta = `/clientes/${id}/dia/${day}`;
   const connected = await listConnected(id);
-  // Só consulta a Meta quando algum post do dia pode ser publicado pelo app.
-  const health = onDay.some((t) => (t.network === "instagram" || t.network === "facebook") && connected[t.network]) ? await clientMetaHealth(id) : null;
-  const liHealth = onDay.some((t) => t.network === "linkedin" && connected.linkedin) ? await clientLinkedinHealth(id) : null;
-  const ttHealth = onDay.some((t) => t.network === "tiktok" && connected.tiktok) ? await clientTiktokHealth(id) : null;
+  // Só consulta cada rede quando algum post do dia pode ser publicado pelo app, tudo em paralelo.
+  const [health, liHealth, ttHealth] = await Promise.all([
+    onDay.some((t) => (t.network === "instagram" || t.network === "facebook") && connected[t.network]) ? clientMetaHealth(id) : Promise.resolve(null),
+    onDay.some((t) => t.network === "linkedin" && connected.linkedin) ? clientLinkedinHealth(id) : Promise.resolve(null),
+    onDay.some((t) => t.network === "tiktok" && connected.tiktok) ? clientTiktokHealth(id) : Promise.resolve(null),
+  ]);
 
   // Cada post do dia aparece inteiro (todas as redes dele, mesmo as de outros dias).
   const postIds = [...new Set(onDay.map((t) => t.post_id))];

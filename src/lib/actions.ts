@@ -883,3 +883,18 @@ export async function disconnectMeta(formData: FormData): Promise<void> {
   revalidatePath(`/clientes/${clientId}/editar`);
   redirect(withParam(`/clientes/${clientId}/editar`, "ok", "Contas do Facebook e do Instagram desconectadas."));
 }
+
+/** Consulta apenas o estado de publicação de um destino (usado pelo polling leve enquanto está em "publishing"). */
+export async function getTargetPublishState(
+  targetId: string,
+): Promise<"idle" | "publishing" | "published" | "failed" | "drafted" | null> {
+  await requireAuth();
+  const id = String(targetId ?? "").slice(0, 40);
+  if (!isValidUuid(id)) return null;
+  const pool = await db();
+  const r = await pool.query<{ publish_state: "idle" | "publishing" | "published" | "failed" | "drafted" }>(
+    "select publish_state from post_targets where id = $1",
+    [id],
+  );
+  return r.rows[0]?.publish_state ?? null;
+}

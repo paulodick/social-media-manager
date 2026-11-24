@@ -18,9 +18,11 @@ export default async function EditClient({
   const data = await getClient(id);
   if (!data) notFound();
   const connected = await listConnected(id);
-  const health = await clientMetaHealth(id);
-  const liHealth = await clientLinkedinHealth(id);
-  const ttHealth = await clientTiktokHealth(id);
+  const [health, liHealth, ttHealth] = await Promise.all([
+    clientMetaHealth(id),
+    clientLinkedinHealth(id),
+    clientTiktokHealth(id),
+  ]);
   const fb = connected.facebook;
   const ig = connected.instagram;
   const li = connected.linkedin;

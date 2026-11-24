@@ -110,27 +110,69 @@ export async function getFileMeta(id: string): Promise<MediaMeta> {
   }
 }
 
+const FOLDER_PATH_TTL_MS = 5 * 60 * 1000;
+const FOLDER_PATH_MAX_ENTRIES = 500;
+type FolderPathEntry = { value: string[] | null; expiresAt: number };
+type FolderPathGlobal = typeof globalThis & { _smmFolderPathCache?: Map<string, FolderPathEntry> };
+
+function folderPathCache(): Map<string, FolderPathEntry> {
+  const g = globalThis as FolderPathGlobal;
+  if (!g._smmFolderPathCache) g._smmFolderPathCache = new Map();
+  return g._smmFolderPathCache;
+}
+
+/** Limpa o cache em memória de `folderPathFromRoot` (útil em testes). */
+export function clearFolderPathCache(): void {
+  folderPathCache().clear();
+}
+
 /** Nomes das pastas entre a pasta do cliente e o arquivo, ou null se o arquivo não está dentro dela. */
-export async function folderPathFromRoot(fileId: string, rootId: string): Promise<string[] | null> {
+export async function folderPathFromRoot(
+  fileId: string,
+  rootId: string,
+  opts?: { ttlMs?: number; now?: number },
+): Promise<string[] | null> {
   if (!driveConfigured()) return null;
+  const ttlMs = opts?.ttlMs ?? FOLDER_PATH_TTL_MS;
+  const now = opts?.now ?? Date.now();
+  const cache = folderPathCache();
+  const key = `${rootId}:${fileId}`;
+  const hit = cache.get(key);
+  if (hit && hit.expiresAt > now) {
+    return hit.value ? [...hit.value] : null;
+  }
+
+  const store = (value: string[] | null): string[] | null => {
+    if (ttlMs > 0) {
+      if (cache.size >= FOLDER_PATH_MAX_ENTRIES) {
+        const firstKey = cache.keys().next().value;
+        if (firstKey !== undefined) cache.delete(firstKey);
+      }
+      cache.set(key, { value: value ? [...value] : null, expiresAt: now + ttlMs });
+    }
+    return value;
+  };
+
   const names: string[] = [];
   let current = fileId;
   try {
     for (let i = 0; i < 8; i++) {
       const r = await api(`/files/${current}?fields=${encodeURIComponent("id,name,parents")}`);
-      if (!r.ok) return null;
+      if (!r.ok) return r.status >= 500 ? null : store(null);
       const f = (await r.json()) as { id: string; name: string; parents?: string[] };
       const parent = f.parents?.[0];
-      if (!parent) return null;
-      if (parent === rootId) return names.reverse();
+      if (!parent) return store(null);
+      if (parent === rootId) return store(names.reverse());
       const pr = await api(`/files/${parent}?fields=${encodeURIComponent("id,name,parents")}`);
-      if (!pr.ok) return null;
+      if (!pr.ok) return pr.status >= 500 ? null : store(null);
       const p = (await pr.json()) as { id: string; name: string; parents?: string[] };
       names.push(p.name);
       current = p.id;
     }
-  } catch {}
-  return null;
+  } catch {
+    return null;
+  }
+  return store(null);
 }
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
