@@ -158,13 +158,17 @@ export async function countDue(today: string): Promise<number> {
   return r.rows[0]?.n ?? 0;
 }
 
-/** O arquivo está ligado a algum post? Usado para não servir arquivos quaisquer do Drive. */
+/** O arquivo está ligado a algum post ou item/slide editorial? Usado para não servir arquivos quaisquer do Drive. */
 export async function fileIsLinked(fileId: string): Promise<{ name?: string } | null> {
   const pool = await db();
   const r = await pool.query<{ meta: MediaMeta | null }>(
     `select drive_meta as meta from post_targets where drive_file_id = $1
      union all
      select thumb_meta as meta from post_targets where thumb_file_id = $1
+     union all
+     select drive_meta as meta from content_items where drive_file_id = $1
+     union all
+     select drive_meta as meta from content_visual_asset_slides where drive_file_id = $1
      limit 1`,
     [fileId],
   );

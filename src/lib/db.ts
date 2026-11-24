@@ -163,6 +163,122 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       create index post_targets_auto_idx on post_targets (scheduled_at) where auto_confirmed_at is not null;
     `,
   },
+  {
+    version: 13,
+    sql: `
+      -- Módulo Criação e Planejamento Editorial Inteligente (somente aditiva).
+      create table content_pillars (
+        id uuid primary key default gen_random_uuid(),
+        client_id uuid not null references clients(id) on delete cascade,
+        name text not null check (length(btrim(name)) between 1 and 80),
+        description text not null default '',
+        color text not null default '#596579' check (color ~ '^#[0-9a-fA-F]{6}$'),
+        weight_pct int not null default 0 check (weight_pct between 0 and 100),
+        weekly_target int check (weekly_target is null or weekly_target between 0 and 21),
+        position int not null default 0,
+        archived_at timestamptz,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        unique (client_id, name)
+      );
+      create index content_pillars_client_idx
+        on content_pillars (client_id, position)
+        where archived_at is null;
+
+      create table content_items (
+        id uuid primary key default gen_random_uuid(),
+        client_id uuid not null references clients(id) on delete cascade,
+        pillar_id uuid references content_pillars(id) on delete set null,
+        source_kind text not null default 'needs_creation'
+          check (source_kind in ('existing_ready', 'needs_creation')),
+        title text not null check (length(btrim(title)) between 1 and 160),
+        theme_key text not null default '',
+        hook text not null default '',
+        angle text not null default '',
+        brief text not null default '',
+        script text not null default '',
+        transcript text not null default '',
+        caption_draft text not null default '',
+        tones text[] not null default '{}',
+        status text not null default 'idea'
+          check (status in ('idea', 'drafting', 'ready', 'archived')),
+        drive_url text not null default '',
+        drive_file_id text,
+        drive_meta jsonb,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+      create index content_items_client_idx
+        on content_items (client_id, status, source_kind, created_at desc);
+      create index content_items_pillar_idx
+        on content_items (pillar_id);
+      create unique index content_items_drive_file_uq
+        on content_items (client_id, drive_file_id)
+        where drive_file_id is not null;
+
+      create table content_visual_assets (
+        id uuid primary key default gen_random_uuid(),
+        client_id uuid not null references clients(id) on delete cascade,
+        content_item_id uuid not null references content_items(id) on delete cascade,
+        kind text not null check (kind in ('carousel', 'static')),
+        title text not null default '',
+        aspect text not null default '4:5' check (aspect in ('4:5', '1:1', '9:16', '16:9')),
+        status text not null default 'draft' check (status in ('draft', 'ready', 'approved')),
+        generation_prompt text not null default '',
+        drive_folder_id text,
+        position int not null default 0,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+      create index content_visual_assets_item_idx
+        on content_visual_assets (content_item_id, position);
+      create index content_visual_assets_client_idx
+        on content_visual_assets (client_id);
+
+      create table content_visual_asset_slides (
+        id uuid primary key default gen_random_uuid(),
+        asset_id uuid not null references content_visual_assets(id) on delete cascade,
+        position int not null,
+        headline text not null default '',
+        body text not null default '',
+        cta text not null default '',
+        visual_notes text not null default '',
+        extra jsonb not null default '{}'::jsonb,
+        source text not null default 'manual' check (source in ('manual', 'ai')),
+        drive_url text not null default '',
+        drive_file_id text,
+        drive_meta jsonb,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        unique (asset_id, position) deferrable initially deferred
+      );
+      create index content_visual_asset_slides_file_idx
+        on content_visual_asset_slides (drive_file_id)
+        where drive_file_id is not null;
+
+      create table editorial_schedule (
+        id uuid primary key default gen_random_uuid(),
+        client_id uuid not null references clients(id) on delete cascade,
+        content_item_id uuid not null references content_items(id) on delete cascade,
+        asset_id uuid references content_visual_assets(id) on delete set null,
+        planned_day date not null,
+        planned_time time,
+        position int not null default 0,
+        network text not null,
+        format text not null,
+        status text not null default 'planned' check (status in ('planned', 'skipped')),
+        post_target_id uuid references post_targets(id) on delete set null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        unique (content_item_id, network, format, planned_day)
+      );
+      create index editorial_schedule_day_idx
+        on editorial_schedule (client_id, planned_day, position);
+      create unique index editorial_schedule_target_uq
+        on editorial_schedule (post_target_id)
+        where post_target_id is not null;
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

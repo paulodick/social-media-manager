@@ -246,3 +246,62 @@ export async function ensureClientFolders(rootId: string, clientName: string): P
   if ("error" in logo) return logo;
   return { folderId: client.id, logoFolderId: logo.id };
 }
+
+export type ListedFile = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  modifiedTime?: string;
+};
+
+export type FolderListing = { files: ListedFile[]; nextPageToken: string | null } | { error: string };
+
+/** Lista imagens e/ou vídeos de uma pasta (só leitura), mais recentes primeiro. */
+export async function listFolderFiles(
+  folderId: string,
+  opts: { pageToken?: string; kinds?: ("image" | "video")[]; pageSize?: number } = {},
+): Promise<FolderListing> {
+  if (!driveConfigured()) return { error: "o Google Drive ainda não está configurado no app." };
+  if (!SAFE_ID.test(folderId)) return { error: "o link da pasta não é válido." };
+  const kinds = opts.kinds?.length ? opts.kinds : (["image", "video"] as const);
+  const mime = kinds.map((k) => `mimeType contains '${k}/'`).join(" or ");
+  const q = `'${folderId}' in parents and trashed = false and (${mime})`;
+  const qs = new URLSearchParams({
+    q,
+    fields: `nextPageToken,files(${FIELDS},modifiedTime)`,
+    orderBy: "modifiedTime desc",
+    pageSize: String(Math.min(Math.max(opts.pageSize ?? 50, 1), 100)),
+    includeItemsFromAllDrives: "true",
+  });
+  if (opts.pageToken) qs.set("pageToken", opts.pageToken);
+  try {
+    const r = await api(`/files?${qs.toString()}`);
+    if (r.status === 403 || r.status === 404) {
+      return { error: "o app não enxerga essa pasta. Compartilhe-a com o e-mail de acesso do app." };
+    }
+    if (!r.ok) return { error: `o Google Drive respondeu com erro ${r.status}.` };
+    const j = (await r.json()) as { files?: (DriveFile & { modifiedTime?: string })[]; nextPageToken?: string };
+    return {
+      files: (j.files ?? []).map((f) => {
+        const dim = f.videoMediaMetadata ?? f.imageMediaMetadata;
+        return {
+          id: f.id,
+          name: f.name,
+          mimeType: f.mimeType,
+          size: f.size ? Number(f.size) : undefined,
+          width: dim?.width,
+          height: dim?.height,
+          durationMs: f.videoMediaMetadata?.durationMillis ? Number(f.videoMediaMetadata.durationMillis) : undefined,
+          modifiedTime: f.modifiedTime,
+        };
+      }),
+      nextPageToken: j.nextPageToken ?? null,
+    };
+  } catch {
+    return { error: "não foi possível falar com o Google Drive agora." };
+  }
+}

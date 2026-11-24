@@ -1,0 +1,155 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  extractJsonPayload,
+  normalizeThemeKey,
+  parseAiCalendar,
+  parseAiClassification,
+  summarizePillarWeights,
+  validateSlides,
+} from "../src/lib/editorial-rules.ts";
+import { assetFolderNames } from "../src/lib/post-folders.ts";
+
+test("normalizeThemeKey gera slug ASCII sem acentos", () => {
+  assert.equal(normalizeThemeKey("5 Erros em Manutenção!"), "5-erros-em-manutencao");
+  assert.equal(normalizeThemeKey("  Bastidores: Produção & Edição  "), "bastidores-producao-edicao");
+});
+
+test("validateSlides respeita regras de imagem estática e carrossel", () => {
+  const slide = { headline: "Capa", body: "Texto", cta: "Saiba mais", visual_notes: "Fundo claro" };
+  assert.equal(validateSlides("static", [slide]), null);
+  assert.notEqual(validateSlides("static", [slide, slide]), null);
+  assert.notEqual(validateSlides("carousel", [slide]), null);
+  assert.equal(validateSlides("carousel", [slide, slide]), null);
+  assert.notEqual(validateSlides("carousel", Array.from({ length: 11 }, () => slide)), null);
+});
+
+test("summarizePillarWeights soma pesos e indica equilíbrio em 100%", () => {
+  assert.deepEqual(summarizePillarWeights([40, 30, 30]), { total: 100, balanced: true });
+  assert.deepEqual(summarizePillarWeights([50, 20]), { total: 70, balanced: false });
+});
+
+test("assetFolderNames segue padrão AAAA / MM - Mês / DD / Artes / Título", () => {
+  assert.deepEqual(assetFolderNames("2026-11-23", "Carrossel: Dicas/Úteis"), [
+    "2026",
+    "11 - Novembro",
+    "23",
+    "Artes",
+    "Carrossel: Dicas Úteis",
+  ]);
+  assert.deepEqual(assetFolderNames("2026-11-23", ""), ["2026", "11 - Novembro", "23", "Artes", "Sem título"]);
+});
+
+test("parseAiClassification valida UUIDs do cliente e normaliza theme_key", () => {
+  const itemA = "11111111-1111-4111-8111-111111111111";
+  const pillarA = "22222222-2222-4222-8222-222222222222";
+  const raw = extractJsonPayload(`\`\`\`json
+  {
+    "classifications": [
+      {
+        "item_id": "${itemA}",
+        "pillar_id": "${pillarA}",
+        "title": "Como evitar falhas no compressor",
+        "theme_key": "Como Evitar Falhas no Compressor",
+        "brief": "Resumo do vídeo pronto.",
+        "hook": "Você está cometendo esse erro?",
+        "confidence": 0.92
+      }
+    ]
+  }
+  \`\`\``);
+  const ok = parseAiClassification(raw, {
+    validItemIds: new Set([itemA]),
+    validPillarIds: new Set([pillarA]),
+  });
+  assert.equal(ok.ok, true);
+  if (ok.ok) {
+    assert.equal(ok.entries[0].theme_key, "como-evitar-falhas-no-compressor");
+  }
+
+  const bad = parseAiClassification(
+    { classifications: [{ item_id: "33333333-3333-4333-8333-333333333333", pillar_id: null, title: "X", theme_key: "x", brief: "", confidence: 0.5 }] },
+    { validItemIds: new Set([itemA]), validPillarIds: new Set([pillarA]) },
+  );
+  assert.equal(bad.ok, false);
+});
+
+test("parseAiCalendar alterna existing_ready e needs_creation e bloqueia tema repetido", () => {
+  const existingId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const pillarId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  const ok = parseAiCalendar(
+    {
+      entries: [
+        {
+          planned_day: "2026-12-01",
+          planned_time: "09:30",
+          network: "instagram",
+          format: "reels",
+          source_kind: "existing_ready",
+          existing_item_id: existingId,
+          pillar_id: pillarId,
+          new_item: null,
+        },
+        {
+          planned_day: "2026-12-03",
+          planned_time: "18:00",
+          network: "instagram",
+          format: "feed",
+          source_kind: "needs_creation",
+          existing_item_id: null,
+          pillar_id: pillarId,
+          new_item: {
+            title: "3 sinais de desgaste na peça",
+            theme_key: "3-sinais-de-desgaste-na-peca",
+            hook: "Se ouvir esse barulho, pare imediatamente.",
+            angle: "Prevenção prática para gestores",
+            brief: "Explicar os 3 sinais visuais e sonoros.",
+            script: "Cena 1: close na peça...",
+            caption_draft: "Fique atento aos 3 sinais.",
+            tones: ["profissional"],
+          },
+        },
+      ],
+    },
+    {
+      validPillarIds: new Set([pillarId]),
+      validExistingIds: new Set([existingId]),
+      existingThemeKeys: new Set(["tema-antigo"]),
+    },
+  );
+  assert.equal(ok.ok, true);
+
+  // Bloqueia theme_key já existente no histórico do cliente
+  const dup = parseAiCalendar(
+    {
+      entries: [
+        {
+          planned_day: "2026-12-05",
+          planned_time: null,
+          network: "instagram",
+          format: "feed",
+          source_kind: "needs_creation",
+          existing_item_id: null,
+          pillar_id: pillarId,
+          new_item: {
+            title: "Tema antigo repetido",
+            theme_key: "tema-antigo",
+            hook: "Gancho",
+            angle: "Ângulo",
+            brief: "Resumo",
+            script: "",
+            caption_draft: "",
+            tones: [],
+          },
+        },
+      ],
+    },
+    {
+      validPillarIds: new Set([pillarId]),
+      validExistingIds: new Set([existingId]),
+      existingThemeKeys: new Set(["tema-antigo"]),
+    },
+  );
+  assert.equal(dup.ok, false);
+});

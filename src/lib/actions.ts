@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { checkPassword, createSession, destroySession, hasPassword, requireAuth } from "./auth";
 import { hashPassword, passwordProblem } from "./password";
 import { db } from "./db";
-import { TZ, dayFolders, isDay, isTime, monthOf } from "./dates";
-import { ensureClientFolders, ensureFolderPath, folderUrl, getFileMeta, getFolderName, parseDriveUrl } from "./drive";
+import { TZ, isDay, isTime, monthOf } from "./dates";
+import { ensureClientFolders, ensureFolderPath, folderUrl, getFolderName, parseDriveUrl } from "./drive";
+import { ensureTargetFolders, folderNames, resolveDrive } from "./post-folders";
 import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { generateText, type AiResult } from "./ai";
 import { buildCaptionPrompt } from "./prompt";
@@ -20,7 +21,7 @@ import { listPages } from "./publish/meta-oauth";
 import { fetchLogo } from "./logo";
 import type { MediaMeta } from "./checks";
 import { validateTones } from "@/config/tones";
-import { NETWORKS, NETWORK_IDS, folderGroup, hasTitle, isFormat, isNetwork, targetFolders } from "@/config/networks";
+import { NETWORKS, NETWORK_IDS, folderGroup, hasTitle, isFormat, isNetwork } from "@/config/networks";
 
 const text = (f: FormData, k: string, max = 5000): string => String(f.get(k) ?? "").trim().slice(0, max);
 
@@ -198,23 +199,6 @@ export async function saveDriveRoot(formData: FormData): Promise<void> {
 
 // ---------- posts ----------
 
-/**
- * Nomes das pastas, a partir da pasta do cliente: AAAA / MM - Mês / DD / (pasta do grupo | Rede / Formato).
- * Reels, Shorts, TikTok e Kwai dividem uma pasta; Stories do Instagram e do Facebook dividem outra (ver FOLDER_GROUPS).
- */
-function folderNames(day: string, network: string, format: string): string[] | null {
-  const rest = targetFolders(network, format);
-  return rest ? [...dayFolders(day), ...rest] : null;
-}
-
-async function resolveDrive(url: string): Promise<{ fileId: string | null; meta: MediaMeta | null }> {
-  const ref = parseDriveUrl(url);
-  if (!url || !ref) return { fileId: null, meta: url ? { error: "o link não parece ser de um arquivo do Google Drive." } : null };
-  if (ref.kind === "folder") return { fileId: null, meta: { error: "este link é de uma pasta. Cole o link de um arquivo." } };
-  const meta = await getFileMeta(ref.id);
-  return { fileId: ref.id, meta };
-}
-
 type PreparedTarget = {
   network: string; format: string; day: string; time: string; caption: string; title: string;
   driveUrl: string; fileId: string | null; meta: MediaMeta | null;
@@ -225,43 +209,6 @@ type PreparedTarget = {
 export async function inspectDrive(url: string): Promise<{ fileId: string | null; meta: MediaMeta | null }> {
   await requireAuth();
   return resolveDrive(String(url ?? "").trim().slice(0, 500));
-}
-
-/**
- * Pasta do Drive de cada destino (mesma ordem de `items`). `reuse` traz pastas já existentes por grupo e dia
- * (ex.: o post já tem a pasta do grupo "curto" no Reels): o destino do mesmo grupo e dia usa essa mesma pasta.
- */
-async function ensureTargetFolders(
-  root: string | null,
-  items: { network: string; format: string; day: string }[],
-  reuse: Map<string, string> = new Map(),
-): Promise<{ ids: (string | null)[]; error: string | null }> {
-  const cache = new Map<string, string>();
-  const ids: (string | null)[] = [];
-  let error: string | null = null;
-  for (const { network, format, day } of items) {
-    const group = folderGroup(network, format);
-    const key = group ? `${group.id}|${day}` : "";
-    const known = key ? reuse.get(key) : undefined;
-    if (known) {
-      ids.push(known);
-      continue;
-    }
-    const names = folderNames(day, network, format);
-    if (!root || !names || error) {
-      ids.push(null);
-      continue;
-    }
-    const res = await ensureFolderPath(root, names, cache);
-    if ("error" in res) {
-      error = res.error;
-      ids.push(null);
-    } else {
-      ids.push(res.id);
-      if (key) reuse.set(key, res.id);
-    }
-  }
-  return { ids, error };
 }
 
 type ExistingTarget = {
