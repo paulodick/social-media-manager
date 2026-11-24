@@ -5,6 +5,8 @@ import {
   normalizeThemeKey,
   parseAiCalendar,
   parseAiClassification,
+  parseAiRecreatedTopic,
+  parseAiRefinedDraft,
   parsePillarsInput,
   summarizePillarWeights,
   validateSlides,
@@ -365,4 +367,50 @@ test("summarizeCaptionDiff, buildMemoryBlock e buildCaptionPrompt bilíngue", ()
   assert.ok(capPrompt.includes("Português do Brasil"));
   assert.ok(capPrompt.includes("Inglês"));
   assert.ok(capPrompt.includes("Evitar jargão complexo."));
+});
+
+test("parseAiRecreatedTopic evita tema repetido e parseAiRefinedDraft extrai campos evoluídos", () => {
+  const avoid = new Set(["tema-antigo"]);
+  const dup = parseAiRecreatedTopic(
+    { title: "Tema Antigo", theme_key: "tema-antigo", hook: "Gancho", brief: "Resumo" },
+    { avoidThemeKeys: avoid, fallbackFormat: "video" },
+  );
+  assert.equal(dup.ok, false);
+
+  const ok = parseAiRecreatedTopic(
+    {
+      title: "Calibração preventiva em hospitais",
+      theme_key: "calibracao-preventiva-em-hospitais",
+      hook: "Um erro de calibração custa caro.",
+      angle: "Segurança do paciente",
+      reason_why: "Aborda dor direta de engenharia clínica sem repetir manutenção básica.",
+      brief: "Mostrar impacto da calibração.",
+      script_structured: {
+        hook_0_3s: "Você confia na leitura do seu monitor?",
+        development_topics: ["Erro de sensor", "Periodicidade"],
+        cta: "Peça um checklist.",
+      },
+    },
+    { avoidThemeKeys: avoid, fallbackFormat: "video" },
+  );
+  assert.equal(ok.ok, true);
+  if (ok.ok) {
+    assert.equal(ok.topic.reason_why, "Aborda dor direta de engenharia clínica sem repetir manutenção básica.");
+    assert.equal(ok.topic.script_cta, "Peça um checklist.");
+  }
+
+  const refined = parseAiRefinedDraft({
+    hook: "Gancho mais forte",
+    angle: "Ângulo direto",
+    brief: "Brief refinado com exemplo prático.",
+    script_hook: "Gancho 0-3s",
+    script_dev: ["Tópico 1", "Tópico 2"],
+    script_cta: "Chame no WhatsApp",
+    caption_draft: "Legenda evoluída.",
+  });
+  assert.equal(refined.ok, true);
+  if (refined.ok) {
+    assert.ok(refined.draft.script_dev.includes("Tópico 1"));
+    assert.equal(refined.draft.caption_draft, "Legenda evoluída.");
+  }
 });

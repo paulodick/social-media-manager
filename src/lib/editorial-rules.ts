@@ -318,3 +318,128 @@ export function parsePillarsInput(
 
   return { ok: true, pillars };
 }
+
+export type AiRecreatedTopic = {
+  title: string;
+  content_format: "video" | "carousel" | "static_image";
+  theme_key: string;
+  hook: string;
+  angle: string;
+  reason_why: string;
+  brief: string;
+  script: string;
+  script_hook: string;
+  script_dev: string;
+  script_cta: string;
+  caption_draft: string;
+  tones: string[];
+};
+
+export function parseAiRecreatedTopic(
+  input: unknown,
+  opts: { avoidThemeKeys: Set<string>; fallbackFormat: "video" | "carousel" | "static_image" },
+): { ok: true; topic: AiRecreatedTopic } | { ok: false; error: string } {
+  if (!input || typeof input !== "object") {
+    return { ok: false, error: "Resposta da IA inválida ao recriar tópico." };
+  }
+  const r = input as Record<string, unknown>;
+  const title = String(r.title ?? "").trim().slice(0, 160);
+  const themeKey = normalizeThemeKey(String(r.theme_key ?? title));
+  const hook = String(r.hook ?? "").trim().slice(0, 240);
+  const angle = String(r.angle ?? "").trim().slice(0, 300);
+  const reasonWhy = String(r.reason_why ?? "").trim().slice(0, 400);
+  const brief = String(r.brief ?? "").trim().slice(0, 1500);
+  if (!title || !themeKey || !hook || !brief) {
+    return { ok: false, error: "O tópico recriado pela IA precisa de título, gancho e resumo." };
+  }
+  if (opts.avoidThemeKeys.has(themeKey)) {
+    return { ok: false, error: `A IA sugeriu um tema repetido ("${themeKey}"). Tente recriar novamente.` };
+  }
+
+  const rawFmt = String(r.content_format ?? opts.fallbackFormat).trim();
+  const content_format =
+    rawFmt === "video" || rawFmt === "carousel" || rawFmt === "static_image" ? rawFmt : opts.fallbackFormat;
+
+  const ss = (r.script_structured ?? null) as Record<string, unknown> | null;
+  const scriptHook = String(ss?.hook_0_3s ?? r.script_hook ?? hook).trim().slice(0, 500);
+  const devRaw = ss?.development_topics ?? r.script_dev;
+  const scriptDev = Array.isArray(devRaw)
+    ? devRaw.map((x) => `- ${String(x).trim()}`).join("\n").slice(0, 2500)
+    : String(devRaw ?? "").trim().slice(0, 2500);
+  const scriptCta = String(ss?.cta ?? r.script_cta ?? "").trim().slice(0, 500);
+  const script =
+    String(r.script ?? "").trim().slice(0, 4000) ||
+    [
+      scriptHook ? `Gancho (0-3s): ${scriptHook}` : "",
+      scriptDev ? `Desenvolvimento:\n${scriptDev}` : "",
+      scriptCta ? `CTA: ${scriptCta}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n")
+      .slice(0, 4000);
+
+  const rawTones = Array.isArray(r.tones) ? r.tones.map(String) : [];
+  const tonesCheck = validateTones(rawTones);
+  const tones = "tones" in tonesCheck ? tonesCheck.tones : [];
+
+  return {
+    ok: true,
+    topic: {
+      title,
+      content_format,
+      theme_key: themeKey,
+      hook,
+      angle,
+      reason_why: reasonWhy,
+      brief,
+      script,
+      script_hook: scriptHook,
+      script_dev: scriptDev,
+      script_cta: scriptCta,
+      caption_draft: String(r.caption_draft ?? "").trim().slice(0, 4000),
+      tones,
+    },
+  };
+}
+
+export type AiRefinedDraft = {
+  title?: string;
+  hook: string;
+  angle: string;
+  brief: string;
+  script_hook: string;
+  script_dev: string;
+  script_cta: string;
+  caption_draft: string;
+};
+
+export function parseAiRefinedDraft(input: unknown): { ok: true; draft: AiRefinedDraft } | { ok: false; error: string } {
+  if (!input || typeof input !== "object") {
+    return { ok: false, error: "Resposta da IA inválida ao refinar rascunho." };
+  }
+  const r = input as Record<string, unknown>;
+  const brief = String(r.brief ?? "").trim().slice(0, 1500);
+  const hook = String(r.hook ?? "").trim().slice(0, 240);
+  if (!brief && !hook) {
+    return { ok: false, error: "A IA não retornou um rascunho refinado." };
+  }
+  const title = String(r.title ?? "").trim().slice(0, 160);
+  const devRaw = r.script_dev;
+  const scriptDev = Array.isArray(devRaw)
+    ? devRaw.map((x) => `- ${String(x).trim()}`).join("\n").slice(0, 2500)
+    : String(devRaw ?? "").trim().slice(0, 2500);
+
+  return {
+    ok: true,
+    draft: {
+      ...(title ? { title } : {}),
+      hook,
+      angle: String(r.angle ?? "").trim().slice(0, 300),
+      brief,
+      script_hook: String(r.script_hook ?? hook).trim().slice(0, 500),
+      script_dev: scriptDev,
+      script_cta: String(r.script_cta ?? "").trim().slice(0, 500),
+      caption_draft: String(r.caption_draft ?? "").trim().slice(0, 4000),
+    },
+  };
+}

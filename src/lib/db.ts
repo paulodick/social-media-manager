@@ -320,6 +320,26 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         on workspace_ai_memory (workspace_id, created_at desc);
     `,
   },
+  {
+    version: 15,
+    sql: `
+      -- 15: Adiciona eventos topic_recreated e draft_refined à memória contínua por cliente.
+      alter table workspace_ai_memory drop constraint if exists workspace_ai_memory_event_type_check;
+      alter table workspace_ai_memory add constraint workspace_ai_memory_event_type_check
+        check (event_type in (
+          'topic_approved',
+          'topic_rejected',
+          'topic_recreated',
+          'draft_refined',
+          'caption_generated',
+          'caption_edited_on_publish',
+          'post_scheduled',
+          'schedule_reordered',
+          'schedule_approved',
+          'style_note'
+        ));
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

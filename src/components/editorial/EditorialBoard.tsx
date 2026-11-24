@@ -226,6 +226,45 @@ export default function EditorialBoard({
     }
   }
 
+  async function recreateSlot(slot: SlotView) {
+    setBusyId(slot.id);
+    setErr("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/schedule/${slot.id}/recreate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "ai" }),
+      });
+      const j = (await res.json()) as {
+        prompt?: string;
+        slot?: SlotView | null;
+        item?: ContentItem | null;
+        reason_why?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setErr(j.error ?? "Não foi possível recriar este tópico.");
+        return;
+      }
+      if (!j.slot || !j.item) {
+        if (j.prompt) {
+          window.prompt("Chave do Gemini não configurada. Copie o pedido para a IA:", j.prompt);
+        }
+        return;
+      }
+      setSlots((prev) => prev.map((x) => (x.id === j.slot!.id ? j.slot! : x)));
+      setItems((prev) => [toItemCard(j.item!), ...prev]);
+      setMsg(
+        `Tópico recriado: "${j.item.title}".${j.reason_why ? ` Motivo: ${j.reason_why}` : ""}`,
+      );
+    } catch {
+      setErr("Falha de conexão ao recriar tópico.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function approveSchedule() {
     if (!chronological.length) return;
     setApproving(true);
@@ -603,6 +642,14 @@ export default function EditorialBoard({
                           aria-label={`Mover ${s.item.title} para baixo`}
                         >
                           ↓
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => recreateSlot(s)}
+                          disabled={busyId === s.id}
+                        >
+                          {busyId === s.id ? "Recriando..." : "Recriar"}
                         </button>
                       </>
                     ) : (

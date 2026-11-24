@@ -129,3 +129,82 @@ export function buildPillarsPrompt(client: PromptClient): string {
     .filter(Boolean)
     .join("\n");
 }
+
+/** Prompt para recriar um tópico específico da lista cronológica evitando repetição. */
+export function buildRecreateTopicPrompt(input: {
+  client: PromptClient;
+  pillar: { id: string; name: string; description: string } | null;
+  network: string;
+  format: string;
+  contentFormat: "video" | "carousel" | "static_image";
+  rejectedTitle: string;
+  rejectedThemeKey: string;
+  reason?: string;
+  avoidThemeKeys: string[];
+  memoryBlock?: string;
+}): string {
+  const toneIds = TONES.map((t) => t.id).join(", ");
+  return [
+    `Você é estrategista editorial da marca "${input.client.name}" (${input.client.segment || "segmento não informado"}).`,
+    input.client.tone ? `Tom de voz: ${input.client.tone}` : "",
+    input.memoryBlock ? `\nMEMÓRIA E APRENDIZADO DO CLIENTE:\n${input.memoryBlock}` : "",
+    "",
+    `CONTEXTO DA POSIÇÃO NO CRONOGRAMA:`,
+    `- Rede/Formato: ${input.network} / ${input.format}`,
+    `- Formato de produção: ${input.contentFormat}`,
+    input.pillar ? `- Pilar: "${input.pillar.name}" (${input.pillar.description || "sem descrição"})` : "- Pilar: livre",
+    `- Tópico substituído (NÃO REPETIR): "${input.rejectedTitle}" (chave: ${input.rejectedThemeKey})`,
+    input.reason ? `- Motivo/direcionamento do usuário para recriar: ${input.reason}` : "",
+    "",
+    "TEMAS A EVITAR (JÁ NO CRONOGRAMA OU RECENTES):",
+    input.avoidThemeKeys.length ? input.avoidThemeKeys.join(", ") : "(nenhum)",
+    "",
+    "REGRAS:",
+    "- Responda APENAS com JSON válido (sem markdown ou texto extra).",
+    "- Gere um NOVO tema, novo ângulo/foco e o motivo estratégico (reason_why) pelo qual este tópico funciona melhor para esta posição.",
+    "- Se content_format for 'video', preencha script_structured com hook_0_3s, development_topics e cta.",
+    `- Em tones (até 3), use apenas ids válidos: ${toneIds}.`,
+    "",
+    "FORMATO JSON ESPERADO:",
+    `{"title":"...","content_format":"${input.contentFormat}","theme_key":"slug-ascii-inedito","hook":"...","angle":"...","reason_why":"...","brief":"...","script_structured":{"hook_0_3s":"...","development_topics":["..."],"cta":"..."},"caption_draft":"...","tones":["profissional"]}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Prompt para evoluir/recriar um rascunho existente com base na sugestão do usuário e memória do cliente. */
+export function buildRefineDraftPrompt(input: {
+  client: PromptClient;
+  pillarName?: string | null;
+  contentFormat: "video" | "carousel" | "static_image";
+  title: string;
+  currentBrief: string;
+  currentCaption: string;
+  currentScript: string;
+  suggestion: string;
+  memoryBlock?: string;
+}): string {
+  return [
+    `Você é estrategista e redator sênior da marca "${input.client.name}" (${input.client.segment || "segmento não informado"}).`,
+    input.client.tone ? `Tom de voz da marca: ${input.client.tone}` : "",
+    input.client.notes ? `Observações da marca: ${input.client.notes}` : "",
+    input.memoryBlock ? `\nMEMÓRIA E APRENDIZADO DO CLIENTE:\n${input.memoryBlock}` : "",
+    "",
+    `TEMA ATUAL: "${input.title}" (${input.contentFormat}${input.pillarName ? `, pilar: ${input.pillarName}` : ""})`,
+    `RASCUNHO ATUAL (Brief):\n${input.currentBrief || "(vazio)"}`,
+    input.currentCaption ? `LEGENDA ATUAL:\n${input.currentCaption}` : "",
+    input.currentScript ? `ROTEIRO ATUAL:\n${input.currentScript}` : "",
+    "",
+    `SUGESTÃO / DIRECIONAMENTO DO USUÁRIO:\n${input.suggestion || "Deixe o gancho mais forte, o argumento mais concreto e o CTA mais claro."}`,
+    "",
+    "REGRAS:",
+    "- Responda APENAS com JSON válido (sem markdown ou texto extra).",
+    "- Evolua e refine o rascunho incorporando exatamente a sugestão do usuário e mantendo a voz da marca.",
+    "- Entregue gancho, ângulo, brief evoluído, roteiro estruturado (hook_0_3s, development_topics, cta) e legenda sugerida.",
+    "",
+    "FORMATO JSON ESPERADO:",
+    `{"title":"...","hook":"...","angle":"...","brief":"...","script_hook":"...","script_dev":"- tópico 1\\n- tópico 2","script_cta":"...","caption_draft":"..."}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}

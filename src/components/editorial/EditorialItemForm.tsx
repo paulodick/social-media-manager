@@ -47,8 +47,69 @@ export default function EditorialItemForm({
   const [slotFmt, setSlotFmt] = useState<string>(Object.keys(NETWORKS[firstNet].formats)[0] ?? "reels");
 
   const [busy, setBusy] = useState(false);
+  const [refining, setRefining] = useState(false);
+  const [suggestion, setSuggestion] = useState("");
+  const [refinePrompt, setRefinePrompt] = useState("");
+  const [manualRefineJson, setManualRefineJson] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+
+  async function refineWithAi(mode: "ai" | "prompt_only" = "ai", useManual = false) {
+    setRefining(true);
+    setErr("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/items/${initialItem.id}/refine-draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          suggestion,
+          current_brief: brief,
+          current_caption: captionDraft,
+          current_script: script,
+          mode,
+          manual_json: useManual ? manualRefineJson : undefined,
+        }),
+      });
+      const j = (await res.json()) as {
+        prompt?: string;
+        draft?: {
+          title?: string;
+          hook: string;
+          angle: string;
+          brief: string;
+          script_hook: string;
+          script_dev: string;
+          script_cta: string;
+          caption_draft: string;
+        } | null;
+        error?: string;
+      };
+      if (j.prompt) setRefinePrompt(j.prompt);
+      if (!res.ok) {
+        setErr(j.error ?? "Não foi possível recriar com base no assunto.");
+        return;
+      }
+      if (!j.draft) {
+        setMsg("Pedido gerado abaixo. Copie, cole no Gemini/Claude e aplique o JSON.");
+        return;
+      }
+      if (j.draft.title) setTitle(j.draft.title);
+      if (j.draft.hook) setHook(j.draft.hook);
+      if (j.draft.angle) setAngle(j.draft.angle);
+      if (j.draft.brief) setBrief(j.draft.brief);
+      if (j.draft.script_hook) setScriptHook(j.draft.script_hook);
+      if (j.draft.script_dev) setScriptDev(j.draft.script_dev);
+      if (j.draft.script_cta) setScriptCta(j.draft.script_cta);
+      if (j.draft.caption_draft) setCaptionDraft(j.draft.caption_draft);
+      setManualRefineJson("");
+      setMsg("Rascunho evoluído pelo Gemini! Revise os campos abaixo e clique em Salvar alterações.");
+    } catch {
+      setErr("Falha de conexão ao recriar com base no assunto.");
+    } finally {
+      setRefining(false);
+    }
+  }
 
   async function saveItem(e: React.FormEvent) {
     e.preventDefault();
@@ -221,9 +282,59 @@ export default function EditorialItemForm({
         </div>
 
         <label className="f">
-          <span>Resumo / Brief (vira a descrição da legenda na fila)</span>
+          <span>Rascunho / Brief (vira a descrição da legenda na fila)</span>
           <textarea className="auto-grow" value={brief} onChange={(e) => setBrief(e.target.value)} rows={3} />
         </label>
+
+        <div className="col" style={{ gap: 10, padding: 12, border: "1px solid var(--line-strong)", borderRadius: 10, background: "var(--soft)" }}>
+          <label className="f">
+            <span>Sugestão / direcionamento para evoluir o rascunho (opcional)</span>
+            <input
+              type="text"
+              value={suggestion}
+              onChange={(e) => setSuggestion(e.target.value)}
+              placeholder="Ex.: focar em economia de manutenção; dar um exemplo prático de hospital; abrir com pergunta."
+              maxLength={500}
+            />
+          </label>
+          <div className="row" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => refineWithAi("ai")}
+              disabled={refining || busy}
+            >
+              {refining ? "Recriando com Gemini..." : "Recriar com base no assunto"}
+            </button>
+          </div>
+          {refinePrompt && (
+            <div className="col" style={{ gap: 8 }}>
+              <label className="f">
+                <span>Pedido estruturado (copiar e colar)</span>
+                <textarea rows={4} readOnly value={refinePrompt} />
+              </label>
+              <label className="f">
+                <span>Colar JSON retornado pela IA</span>
+                <textarea
+                  rows={3}
+                  value={manualRefineJson}
+                  onChange={(e) => setManualRefineJson(e.target.value)}
+                  placeholder='{"hook":"...","brief":"..."}'
+                />
+              </label>
+              <div>
+                <button
+                  type="button"
+                  className="btn dark"
+                  onClick={() => refineWithAi("prompt_only", true)}
+                  disabled={!manualRefineJson.trim() || refining}
+                >
+                  Aplicar JSON no rascunho
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="col" style={{ gap: 10, padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--soft)" }}>
           <strong className="small">Roteiro de vídeo estruturado</strong>

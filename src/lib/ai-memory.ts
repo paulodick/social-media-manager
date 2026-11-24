@@ -3,6 +3,8 @@ import { db } from "./db.ts";
 export type AiMemoryEventType =
   | "topic_approved"
   | "topic_rejected"
+  | "topic_recreated"
+  | "draft_refined"
   | "caption_generated"
   | "caption_edited_on_publish"
   | "post_scheduled"
@@ -101,10 +103,12 @@ export function buildMemoryBlock(memories: WorkspaceAiMemory[], aiStyleNotes = "
       ...edits.slice(0, 6).map((m) => `- [${m.format || "geral"}] ${m.user_feedback_or_diff || m.content_summary}`),
     );
   }
-  const approved = memories.filter((m) => m.event_type === "topic_approved" || m.event_type === "schedule_approved");
+  const approved = memories.filter(
+    (m) => m.event_type === "topic_approved" || m.event_type === "schedule_approved" || m.event_type === "topic_recreated",
+  );
   if (approved.length) {
     lines.push(
-      "Abordagens e temas já aprovados recentemente:",
+      "Abordagens e temas já aprovados/recriados recentemente:",
       ...approved.slice(0, 5).map((m) => `- ${m.content_summary}`),
     );
   }
@@ -113,6 +117,13 @@ export function buildMemoryBlock(memories: WorkspaceAiMemory[], aiStyleNotes = "
     lines.push(
       "Temas/abordagens rejeitados (evitar):",
       ...rejected.slice(0, 4).map((m) => `- ${m.content_summary}`),
+    );
+  }
+  const refined = memories.filter((m) => m.event_type === "draft_refined");
+  if (refined.length) {
+    lines.push(
+      "Direcionamentos de rascunho recentes:",
+      ...refined.slice(0, 3).map((m) => `- ${m.user_feedback_or_diff || m.content_summary}`),
     );
   }
   return lines.join("\n");
