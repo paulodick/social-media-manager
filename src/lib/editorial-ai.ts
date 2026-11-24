@@ -33,12 +33,7 @@ export function explainGeminiError(status: number, message: string): string {
 
 export type EditorialAiResult = { text: string } | { error: string };
 
-/**
- * Chama a API REST oficial do Google Gemini forçando resposta JSON estruturada
- * (`responseMimeType: "application/json"`) para evitar blocos markdown extras.
- * Se o modelo padrão devolver 404, tenta automaticamente os modelos Flash compatíveis.
- */
-export async function generateEditorialJson(prompt: string): Promise<EditorialAiResult> {
+async function callGemini(prompt: string, responseMimeType?: "application/json"): Promise<EditorialAiResult> {
   const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) {
     return { error: "a chave do Gemini ainda não foi cadastrada (variável GEMINI_API_KEY no Render)." };
@@ -51,13 +46,16 @@ export async function generateEditorialJson(prompt: string): Promise<EditorialAi
     const model = candidates[i];
     const url = `${base}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
     try {
+      const payload: Record<string, unknown> = {
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      };
+      if (responseMimeType) {
+        payload.generationConfig = { responseMimeType };
+      }
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json" },
-        }),
+        body: JSON.stringify(payload),
         signal: AbortSignal.timeout(45_000),
       });
       const body = (await res.json().catch(() => null)) as {
@@ -85,4 +83,17 @@ export async function generateEditorialJson(prompt: string): Promise<EditorialAi
     }
   }
   return { error: explainGeminiError(404, "") };
+}
+
+/**
+ * Chama a API REST oficial do Google Gemini forçando resposta JSON estruturada
+ * (`responseMimeType: "application/json"`) para evitar blocos markdown extras.
+ */
+export async function generateEditorialJson(prompt: string): Promise<EditorialAiResult> {
+  return callGemini(prompt, "application/json");
+}
+
+/** Chama a API REST oficial do Google Gemini em texto livre (usado na geração de legendas). */
+export async function generateGeminiText(prompt: string): Promise<EditorialAiResult> {
+  return callGemini(prompt);
 }

@@ -181,12 +181,38 @@ export function parseAiCalendar(
       if (!ni || typeof ni !== "object") {
         return { ok: false, error: "Entrada needs_creation exige o objeto new_item." };
       }
+      const rawFormat = String(ni.content_format ?? "video").trim();
+      const contentFormat =
+        rawFormat === "video" || rawFormat === "carousel" || rawFormat === "static_image"
+          ? rawFormat
+          : "video";
+
       const title = String(ni.title ?? "").trim().slice(0, 160);
       const themeKey = normalizeThemeKey(String(ni.theme_key ?? title));
       const hook = String(ni.hook ?? "").trim().slice(0, 240);
       const angle = String(ni.angle ?? "").trim().slice(0, 300);
       const brief = String(ni.brief ?? "").trim().slice(0, 1500);
-      const script = String(ni.script ?? "").trim().slice(0, 4000);
+
+      const ss = (ni.script_structured ?? null) as Record<string, unknown> | null;
+      const scriptHook = String(ss?.hook_0_3s ?? ni.script_hook ?? hook).trim().slice(0, 500);
+      const devRaw = ss?.development_topics ?? ni.script_dev;
+      const scriptDev = Array.isArray(devRaw)
+        ? devRaw.map((x) => `- ${String(x).trim()}`).join("\n").slice(0, 2500)
+        : String(devRaw ?? "").trim().slice(0, 2500);
+      const scriptCta = String(ss?.cta ?? ni.script_cta ?? "").trim().slice(0, 500);
+
+      let script = String(ni.script ?? "").trim().slice(0, 4000);
+      if (!script && (scriptHook || scriptDev || scriptCta)) {
+        script = [
+          scriptHook ? `Gancho (0-3s): ${scriptHook}` : "",
+          scriptDev ? `Desenvolvimento:\n${scriptDev}` : "",
+          scriptCta ? `CTA: ${scriptCta}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+          .slice(0, 4000);
+      }
+
       const captionDraft = String(ni.caption_draft ?? "").trim().slice(0, 4000);
       if (!title || !themeKey || !hook || !angle || !brief) {
         return { ok: false, error: "Item inédito precisa de título, theme_key, gancho, ângulo e resumo." };
@@ -208,7 +234,20 @@ export function parseAiCalendar(
         source_kind: "needs_creation",
         existing_item_id: null,
         pillar_id: r.pillar_id,
-        new_item: { title, theme_key: themeKey, hook, angle, brief, script, caption_draft: captionDraft, tones },
+        new_item: {
+          title,
+          content_format: contentFormat,
+          theme_key: themeKey,
+          hook,
+          angle,
+          brief,
+          script,
+          script_hook: scriptHook,
+          script_dev: scriptDev,
+          script_cta: scriptCta,
+          caption_draft: captionDraft,
+          tones,
+        },
       });
     }
   }

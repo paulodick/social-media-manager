@@ -46,12 +46,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const body = await readJsonBody<{
     title?: string;
     source_kind?: ContentSourceKind;
+    content_format?: "video" | "carousel" | "static_image";
     pillar_id?: string | null;
     theme_key?: string;
     hook?: string;
     angle?: string;
     brief?: string;
     script?: string;
+    script_hook?: string;
+    script_dev?: string;
+    script_cta?: string;
     transcript?: string;
     caption_draft?: string;
     tones?: string[];
@@ -66,6 +70,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
   if (body.source_kind !== undefined && !VALID_SOURCE.has(body.source_kind)) {
     return jsonError("Origem inválida.", 400);
+  }
+  if (
+    body.content_format !== undefined &&
+    body.content_format !== "video" &&
+    body.content_format !== "carousel" &&
+    body.content_format !== "static_image"
+  ) {
+    return jsonError("Formato de conteúdo inválido.", 400);
   }
   if (body.status !== undefined && !VALID_STATUS.has(body.status)) {
     return jsonError("Status inválido.", 400);
@@ -98,12 +110,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const item = await updateContentItem(id, {
     title: body.title,
     source_kind: body.source_kind,
+    content_format: body.content_format,
     pillar_id: body.pillar_id,
     theme_key: body.theme_key !== undefined ? normalizeThemeKey(String(body.theme_key)) : undefined,
     hook: body.hook,
     angle: body.angle,
     brief: body.brief,
     script: body.script,
+    script_hook: body.script_hook,
+    script_dev: body.script_dev,
+    script_cta: body.script_cta,
     transcript: body.transcript,
     caption_draft: body.caption_draft,
     tones,

@@ -10,6 +10,8 @@ import { ensureClientFolders, ensureFolderPath, folderUrl, getFolderName, parseD
 import { ensureTargetFolders, folderNames, resolveDrive } from "./post-folders";
 import { getDriveRoot, setDriveRoot } from "./drive-root";
 import { generateText, type AiResult } from "./ai";
+import { buildMemoryBlock, listRecentAiMemory, recordAiMemory, summarizeCaptionDiff } from "./ai-memory";
+import { editorialAiConfigured, generateGeminiText } from "./editorial-ai";
 import { buildCaptionPrompt } from "./prompt";
 import { autoBlocker, checkPublishable, startPublish } from "./publisher";
 import { canAutoSchedule } from "./auto-publish";
@@ -415,6 +417,43 @@ export async function savePost(formData: FormData): Promise<void> {
     c.release();
   }
   if (noteChanged) await saveNote(pool, clientId, noteDay, note, noteReplace);
+
+  // Assimilação contínua: compara a última legenda gerada pela IA com a versão final salva.
+  for (const u of updates) {
+    const aiCap = text(formData, `ai_caption__${u.e.id}`, 70000);
+    const diff = aiCap ? summarizeCaptionDiff(aiCap, u.caption) : null;
+    if (diff) {
+      await recordAiMemory({
+        workspaceId: clientId,
+        eventType: "caption_edited_on_publish",
+        format: u.e.format,
+        contentSummary: postName,
+        userFeedbackOrDiff: diff,
+      }).catch(() => {});
+    }
+    if (status === "scheduled" && u.e.id === statusId) {
+      await recordAiMemory({
+        workspaceId: clientId,
+        eventType: "post_scheduled",
+        format: u.e.format,
+        contentSummary: `${postName} (${u.day} ${u.time})`,
+      }).catch(() => {});
+    }
+  }
+  for (const t of created) {
+    const aiCap = text(formData, `ai_caption__${t.network}:${t.format}`, 70000);
+    const diff = aiCap ? summarizeCaptionDiff(aiCap, t.caption) : null;
+    if (diff) {
+      await recordAiMemory({
+        workspaceId: clientId,
+        eventType: "caption_edited_on_publish",
+        format: t.format,
+        contentSummary: postName,
+        userFeedbackOrDiff: diff,
+      }).catch(() => {});
+    }
+  }
+
   revalidatePath("/", "layout");
   if (editing) {
     const url = withParam(back, "salvo", savedPostId);
@@ -569,6 +608,10 @@ export async function generateCaption(input: {
   custom?: string;
   /** Tons de voz marcados para o post no momento do clique (ids de src/config/tones.ts), mesmo que ainda não salvos. */
   tones?: string[];
+  /** Opcional: gerar versão bilíngue (Português + Inglês). */
+  bilingual?: boolean;
+  /** Opcional: contexto editorial (pilar/formato/roteiro). */
+  editorialContext?: string;
 }): Promise<AiResult> {
   await requireAuth();
   const network = String(input.network);
@@ -578,11 +621,15 @@ export async function generateCaption(input: {
   const toneCheck = validateTones(Array.isArray(input.tones) ? input.tones.map(String) : []);
   if ("error" in toneCheck) return { error: toneCheck.error };
   const pool = await db();
-  const r = await pool.query<{ name: string; segment: string; site: string; tone: string; notes: string }>(
-    "select name, segment, site, tone, notes from clients where id = $1",
-    [input.clientId],
-  );
+  const [r, memories] = await Promise.all([
+    pool.query<{ name: string; segment: string; site: string; tone: string; notes: string; ai_style_notes: string }>(
+      "select name, segment, site, tone, notes, ai_style_notes from clients where id = $1",
+      [input.clientId],
+    ),
+    listRecentAiMemory(input.clientId, 12),
+  ]);
   if (!r.rows[0]) return { error: "cliente não encontrado." };
+  const memoryBlock = buildMemoryBlock(memories, r.rows[0].ai_style_notes ?? "");
   const prompt = buildCaptionPrompt({
     client: r.rows[0],
     network,
@@ -592,8 +639,20 @@ export async function generateCaption(input: {
     captionDraft: String(input.draft ?? "").slice(0, 4000),
     custom: String(input.custom ?? "").slice(0, 2000),
     tones: toneCheck.tones,
+    bilingual: !!input.bilingual,
+    editorialContext: input.editorialContext,
+    memoryBlock,
   });
-  return generateText(prompt);
+  const res = editorialAiConfigured() ? await generateGeminiText(prompt) : await generateText(prompt);
+  if ("text" in res) {
+    await recordAiMemory({
+      workspaceId: input.clientId,
+      eventType: "caption_generated",
+      format,
+      contentSummary: String(input.brief || input.plan || `${network}/${format}`).slice(0, 300),
+    }).catch(() => {});
+  }
+  return res;
 }
 
 // ---------- contas conectadas (Meta) ----------

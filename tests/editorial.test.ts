@@ -13,6 +13,8 @@ import { createServer } from "node:http";
 import { assetFolderNames } from "../src/lib/post-folders.ts";
 import { buildCalendarPrompt, buildClassificationPrompt, buildPillarsPrompt } from "../src/lib/editorial-prompts.ts";
 import { editorialAiConfigured, explainGeminiError, generateEditorialJson } from "../src/lib/editorial-ai.ts";
+import { buildMemoryBlock, summarizeCaptionDiff } from "../src/lib/ai-memory.ts";
+import { buildCaptionPrompt } from "../src/lib/prompt.ts";
 
 test("normalizeThemeKey gera slug ASCII sem acentos", () => {
   assert.equal(normalizeThemeKey("5 Erros em Manutenção!"), "5-erros-em-manutencao");
@@ -277,4 +279,90 @@ test("parsePillarsInput aceita array direto e { pillars } e buildPillarsPrompt i
   const p = buildPillarsPrompt({ name: "Best Medical", segment: "Saúde", tone: "Técnico", notes: "" });
   assert.ok(p.includes("Best Medical"));
   assert.ok(p.includes("100"));
+});
+
+test("parseAiCalendar extrai script_structured e content_format para vídeos", () => {
+  const pillarId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const parsed = parseAiCalendar(
+    {
+      entries: [
+        {
+          planned_day: "2026-12-10",
+          planned_time: "10:00",
+          network: "instagram",
+          format: "reels",
+          source_kind: "needs_creation",
+          existing_item_id: null,
+          pillar_id: pillarId,
+          new_item: {
+            title: "Quando reparar em vez de trocar",
+            content_format: "video",
+            theme_key: "quando-reparar-em-vez-de-trocar",
+            hook: "Não troque antes de checar estes 3 pontos.",
+            angle: "Economia técnica",
+            brief: "Explicar critérios de reparo.",
+            script_structured: {
+              hook_0_3s: "Você pode estar jogando dinheiro fora.",
+              development_topics: ["Checar placa", "Medir sensor", "Avaliar garantia"],
+              cta: "Comente ORÇAMENTO para avaliar.",
+            },
+            caption_draft: "Legenda base.",
+            tones: ["profissional"],
+          },
+        },
+      ],
+    },
+    {
+      validPillarIds: new Set([pillarId]),
+      validExistingIds: new Set(),
+      existingThemeKeys: new Set(),
+    },
+  );
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    const ni = parsed.entries[0].new_item!;
+    assert.equal(ni.content_format, "video");
+    assert.equal(ni.script_hook, "Você pode estar jogando dinheiro fora.");
+    assert.ok(ni.script_dev.includes("Checar placa"));
+    assert.equal(ni.script_cta, "Comente ORÇAMENTO para avaliar.");
+  }
+});
+
+test("summarizeCaptionDiff, buildMemoryBlock e buildCaptionPrompt bilíngue", () => {
+  assert.equal(summarizeCaptionDiff("Texto igual", "Texto igual"), null);
+  const diff = summarizeCaptionDiff(
+    "Texto bem longo gerado pela IA com várias hashtags #um #dois #tres #quatro para testar o resumo",
+    "Texto direto.\nSegunda linha.",
+  );
+  assert.ok(diff && diff.includes("encurtou o texto") && diff.includes("reduziu hashtags"));
+
+  const mem = buildMemoryBlock(
+    [
+      {
+        id: "1",
+        workspace_id: "w1",
+        event_type: "caption_edited_on_publish",
+        pillar_id: null,
+        format: "reels",
+        content_summary: "Manutenção",
+        user_feedback_or_diff: "encurtou o texto",
+        created_at: "2026-11-23",
+      },
+    ],
+    "Evitar jargão complexo.",
+  );
+  assert.ok(mem.includes("Evitar jargão complexo."));
+  assert.ok(mem.includes("encurtou o texto"));
+
+  const capPrompt = buildCaptionPrompt({
+    client: { name: "Best Medical", segment: "Saúde", site: "", tone: "Técnico", notes: "" },
+    network: "instagram",
+    format: "reels",
+    plan: "Dica de manutenção",
+    bilingual: true,
+    memoryBlock: mem,
+  });
+  assert.ok(capPrompt.includes("Português do Brasil"));
+  assert.ok(capPrompt.includes("Inglês"));
+  assert.ok(capPrompt.includes("Evitar jargão complexo."));
 });

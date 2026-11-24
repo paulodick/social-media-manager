@@ -4,6 +4,7 @@ import EditorialBoard from "@/components/editorial/EditorialBoard";
 import { ClientAvatar } from "@/components/ui";
 import { NETWORKS } from "@/config/networks";
 import { addMonths, isMonth, monthGrid, monthLabel, monthOf, todaySP } from "@/lib/dates";
+import { db } from "@/lib/db";
 import { listContentItems, listEditorialSlots, listPillars } from "@/lib/editorial-queries";
 import { getClient } from "@/lib/queries";
 
@@ -23,11 +24,13 @@ export default async function ClientEditorialPage({
   const today = todaySP();
   const mes = isMonth(sp.mes) ? sp.mes : monthOf(today);
   const cells = monthGrid(mes);
+  const pool = await db();
 
-  const [pillars, itemsRes, slots] = await Promise.all([
+  const [pillars, itemsRes, slots, styleRow] = await Promise.all([
     listPillars(id),
     listContentItems({ clientId: id, limit: 100 }),
     listEditorialSlots({ clientId: id, from: cells[0].day, to: cells[cells.length - 1].day }),
+    pool.query<{ ai_style_notes: string }>("select ai_style_notes from clients where id = $1", [id]),
   ]);
 
   return (
@@ -90,6 +93,7 @@ export default async function ClientEditorialPage({
         initialPillars={pillars}
         initialItems={itemsRes.items}
         initialSlots={slots}
+        initialStyleNotes={styleRow.rows[0]?.ai_style_notes ?? ""}
       />
     </main>
   );

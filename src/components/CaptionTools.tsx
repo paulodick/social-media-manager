@@ -38,6 +38,7 @@ export default function CaptionTools({
   onResult: (r: { title: string; caption: string }) => void;
 }) {
   const [custom, setCustom] = useState("");
+  const [bilingual, setBilingual] = useState(false);
   const [copied, setCopied] = useState(false);
   const customId = useId();
 
@@ -51,6 +52,7 @@ export default function CaptionTools({
       captionDraft: getCaption(),
       custom,
       tones: getTones(),
+      bilingual,
     });
     try {
       await navigator.clipboard.writeText(text);
@@ -61,14 +63,29 @@ export default function CaptionTools({
     }
   }
 
-  const common = { clientId, network, format, getPlan, getBrief, getDraft: getCaption, getCustom: () => custom, getTones, onResult };
+  const common = {
+    clientId,
+    network,
+    format,
+    getPlan,
+    getBrief,
+    getDraft: getCaption,
+    getCustom: () => custom,
+    getTones,
+    getBilingual: () => bilingual,
+    onResult,
+  };
 
   return (
     <div className="col" style={{ gap: 8 }}>
       <div className="row" style={{ gap: 8 }}>
-        {aiEnabled && <GenerateButton {...common} />}
+        {aiEnabled && <GenerateButton {...common} label="Gerar Legenda com IA" />}
         <button type="button" className="btn" onClick={copyPrompt}>{copied ? "Copiado" : "Copiar pedido para a IA"}</button>
       </div>
+      <label className="opt" style={{ fontSize: 13 }}>
+        <input type="checkbox" checked={bilingual} onChange={(e) => setBilingual(e.target.checked)} />
+        <span>Versão bilíngue (Português + Inglês)</span>
+      </label>
       <details className="personalize">
         <summary>Personalizar legenda</summary>
         <div className="col" style={{ gap: 8, paddingTop: 8 }}>

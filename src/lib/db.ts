@@ -279,6 +279,47 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         where post_target_id is not null;
     `,
   },
+  {
+    version: 14,
+    sql: `
+      -- 14: Memória contínua por cliente (workspace_ai_memory), diretrizes de tom IA, roteiros de vídeo estruturados e aprovação de cronograma.
+      alter table clients add column if not exists ai_style_notes text not null default '';
+
+      alter table content_items
+        add column if not exists content_format text not null default 'video'
+          check (content_format in ('video', 'carousel', 'static_image')),
+        add column if not exists script_hook text not null default '',
+        add column if not exists script_dev text not null default '',
+        add column if not exists script_cta text not null default '';
+
+      alter table editorial_schedule
+        add column if not exists plan_status text not null default 'draft'
+          check (plan_status in ('draft', 'approved')),
+        add column if not exists approved_at timestamptz;
+
+      create table if not exists workspace_ai_memory (
+        id uuid primary key default gen_random_uuid(),
+        workspace_id uuid not null references clients(id) on delete cascade,
+        event_type text not null check (event_type in (
+          'topic_approved',
+          'topic_rejected',
+          'caption_generated',
+          'caption_edited_on_publish',
+          'post_scheduled',
+          'schedule_reordered',
+          'schedule_approved',
+          'style_note'
+        )),
+        pillar_id uuid references content_pillars(id) on delete set null,
+        format text not null default '',
+        content_summary text not null default '',
+        user_feedback_or_diff text not null default '',
+        created_at timestamptz not null default now()
+      );
+      create index if not exists workspace_ai_memory_ws_idx
+        on workspace_ai_memory (workspace_id, created_at desc);
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

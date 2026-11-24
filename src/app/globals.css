@@ -268,4 +268,10 @@ fieldset.netfield.on { background: var(--card); border-color: var(--line-strong)
 .ed-drive-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
 .ed-drive-file { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); cursor: pointer; }
 .ed-drive-file.on { border-color: var(--accent); background: var(--accent-soft); }
+.ed-badge-fmt { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--bg); color: var(--ink); border: 1px solid var(--line-strong); }
+.ed-approved-pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--ok-bg); color: var(--ok-ink); }
+.ed-chrono-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card); transition: border-color .15s, background .15s; }
+.ed-chrono-row.dragging { opacity: 0.55; border-style: dashed; border-color: var(--accent); }
+.ed-drag-handle { cursor: grab; user-select: none; font-size: 16px; color: var(--muted); padding: 4px 6px; border-radius: 6px; }
+.ed-drag-handle:active { cursor: grabbing; }
 

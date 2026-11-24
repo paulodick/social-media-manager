@@ -13,6 +13,8 @@ export type Pillar = {
 };
 
 export type ContentSourceKind = "existing_ready" | "needs_creation";
+export type ContentFormat = "video" | "carousel" | "static_image";
+export type PlanStatus = "draft" | "approved";
 export type ContentStatus = "idea" | "drafting" | "ready" | "archived";
 export type AssetKind = "carousel" | "static";
 export type AssetAspect = "4:5" | "1:1" | "9:16" | "16:9";
@@ -62,12 +64,16 @@ export type ContentItem = {
   client_id: string;
   pillar_id: string | null;
   source_kind: ContentSourceKind;
+  content_format: ContentFormat;
   title: string;
   theme_key: string;
   hook: string;
   angle: string;
   brief: string;
   script: string;
+  script_hook: string;
+  script_dev: string;
+  script_cta: string;
   transcript: string;
   caption_draft: string;
   tones: string[];
@@ -97,13 +103,19 @@ export type SlotView = {
   network: string;
   format: string;
   status: "planned" | "skipped";
+  plan_status: PlanStatus;
+  approved_at: string | null;
   item: {
     title: string;
     source_kind: ContentSourceKind;
+    content_format: ContentFormat;
     status: ContentStatus;
     pillar_id: string | null;
     pillar_name: string | null;
     pillar_color: string | null;
+    script_hook: string;
+    script_dev: string;
+    script_cta: string;
   };
   asset: { id: string; kind: AssetKind; title: string } | null;
   /** Destino real na fila de publicação (null = ainda só planejado). */
@@ -128,11 +140,15 @@ export type AiClassificationEntry = {
 
 export type AiCalendarNewItem = {
   title: string;
+  content_format: ContentFormat;
   theme_key: string;
   hook: string;
   angle: string;
   brief: string;
   script: string;
+  script_hook: string;
+  script_dev: string;
+  script_cta: string;
   caption_draft: string;
   tones: string[];
 };

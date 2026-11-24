@@ -1,4 +1,5 @@
 import { isFormat, isNetwork } from "@/config/networks";
+import { buildMemoryBlock, listRecentAiMemory, recordAiMemory } from "@/lib/ai-memory";
 import { editorialAiConfigured, generateEditorialJson } from "@/lib/editorial-ai";
 import { addDays, isDay, isTime } from "@/lib/dates";
 import { db } from "@/lib/db";
@@ -72,10 +73,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
   if (!slotsToFill.length) return jsonError("Nenhum dia do período corresponde aos dias da semana selecionados.", 400);
   if (slotsToFill.length > 60) return jsonError("Gere no máximo 60 entradas de calendário por vez.", 400);
 
-  const [pillars, existingList, recentThemes] = await Promise.all([
+  const pool = await db();
+  const [pillars, existingList, recentThemes, memories, styleRow] = await Promise.all([
     listPillars(clientId),
     listContentItems({ clientId, sourceKind: "existing_ready", status: "ready", limit: 50 }),
     listRecentThemeKeys(clientId, 200),
+    listRecentAiMemory(clientId, 15),
+    pool.query<{ ai_style_notes: string }>("select ai_style_notes from clients where id = $1", [clientId]),
   ]);
   if (!pillars.length) return jsonError("Cadastre ao menos um pilar de conteúdo antes de gerar o calendário.", 400);
 
@@ -86,12 +90,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
     ? existingList.items.filter((i) => filterIds.has(i.id))
     : existingList.items;
 
+  const memoryBlock = buildMemoryBlock(memories, styleRow.rows[0]?.ai_style_notes ?? "");
   const prompt = buildCalendarPrompt({
     client: data.client,
     pillars,
     existingReady,
     recentThemeKeys: recentThemes,
     slots: slotsToFill,
+    memoryBlock,
   });
 
   let rawJson: unknown = body.manual_json;
@@ -121,7 +127,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
   });
   if (!parsed.ok) return jsonError(parsed.error, 400);
 
-  const pool = await db();
   const c = await pool.connect();
   const createdItems: ContentItem[] = [];
   const createdSlotIds: string[] = [];
@@ -134,21 +139,27 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
         const ni = entry.new_item;
         const insItem = await c.query<ContentItem>(
           `insert into content_items (
-             client_id, pillar_id, source_kind, title, theme_key, hook, angle, brief, script, caption_draft, tones, status
+             client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
+             script, script_hook, script_dev, script_cta, caption_draft, tones, status
            )
-           values ($1,$2,'needs_creation',$3,$4,$5,$6,$7,$8,$9,$10,'idea')
-           returning id, client_id, pillar_id, source_kind, title, theme_key, hook, angle, brief, script, transcript,
+           values ($1,$2,'needs_creation',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'idea')
+           returning id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
+                     script, script_hook, script_dev, script_cta, transcript,
                      caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
                      created_at::text as created_at, updated_at::text as updated_at`,
           [
             clientId,
             entry.pillar_id,
+            ni.content_format,
             ni.title,
             ni.theme_key,
             ni.hook,
             ni.angle,
             ni.brief,
             ni.script,
+            ni.script_hook,
+            ni.script_dev,
+            ni.script_cta,
             ni.caption_draft,
             ni.tones,
           ],
@@ -158,8 +169,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
       }
       if (!itemId) continue;
       const insSlot = await c.query<{ id: string }>(
-        `insert into editorial_schedule (client_id, content_item_id, planned_day, planned_time, position, network, format)
-         values ($1, $2, $3::date, $4::time, $5, $6, $7)
+        `insert into editorial_schedule (client_id, content_item_id, planned_day, planned_time, position, network, format, plan_status)
+         values ($1, $2, $3::date, $4::time, $5, $6, $7, 'draft')
          returning id`,
         [clientId, itemId, entry.planned_day, entry.planned_time, idx, entry.network, entry.format],
       );

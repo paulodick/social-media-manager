@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import PostEditor from "@/components/PostEditor";
 import { BackLink, ClientAvatar, Flash } from "@/components/ui";
 import { aiConfigured } from "@/lib/ai";
+import { editorialAiConfigured } from "@/lib/editorial-ai";
 import { isDay, todaySP } from "@/lib/dates";
 import { pickerOptions } from "@/lib/picker-options";
 import { getClient, listClients, listDayNotes } from "@/lib/queries";
@@ -71,7 +72,7 @@ export default async function NewPost({
           client={{ id: client.id, name: client.name, segment: client.segment, site: client.site, tone: client.tone, notes: client.notes }}
           canCreateFolder={!!client.drive_folder_id}
           options={pickerOptions(networks)}
-          aiEnabled={aiConfigured()}
+          aiEnabled={aiConfigured() || editorialAiConfigured()}
           volta="/posts/novo"
           day={date}
           defaultTime="10:00"

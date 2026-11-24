@@ -58,6 +58,7 @@ export function buildCalendarPrompt(input: {
   existingReady: Pick<ContentItem, "id" | "pillar_id" | "title" | "theme_key" | "brief">[];
   recentThemeKeys: string[];
   slots: { planned_day: string; planned_time: string | null; network: string; format: string }[];
+  memoryBlock?: string;
 }): string {
   const pillarLines = input.pillars
     .map((p) => `- id: "${p.id}" | "${p.name}" (${p.weight_pct}%): ${p.description || "sem descrição"}`)
@@ -79,6 +80,7 @@ export function buildCalendarPrompt(input: {
     `Você é um planejador editorial para a marca "${input.client.name}" (${input.client.segment || "segmento não informado"}).`,
     input.client.tone ? `Tom de voz: ${input.client.tone}` : "",
     input.client.notes ? `Observações da marca: ${input.client.notes}` : "",
+    input.memoryBlock ? `\nMEMÓRIA E APRENDIZADO DO CLIENTE:\n${input.memoryBlock}` : "",
     "",
     "PILARES E PESOS (%):",
     pillarLines,
@@ -95,12 +97,14 @@ export function buildCalendarPrompt(input: {
     "REGRAS OBRIGATÓRIAS:",
     "- Responda APENAS com JSON válido (sem markdown ou explicações extras).",
     "- Alterne conteúdos 'existing_ready' (usando existing_item_id da lista e new_item: null) com conteúdos inéditos 'needs_creation' (existing_item_id: null e new_item completo).",
+    "- Em new_item.content_format, alterne os formatos: 'video' (vídeo curto falando para a câmera), 'carousel' e 'static_image'.",
+    "- Quando content_format for 'video', preencha obrigatoriamente script_structured com: hook_0_3s (Gancho 0-3s), development_topics (tópicos objetivos para falar) e cta (Chamada para Ação).",
     "- Nunca repita o mesmo existing_item_id nem um theme_key da lista de recentes ou dentro do próprio calendário.",
     "- Respeite aproximadamente os pesos percentuais dos pilares.",
     `- Em tones (opcional, até 3), use apenas ids válidos: ${toneIds}.`,
     "",
     "FORMATO JSON ESPERADO:",
-    `{"entries":[{"planned_day":"AAAA-MM-DD","planned_time":"HH:MM|null","network":"instagram","format":"reels","source_kind":"existing_ready|needs_creation","existing_item_id":"uuid|null","pillar_id":"uuid","new_item":{"title":"...","theme_key":"slug-ascii","hook":"...","angle":"...","brief":"...","script":"...","caption_draft":"...","tones":["profissional"]}}]}`,
+    `{"entries":[{"planned_day":"AAAA-MM-DD","planned_time":"HH:MM|null","network":"instagram","format":"reels","source_kind":"existing_ready|needs_creation","existing_item_id":"uuid|null","pillar_id":"uuid","new_item":{"title":"...","content_format":"video|carousel|static_image","theme_key":"slug-ascii","hook":"...","angle":"...","brief":"...","script_structured":{"hook_0_3s":"...","development_topics":["tópico 1","tópico 2"],"cta":"..."},"caption_draft":"...","tones":["profissional"]}}]}`,
   ]
     .filter(Boolean)
     .join("\n");

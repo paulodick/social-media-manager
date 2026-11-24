@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import ToneSelector from "@/components/ToneSelector";
 import { NETWORKS, isNetwork } from "@/config/networks";
-import type { ContentItem, ContentSourceKind, ContentStatus, Pillar, SlotView } from "@/lib/editorial-types";
+import type { ContentFormat, ContentItem, ContentSourceKind, ContentStatus, Pillar, SlotView } from "@/lib/editorial-types";
 
 export default function EditorialItemForm({
   clientId,
@@ -23,12 +23,16 @@ export default function EditorialItemForm({
   const [title, setTitle] = useState(initialItem.title);
   const [pillarId, setPillarId] = useState(initialItem.pillar_id ?? "");
   const [sourceKind, setSourceKind] = useState<ContentSourceKind>(initialItem.source_kind);
+  const [contentFormat, setContentFormat] = useState<ContentFormat>(initialItem.content_format ?? "video");
   const [status, setStatus] = useState<ContentStatus>(initialItem.status);
   const [themeKey, setThemeKey] = useState(initialItem.theme_key);
   const [hook, setHook] = useState(initialItem.hook);
   const [angle, setAngle] = useState(initialItem.angle);
   const [brief, setBrief] = useState(initialItem.brief);
   const [script, setScript] = useState(initialItem.script);
+  const [scriptHook, setScriptHook] = useState(initialItem.script_hook ?? "");
+  const [scriptDev, setScriptDev] = useState(initialItem.script_dev ?? "");
+  const [scriptCta, setScriptCta] = useState(initialItem.script_cta ?? "");
   const [transcript, setTranscript] = useState(initialItem.transcript);
   const [captionDraft, setCaptionDraft] = useState(initialItem.caption_draft);
   const [tones, setTones] = useState<string[]>(initialItem.tones);
@@ -59,12 +63,16 @@ export default function EditorialItemForm({
           title,
           pillar_id: pillarId || null,
           source_kind: sourceKind,
+          content_format: contentFormat,
           status,
           theme_key: themeKey,
           hook,
           angle,
           brief,
           script,
+          script_hook: scriptHook,
+          script_dev: scriptDev,
+          script_cta: scriptCta,
           transcript,
           caption_draft: captionDraft,
           tones,
@@ -147,7 +155,7 @@ export default function EditorialItemForm({
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={160} required />
         </label>
 
-        <div className="grid3" style={{ gap: 12 }}>
+        <div className="grid2" style={{ gap: 12 }}>
           <label className="f">
             <span>Pilar</span>
             <select value={pillarId} onChange={(e) => setPillarId(e.target.value)}>
@@ -157,6 +165,14 @@ export default function EditorialItemForm({
                   {p.name}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="f">
+            <span>Formato do conteúdo</span>
+            <select value={contentFormat} onChange={(e) => setContentFormat(e.target.value as ContentFormat)}>
+              <option value="video">Vídeo (falando para a câmera)</option>
+              <option value="carousel">Carrossel</option>
+              <option value="static_image">Estático (imagem única)</option>
             </select>
           </label>
           <label className="f">
@@ -209,10 +225,25 @@ export default function EditorialItemForm({
           <textarea className="auto-grow" value={brief} onChange={(e) => setBrief(e.target.value)} rows={3} />
         </label>
 
-        <label className="f">
-          <span>Roteiro de gravação / estrutura</span>
-          <textarea className="auto-grow" value={script} onChange={(e) => setScript(e.target.value)} rows={4} />
-        </label>
+        <div className="col" style={{ gap: 10, padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--soft)" }}>
+          <strong className="small">Roteiro de vídeo estruturado</strong>
+          <label className="f">
+            <span>Gancho (0–3s)</span>
+            <input type="text" value={scriptHook} onChange={(e) => setScriptHook(e.target.value)} placeholder="Primeira frase de impacto para prender atenção..." />
+          </label>
+          <label className="f">
+            <span>Desenvolvimento (tópicos objetivos para falar)</span>
+            <textarea className="auto-grow" value={scriptDev} onChange={(e) => setScriptDev(e.target.value)} rows={3} placeholder="- Tópico 1&#10;- Tópico 2" />
+          </label>
+          <label className="f">
+            <span>Chamada para Ação (CTA)</span>
+            <input type="text" value={scriptCta} onChange={(e) => setScriptCta(e.target.value)} placeholder="O que a pessoa deve fazer ao final?" />
+          </label>
+          <label className="f">
+            <span>Roteiro completo / notas livres</span>
+            <textarea className="auto-grow" value={script} onChange={(e) => setScript(e.target.value)} rows={3} />
+          </label>
+        </div>
 
         <label className="f">
           <span>Transcrição / notas do arquivo existente</span>

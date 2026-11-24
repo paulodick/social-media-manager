@@ -1,3 +1,4 @@
+import { recordAiMemory } from "@/lib/ai-memory";
 import { isDay, isTime } from "@/lib/dates";
 import { isPgUniqueViolation, jsonError, readJsonBody, requireApiAuth, requireClient } from "@/lib/editorial-api";
 import { reorderEditorialSlots } from "@/lib/editorial-queries";
@@ -34,6 +35,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clientId: str
   try {
     const res = await reorderEditorialSlots(clientId, moves);
     if (!res.ok) return jsonError(res.error, res.status);
+    await recordAiMemory({
+      workspaceId: clientId,
+      eventType: "schedule_reordered",
+      contentSummary: `Reordenou ${res.slots.length} item(ns) no cronograma editorial.`,
+      userFeedbackOrDiff: res.slots.map((s) => `${s.day} (${s.item.title})`).join("; "),
+    }).catch(() => {});
     return Response.json({ slots: res.slots });
   } catch (e) {
     if (isPgUniqueViolation(e)) {

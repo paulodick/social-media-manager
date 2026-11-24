@@ -6,11 +6,13 @@ import type {
   AssetAspect,
   AssetKind,
   AssetStatus,
+  ContentFormat,
   ContentItem,
   ContentSourceKind,
   ContentStatus,
   ItemCard,
   Pillar,
+  PlanStatus,
   Slide,
   SlideInput,
   SlotView,
@@ -192,8 +194,9 @@ export async function listContentItems(
     in_queue_count: number;
   };
   const r = await pool.query<Row>(
-    `select i.id, i.client_id, i.pillar_id, i.source_kind, i.title, i.theme_key,
-            i.hook, i.angle, i.brief, i.script, i.transcript, i.caption_draft,
+    `select i.id, i.client_id, i.pillar_id, i.source_kind, i.content_format, i.title, i.theme_key,
+            i.hook, i.angle, i.brief, i.script, i.script_hook, i.script_dev, i.script_cta,
+            i.transcript, i.caption_draft,
             i.tones, i.status, i.drive_url, i.drive_file_id, i.drive_meta,
             i.created_at::text as created_at, i.updated_at::text as updated_at,
             p.name as pillar_name, p.color as pillar_color,
@@ -215,12 +218,16 @@ export async function listContentItems(
     client_id: row.client_id,
     pillar_id: row.pillar_id,
     source_kind: row.source_kind,
+    content_format: row.content_format,
     title: row.title,
     theme_key: row.theme_key,
     hook: row.hook,
     angle: row.angle,
     brief: row.brief,
     script: row.script,
+    script_hook: row.script_hook,
+    script_dev: row.script_dev,
+    script_cta: row.script_cta,
     transcript: row.transcript,
     caption_draft: row.caption_draft,
     tones: row.tones,
@@ -249,11 +256,13 @@ export async function getContentItem(id: string, clientId?: string): Promise<Con
   if (!isUuid(id) || (clientId !== undefined && !isUuid(clientId))) return null;
   const pool = await db();
   const sql = clientId
-    ? `select id, client_id, pillar_id, source_kind, title, theme_key, hook, angle, brief, script, transcript,
+    ? `select id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
+              script, script_hook, script_dev, script_cta, transcript,
               caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
               created_at::text as created_at, updated_at::text as updated_at
          from content_items where id = $1 and client_id = $2`
-    : `select id, client_id, pillar_id, source_kind, title, theme_key, hook, angle, brief, script, transcript,
+    : `select id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
+              script, script_hook, script_dev, script_cta, transcript,
               caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
               created_at::text as created_at, updated_at::text as updated_at
          from content_items where id = $1`;
@@ -264,12 +273,16 @@ export async function getContentItem(id: string, clientId?: string): Promise<Con
 export type ContentItemInput = {
   pillar_id?: string | null;
   source_kind?: ContentSourceKind;
+  content_format?: ContentFormat;
   title: string;
   theme_key?: string;
   hook?: string;
   angle?: string;
   brief?: string;
   script?: string;
+  script_hook?: string;
+  script_dev?: string;
+  script_cta?: string;
   transcript?: string;
   caption_draft?: string;
   tones?: string[];
@@ -283,23 +296,29 @@ export async function createContentItem(clientId: string, input: ContentItemInpu
   const pool = await db();
   const r = await pool.query<ContentItem>(
     `insert into content_items (
-       client_id, pillar_id, source_kind, title, theme_key, hook, angle, brief, script, transcript,
+       client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
+       script, script_hook, script_dev, script_cta, transcript,
        caption_draft, tones, status, drive_url, drive_file_id, drive_meta
      )
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-     returning id, client_id, pillar_id, source_kind, title, theme_key, hook, angle, brief, script, transcript,
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+     returning id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
+               script, script_hook, script_dev, script_cta, transcript,
                caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
                created_at::text as created_at, updated_at::text as updated_at`,
     [
       clientId,
       input.pillar_id ?? null,
       input.source_kind ?? "needs_creation",
+      input.content_format ?? "video",
       input.title.trim(),
       (input.theme_key ?? "").trim(),
       (input.hook ?? "").trim(),
       (input.angle ?? "").trim(),
       (input.brief ?? "").trim(),
       (input.script ?? "").trim(),
+      (input.script_hook ?? "").trim(),
+      (input.script_dev ?? "").trim(),
+      (input.script_cta ?? "").trim(),
       (input.transcript ?? "").trim(),
       (input.caption_draft ?? "").trim(),
       input.tones ?? [],
@@ -322,12 +341,16 @@ export async function updateContentItem(id: string, patch: Partial<ContentItemIn
   };
   if (patch.pillar_id !== undefined) push("pillar_id", patch.pillar_id);
   if (patch.source_kind !== undefined) push("source_kind", patch.source_kind);
+  if (patch.content_format !== undefined) push("content_format", patch.content_format);
   if (patch.title !== undefined) push("title", patch.title.trim());
   if (patch.theme_key !== undefined) push("theme_key", patch.theme_key.trim());
   if (patch.hook !== undefined) push("hook", patch.hook.trim());
   if (patch.angle !== undefined) push("angle", patch.angle.trim());
   if (patch.brief !== undefined) push("brief", patch.brief.trim());
   if (patch.script !== undefined) push("script", patch.script.trim());
+  if (patch.script_hook !== undefined) push("script_hook", patch.script_hook.trim());
+  if (patch.script_dev !== undefined) push("script_dev", patch.script_dev.trim());
+  if (patch.script_cta !== undefined) push("script_cta", patch.script_cta.trim());
   if (patch.transcript !== undefined) push("transcript", patch.transcript.trim());
   if (patch.caption_draft !== undefined) push("caption_draft", patch.caption_draft.trim());
   if (patch.tones !== undefined) push("tones", patch.tones);
@@ -341,7 +364,8 @@ export async function updateContentItem(id: string, patch: Partial<ContentItemIn
   const pool = await db();
   const r = await pool.query<ContentItem>(
     `update content_items set ${sets.join(", ")} where id = $${args.length}
-     returning id, client_id, pillar_id, source_kind, title, theme_key, hook, angle, brief, script, transcript,
+     returning id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
+               script, script_hook, script_dev, script_cta, transcript,
                caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
                created_at::text as created_at, updated_at::text as updated_at`,
     args,
@@ -584,7 +608,9 @@ const SLOT_SELECT = `
          to_char(s.planned_day, 'YYYY-MM-DD') as day,
          to_char(s.planned_time, 'HH24:MI') as time,
          s.position, s.network, s.format, s.status,
-         i.title as item_title, i.source_kind as item_source_kind, i.status as item_status,
+         s.plan_status, s.approved_at::text as approved_at,
+         i.title as item_title, i.source_kind as item_source_kind, i.content_format as item_content_format,
+         i.status as item_status, i.script_hook as item_script_hook, i.script_dev as item_script_dev, i.script_cta as item_script_cta,
          i.pillar_id as item_pillar_id, p.name as item_pillar_name, p.color as item_pillar_color,
          a.kind as asset_kind, a.title as asset_title,
          t.id as target_id, t.status as target_status, t.publish_state as target_publish_state,
@@ -607,9 +633,15 @@ type SlotSqlRow = {
   network: string;
   format: string;
   status: "planned" | "skipped";
+  plan_status: PlanStatus;
+  approved_at: string | null;
   item_title: string;
   item_source_kind: ContentSourceKind;
+  item_content_format: ContentFormat;
   item_status: ContentStatus;
+  item_script_hook: string;
+  item_script_dev: string;
+  item_script_cta: string;
   item_pillar_id: string | null;
   item_pillar_name: string | null;
   item_pillar_color: string | null;
@@ -634,13 +666,19 @@ function mapSlotRow(r: SlotSqlRow): SlotView {
     network: r.network,
     format: r.format,
     status: r.status,
+    plan_status: r.plan_status ?? "draft",
+    approved_at: r.approved_at,
     item: {
       title: r.item_title,
       source_kind: r.item_source_kind,
+      content_format: r.item_content_format ?? "video",
       status: r.item_status,
       pillar_id: r.item_pillar_id,
       pillar_name: r.item_pillar_name,
       pillar_color: r.item_pillar_color,
+      script_hook: r.item_script_hook ?? "",
+      script_dev: r.item_script_dev ?? "",
+      script_cta: r.item_script_cta ?? "",
     },
     asset: r.asset_id && r.asset_kind ? { id: r.asset_id, kind: r.asset_kind, title: r.asset_title ?? "" } : null,
     target:

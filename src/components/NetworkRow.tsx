@@ -132,6 +132,7 @@ export default function NetworkRow({
   }, [isNew, touched, defaults.date, defaults.time]);
 
   const [caption, setCaption] = useState(existing?.caption ?? "");
+  const [lastAiCaption, setLastAiCaption] = useState("");
   const [title, setTitle] = useState(existing?.title ?? "");
   const [driveUrl, setDriveUrl] = useState(existing?.driveUrl ?? inherited?.url ?? "");
   const [thumbUrl, setThumbUrl] = useState(existing?.thumbUrl ?? "");
@@ -243,9 +244,11 @@ export default function NetworkRow({
             getTones={getTones}
             onResult={(r) => {
               setCaption(r.caption);
+              setLastAiCaption(r.caption);
               if (r.title) setTitle(r.title);
             }}
           />
+          <input type="hidden" name={`ai_caption__${k}`} value={lastAiCaption} disabled={off} />
         </div>
 
         {(existing || driveUrl.trim() !== "" || caption !== "") && (

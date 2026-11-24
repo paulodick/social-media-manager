@@ -42,6 +42,9 @@ export function buildCaptionPrompt(input: {
   captionDraft?: string;
   custom?: string;
   tones?: string[];
+  bilingual?: boolean;
+  editorialContext?: string;
+  memoryBlock?: string;
 }): string {
   const cfg = NETWORKS[input.network];
   const fmt = cfg.formats[input.format];
@@ -61,6 +64,13 @@ export function buildCaptionPrompt(input: {
 
   const toneBlock = buildToneBlock(input.tones);
   if (toneBlock) lines.push(toneBlock, "");
+
+  if (input.memoryBlock?.trim()) {
+    lines.push(`Memória e preferências aprendidas deste cliente:\n${input.memoryBlock.trim()}`, "");
+  }
+  if (input.editorialContext?.trim()) {
+    lines.push(`Contexto editorial (tema/pilar/formato/roteiro):\n${input.editorialContext.trim()}`, "");
+  }
 
   const plan = input.plan.trim();
   const brief = input.brief?.trim() ?? "";
@@ -84,6 +94,9 @@ export function buildCaptionPrompt(input: {
   );
   if (cfg.cutAt) rules.push(`Os primeiros ${cfg.cutAt} caracteres aparecem antes do "ver mais": a ideia principal e o gancho vão ali.`);
   if (fmt?.guide) rules.push(`A mídia é ${fmt.guide.size}, ${fmt.guide.length}. A legenda deve combinar com isso.`);
+  if (input.bilingual) {
+    rules.push("Entregue a legenda em Português do Brasil e, logo abaixo, uma linha separadora '---' seguida da versão em Inglês.");
+  }
   rules.push("Nada de promessas que o cliente não possa cumprir nem informações inventadas.");
   if (fmt?.title) {
     rules.push(

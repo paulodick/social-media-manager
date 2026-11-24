@@ -5,12 +5,25 @@ import { useState } from "react";
 import { NetDot, StatusPill } from "@/components/ui";
 import { NETWORKS, isNetwork } from "@/config/networks";
 import { addDays, monthGrid, todaySP } from "@/lib/dates";
-import type { ContentItem, ContentSourceKind, ItemCard, Pillar, SlotView } from "@/lib/editorial-types";
+import type {
+  ContentFormat,
+  ContentItem,
+  ContentSourceKind,
+  ItemCard,
+  Pillar,
+  SlotView,
+} from "@/lib/editorial-types";
 import CalendarGeneratorModal from "./CalendarGeneratorModal";
 import DriveImportPanel from "./DriveImportPanel";
 import PillarManager from "./PillarManager";
 
 const WEEK = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+const FORMAT_LABEL: Record<ContentFormat, string> = {
+  video: "Vídeo",
+  carousel: "Carrossel",
+  static_image: "Estático",
+};
 
 export default function EditorialBoard({
   clientId,
@@ -20,6 +33,7 @@ export default function EditorialBoard({
   initialPillars,
   initialItems,
   initialSlots,
+  initialStyleNotes = "",
 }: {
   clientId: string;
   clientNetworks: string[];
@@ -28,6 +42,7 @@ export default function EditorialBoard({
   initialPillars: Pillar[];
   initialItems: ItemCard[];
   initialSlots: SlotView[];
+  initialStyleNotes?: string;
 }) {
   const [pillars, setPillars] = useState<Pillar[]>(initialPillars);
   const [items, setItems] = useState<ItemCard[]>(initialItems);
@@ -37,16 +52,32 @@ export default function EditorialBoard({
   const [showGen, setShowGen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newPillar, setNewPillar] = useState("");
+  const [newFormat, setNewFormat] = useState<ContentFormat>("video");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [styleNotes, setStyleNotes] = useState(initialStyleNotes);
+  const [savingNotes, setSavingNotes] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
   const today = todaySP();
   const cells = monthGrid(initialMonth);
+
+  const filteredSlots = slots.filter((s) => {
+    if (filterPillar && s.item.pillar_id !== filterPillar) return false;
+    if (filterSource && s.item.source_kind !== filterSource) return false;
+    return true;
+  });
+
+  const chronological = [...filteredSlots].sort((a, b) => {
+    if (a.day !== b.day) return a.day.localeCompare(b.day);
+    if (a.position !== b.position) return a.position - b.position;
+    return (a.time ?? "99:99").localeCompare(b.time ?? "99:99");
+  });
+
   const slotsByDay = new Map<string, SlotView[]>();
-  for (const s of slots) {
-    if (filterPillar && s.item.pillar_id !== filterPillar) continue;
-    if (filterSource && s.item.source_kind !== filterSource) continue;
+  for (const s of chronological) {
     slotsByDay.set(s.day, [...(slotsByDay.get(s.day) ?? []), s]);
   }
 
@@ -58,6 +89,8 @@ export default function EditorialBoard({
   });
 
   const unclassified = items.filter((it) => !it.pillar_id && it.status !== "archived");
+  const allApproved = chronological.length > 0 && chronological.every((s) => s.plan_status === "approved");
+  const draftCount = chronological.filter((s) => s.plan_status !== "approved").length;
 
   function toItemCard(it: ContentItem): ItemCard {
     const p = pillars.find((x) => x.id === it.pillar_id);
@@ -68,6 +101,30 @@ export default function EditorialBoard({
       slots_count: 0,
       in_queue_count: 0,
     };
+  }
+
+  async function saveStyleNotes(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingNotes(true);
+    setErr("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/memory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ai_style_notes: styleNotes }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setErr(j.error ?? "Não foi possível salvar as diretrizes.");
+        return;
+      }
+      setMsg("Diretrizes de estilo da IA salvas na memória do cliente.");
+    } catch {
+      setErr("Falha ao salvar diretrizes de estilo.");
+    } finally {
+      setSavingNotes(false);
+    }
   }
 
   async function createQuickItem(e: React.FormEvent) {
@@ -83,6 +140,7 @@ export default function EditorialBoard({
           title: newTitle.trim(),
           pillar_id: newPillar || null,
           source_kind: "needs_creation",
+          content_format: newFormat,
           status: "idea",
         }),
       });
@@ -122,6 +180,86 @@ export default function EditorialBoard({
       setErr("Falha ao reordenar o calendário.");
     } finally {
       setBusyId(null);
+    }
+  }
+
+  /** Troca a data/posição entre dois slots na lista cronológica e persiste na API. */
+  async function swapChronological(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    const fromIdx = chronological.findIndex((s) => s.id === fromId);
+    const toIdx = chronological.findIndex((s) => s.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const a = chronological[fromIdx];
+    const b = chronological[toIdx];
+    if (a.target || b.target) {
+      setErr("Itens já enviados para a fila não podem ser reordenados por aqui.");
+      return;
+    }
+
+    const moves = [
+      { slot_id: a.id, planned_day: b.day, planned_time: b.time, position: b.position },
+      { slot_id: b.id, planned_day: a.day, planned_time: a.time, position: a.position },
+    ];
+
+    setBusyId(a.id);
+    setErr("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/schedule/reorder`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ moves }),
+      });
+      const j = (await res.json()) as { slots?: SlotView[]; error?: string };
+      if (!res.ok || !j.slots) {
+        setErr(j.error ?? "Não foi possível reordenar os itens.");
+        return;
+      }
+      const byId = new Map(j.slots.map((s) => [s.id, s]));
+      setSlots((prev) => prev.map((x) => byId.get(x.id) ?? x));
+    } catch {
+      setErr("Falha de conexão ao reordenar a lista cronológica.");
+    } finally {
+      setBusyId(null);
+      setDragId(null);
+    }
+  }
+
+  async function approveSchedule() {
+    if (!chronological.length) return;
+    setApproving(true);
+    setErr("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/schedule/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slot_ids: chronological.map((s) => s.id) }),
+      });
+      const j = (await res.json()) as {
+        approved_count?: number;
+        enqueued_targets?: number;
+        warnings?: string[];
+        slots?: SlotView[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setErr(j.error ?? "Não foi possível aprovar o cronograma.");
+        return;
+      }
+      if (j.slots?.length) {
+        const byId = new Map(j.slots.map((s) => [s.id, s]));
+        setSlots((prev) => prev.map((x) => byId.get(x.id) ?? x));
+      }
+      const warn = j.warnings?.length ? ` Avisos: ${j.warnings.join(" ")}` : "";
+      setMsg(
+        `Cronograma oficial aprovado! ${j.approved_count ?? chronological.length} item(ns) oficializados e ${j.enqueued_targets ?? 0} destino(s) prontos na fila de agendamento/mídias.${warn}`,
+      );
+    } catch {
+      setErr("Falha de conexão ao aprovar cronograma.");
+    } finally {
+      setApproving(false);
     }
   }
 
@@ -198,6 +336,28 @@ export default function EditorialBoard({
     <div className="col" style={{ gap: 20 }}>
       <PillarManager clientId={clientId} initialPillars={pillars} onChange={setPillars} />
 
+      <details className="card">
+        <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>
+          Diretrizes de estilo e memória contínua da IA (opcional)
+        </summary>
+        <form onSubmit={saveStyleNotes} className="col" style={{ gap: 10, marginTop: 12 }}>
+          <label className="f">
+            <span>Preferências de tom, termos proibidos ou estilo que o Gemini deve lembrar neste cliente</span>
+            <textarea
+              rows={3}
+              value={styleNotes}
+              onChange={(e) => setStyleNotes(e.target.value)}
+              placeholder="Ex.: Evitar jargões médicos muito difíceis; sempre abrir com pergunta prática; nunca usar promessas de resultado garantido."
+            />
+          </label>
+          <div>
+            <button type="submit" className="btn" disabled={savingNotes}>
+              {savingNotes ? "Salvando..." : "Salvar diretrizes da IA"}
+            </button>
+          </div>
+        </form>
+      </details>
+
       <DriveImportPanel
         clientId={clientId}
         hasDriveFolder={hasDriveFolder}
@@ -215,9 +375,16 @@ export default function EditorialBoard({
       <section className="card col" style={{ gap: 14 }}>
         <div className="row between">
           <div className="col" style={{ gap: 2 }}>
-            <h2>3. Calendário editorial visual</h2>
+            <div className="row" style={{ gap: 8 }}>
+              <h2>3. Calendário editorial visual</h2>
+              {chronological.length > 0 && (
+                <span className={allApproved ? "ed-approved-pill" : "ed-badge-create"}>
+                  {allApproved ? "Cronograma oficial aprovado" : `Rascunho (${draftCount} pendente(s))`}
+                </span>
+              )}
+            </div>
             <span className="muted small">
-              Reordene os dias, revise o que já está pronto vs. o que precisa gravar/criar e envie para a fila como rascunho.
+              Alterne vídeos com roteiro, carrosséis e estáticos. Reordene na lista abaixo e oficialize ao final.
             </span>
           </div>
           <button type="button" className="btn primary" onClick={() => setShowGen(true)}>
@@ -293,9 +460,7 @@ export default function EditorialBoard({
                                 {s.time ?? "--:--"}
                               </span>
                             </span>
-                            <span className={s.item.source_kind === "existing_ready" ? "ed-badge-ready" : "ed-badge-create"}>
-                              {s.item.source_kind === "existing_ready" ? "Pronto" : "Criar"}
-                            </span>
+                            <span className="ed-badge-fmt">{FORMAT_LABEL[s.item.content_format] ?? "Vídeo"}</span>
                           </div>
                           <Link
                             href={`/clientes/${clientId}/editorial/${s.content_item_id}`}
@@ -337,6 +502,139 @@ export default function EditorialBoard({
             </div>
           </div>
         </div>
+
+        {/* Lista Cronológica Reordenável (Drag-and-Drop + Subir/Descer) + Aprovar Cronograma */}
+        <div className="col" style={{ gap: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+          <div className="row between">
+            <div className="col" style={{ gap: 2 }}>
+              <h3>Lista cronológica do planejamento ({chronological.length})</h3>
+              <span className="muted small">
+                Arraste pela alça ⋮⋮ ou use os botões ↑ / ↓ para remanejar a ordem dos dias.
+              </span>
+            </div>
+          </div>
+
+          {chronological.length === 0 && (
+            <span className="muted small">Nenhum item planejado para este período.</span>
+          )}
+
+          <div className="ed-list">
+            {chronological.map((s, idx) => {
+              const netLabel = isNetwork(s.network) ? NETWORKS[s.network].label : s.network;
+              const prev = idx > 0 ? chronological[idx - 1] : null;
+              const next = idx < chronological.length - 1 ? chronological[idx + 1] : null;
+              const hasScript = !!(s.item.script_hook || s.item.script_dev || s.item.script_cta);
+
+              return (
+                <div
+                  key={s.id}
+                  draggable={!s.target}
+                  onDragStart={() => setDragId(s.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (dragId && dragId !== s.id) swapChronological(dragId, s.id);
+                  }}
+                  onDragEnd={() => setDragId(null)}
+                  className={`ed-chrono-row ${dragId === s.id ? "dragging" : ""}`}
+                >
+                  <div className="row" style={{ gap: 10, flex: 1, minWidth: 260 }}>
+                    {!s.target && (
+                      <span className="ed-drag-handle" title="Arraste para reordenar" aria-hidden="true">
+                        ⋮⋮
+                      </span>
+                    )}
+                    <div className="col" style={{ gap: 4, flex: 1 }}>
+                      <div className="row" style={{ gap: 6 }}>
+                        <strong>{s.day}</strong>
+                        <span className="muted small">{s.time ?? "--:--"}</span>
+                        <span className="ed-badge-fmt">{FORMAT_LABEL[s.item.content_format] ?? "Vídeo"}</span>
+                        <span className={s.item.source_kind === "existing_ready" ? "ed-badge-ready" : "ed-badge-create"}>
+                          {s.item.source_kind === "existing_ready" ? "Pronto" : "Criar"}
+                        </span>
+                        {s.item.pillar_name && (
+                          <span className="chip">
+                            <span className="dot" style={{ background: s.item.pillar_color ?? "#596579" }} aria-hidden="true" />
+                            {s.item.pillar_name}
+                          </span>
+                        )}
+                        {s.plan_status === "approved" && <span className="ed-approved-pill">Aprovado</span>}
+                      </div>
+                      <Link
+                        href={`/clientes/${clientId}/editorial/${s.content_item_id}`}
+                        style={{ fontWeight: 600, color: "var(--ink)", textDecoration: "none" }}
+                      >
+                        {s.item.title}
+                      </Link>
+                      <span className="muted small">
+                        <NetDot network={s.network} /> {netLabel} · {s.format}
+                      </span>
+                      {hasScript && (
+                        <details>
+                          <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>
+                            Ver roteiro de gravação
+                          </summary>
+                          <div className="col small" style={{ gap: 4, marginTop: 6, paddingLeft: 10, borderLeft: "2px solid var(--line-strong)" }}>
+                            {s.item.script_hook && <span><strong>Gancho (0–3s):</strong> {s.item.script_hook}</span>}
+                            {s.item.script_dev && <span style={{ whiteSpace: "pre-line" }}><strong>Desenvolvimento:</strong> {s.item.script_dev}</span>}
+                            {s.item.script_cta && <span><strong>CTA:</strong> {s.item.script_cta}</span>}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="row" style={{ gap: 6 }}>
+                    {!s.target ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => prev && swapChronological(s.id, prev.id)}
+                          disabled={!prev || !!prev.target || busyId === s.id}
+                          aria-label={`Mover ${s.item.title} para cima`}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => next && swapChronological(s.id, next.id)}
+                          disabled={!next || !!next.target || busyId === s.id}
+                          aria-label={`Mover ${s.item.title} para baixo`}
+                        >
+                          ↓
+                        </button>
+                      </>
+                    ) : (
+                      <Link href={`/clientes/${clientId}/dia/${s.day}`} className="btn">
+                        Ver na fila
+                      </Link>
+                    )}
+                    <Link href={`/clientes/${clientId}/editorial/${s.content_item_id}`} className="btn">
+                      Editar
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {chronological.length > 0 && (
+            <div className="row between" style={{ paddingTop: 8 }}>
+              <span className="muted small">
+                Ao aprovar, os itens são promovidos para a fila oficial de agendamento e mídias do cliente.
+              </span>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={approveSchedule}
+                disabled={approving}
+              >
+                {approving ? "Aprovando cronograma..." : allApproved ? "Sincronizar cronograma aprovado" : "Aprovar cronograma"}
+              </button>
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="card col" style={{ gap: 14 }}>
@@ -353,6 +651,11 @@ export default function EditorialBoard({
             maxLength={160}
             style={{ flex: 2, minWidth: 220 }}
           />
+          <select value={newFormat} onChange={(e) => setNewFormat(e.target.value as ContentFormat)} style={{ minWidth: 130 }}>
+            <option value="video">Vídeo</option>
+            <option value="carousel">Carrossel</option>
+            <option value="static_image">Estático</option>
+          </select>
           <select value={newPillar} onChange={(e) => setNewPillar(e.target.value)} style={{ flex: 1, minWidth: 160 }}>
             <option value="">Sem pilar</option>
             {pillars.map((p) => (
@@ -372,6 +675,7 @@ export default function EditorialBoard({
             <div key={it.id} className="ed-item-card">
               <div className="col" style={{ gap: 4, flex: 1, minWidth: 240 }}>
                 <div className="row" style={{ gap: 8 }}>
+                  <span className="ed-badge-fmt">{FORMAT_LABEL[it.content_format] ?? "Vídeo"}</span>
                   <span className={it.source_kind === "existing_ready" ? "ed-badge-ready" : "ed-badge-create"}>
                     {it.source_kind === "existing_ready" ? "Pronto (acervo)" : "Criar / Gravar"}
                   </span>
