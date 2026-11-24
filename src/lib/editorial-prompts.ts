@@ -105,3 +105,23 @@ export function buildCalendarPrompt(input: {
     .filter(Boolean)
     .join("\n");
 }
+
+/** Monta o prompt para sugerir pilares estratégicos de conteúdo com pesos somando 100%. */
+export function buildPillarsPrompt(client: PromptClient): string {
+  return [
+    `Você é um estrategista de redes sociais. Sugira de 4 a 6 pilares de conteúdo para a marca "${client.name}" (${client.segment || "segmento não informado"}).`,
+    client.tone ? `Tom de voz da marca: ${client.tone}` : "",
+    client.notes ? `Observações da marca: ${client.notes}` : "",
+    "",
+    "REGRAS:",
+    "- Responda APENAS com JSON válido (sem texto extra).",
+    "- A soma de weight_pct de todos os pilares deve ser exatamente 100.",
+    "- Cada cor deve estar em hexadecimal (#RRGGBB), usando cores distintas e legíveis.",
+    "- name deve ser curto (até 40 caracteres) e description objetiva (até 160 caracteres).",
+    "",
+    "FORMATO JSON ESPERADO:",
+    `{"pillars":[{"name":"Educativo","description":"Dicas práticas e tutoriais","color":"#3347D6","weight_pct":30,"weekly_target":2}]}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}

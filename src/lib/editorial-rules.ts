@@ -203,3 +203,68 @@ export function parseAiCalendar(
   }
   return { ok: true, entries };
 }
+
+export type PillarImportEntry = {
+  name: string;
+  description: string;
+  color: string;
+  weight_pct: number;
+  weekly_target: number | null;
+};
+
+const DEFAULT_PILLAR_COLORS = ["#3347D6", "#c2410c", "#1b4d2e", "#6b4a00", "#912018", "#596579"];
+
+/**
+ * Valida e normaliza um array de pilares (ou `{ pillars: [...] }`) para importação em lote ou resposta do Gemini.
+ */
+export function parsePillarsInput(
+  input: unknown,
+): { ok: true; pillars: PillarImportEntry[] } | { ok: false; error: string } {
+  const rawList = Array.isArray(input)
+    ? input
+    : input && typeof input === "object"
+      ? (input as { pillars?: unknown }).pillars
+      : null;
+
+  if (!Array.isArray(rawList) || rawList.length === 0) {
+    return { ok: false, error: "Informe um array JSON com ao menos um pilar." };
+  }
+  if (rawList.length > 20) {
+    return { ok: false, error: "Importe no máximo 20 pilares por vez." };
+  }
+
+  const pillars: PillarImportEntry[] = [];
+  const seenNames = new Set<string>();
+
+  for (let i = 0; i < rawList.length; i++) {
+    const row = rawList[i];
+    if (!row || typeof row !== "object") {
+      return { ok: false, error: `O pilar na posição ${i + 1} é inválido.` };
+    }
+    const r = row as Record<string, unknown>;
+    const name = String(r.name ?? "").trim().slice(0, 80);
+    if (!name) return { ok: false, error: `O pilar na posição ${i + 1} precisa de um nome.` };
+    const key = name.toLowerCase();
+    if (seenNames.has(key)) continue;
+    seenNames.add(key);
+
+    const description = String(r.description ?? "").trim().slice(0, 300);
+    const rawColor = String(r.color ?? "").trim();
+    const color = HEX_COLOR_RE.test(rawColor)
+      ? rawColor
+      : DEFAULT_PILLAR_COLORS[i % DEFAULT_PILLAR_COLORS.length];
+
+    const rawWeight = Number(r.weight_pct ?? 0);
+    const weight_pct = Number.isFinite(rawWeight) ? Math.min(100, Math.max(0, Math.round(rawWeight))) : 0;
+
+    let weekly_target: number | null = null;
+    if (r.weekly_target !== undefined && r.weekly_target !== null && r.weekly_target !== "") {
+      const wt = Number(r.weekly_target);
+      if (Number.isFinite(wt)) weekly_target = Math.min(21, Math.max(0, Math.round(wt)));
+    }
+
+    pillars.push({ name, description, color, weight_pct, weekly_target });
+  }
+
+  return { ok: true, pillars };
+}

@@ -5,6 +5,14 @@ import type { Pillar } from "@/lib/editorial-types";
 
 const COLORS = ["#3347D6", "#c2410c", "#1b4d2e", "#6b4a00", "#912018", "#596579"];
 
+type SuggestedPillar = {
+  name: string;
+  description: string;
+  color: string;
+  weight_pct: number;
+  weekly_target: number | null;
+};
+
 export default function PillarManager({
   clientId,
   initialPillars,
@@ -21,6 +29,12 @@ export default function PillarManager({
   const [color, setColor] = useState(COLORS[0]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
+
+  const [showImport, setShowImport] = useState(false);
+  const [jsonText, setJsonText] = useState("");
+  const [promptText, setPromptText] = useState("");
+  const [suggestions, setSuggestions] = useState<SuggestedPillar[]>([]);
 
   const active = pillars.filter((p) => !p.archived_at);
   const totalWeight = active.reduce((acc, p) => acc + p.weight_pct, 0);
@@ -30,6 +44,7 @@ export default function PillarManager({
     if (!name.trim()) return;
     setBusy(true);
     setError("");
+    setMsg("");
     try {
       const res = await fetch(`/api/editorial/clients/${clientId}/pillars`, {
         method: "POST",
@@ -62,6 +77,7 @@ export default function PillarManager({
   async function archivePillar(id: string) {
     setBusy(true);
     setError("");
+    setMsg("");
     try {
       const res = await fetch(`/api/editorial/pillars/${id}`, {
         method: "PATCH",
@@ -83,6 +99,71 @@ export default function PillarManager({
     }
   }
 
+  async function importBatch(payload: { json?: string; pillars?: SuggestedPillar[] }) {
+    setBusy(true);
+    setError("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/pillars/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = (await res.json()) as { created?: Pillar[]; skipped_duplicates?: string[]; error?: string };
+      if (!res.ok) {
+        setError(j.error ?? "Não foi possível importar os pilares.");
+        return;
+      }
+      const created = j.created ?? [];
+      if (created.length) {
+        const next = [...pillars, ...created];
+        setPillars(next);
+        onChange?.(next);
+      }
+      setJsonText("");
+      setShowImport(false);
+      setSuggestions([]);
+      setMsg(
+        `Pilares importados: ${created.length}.` +
+          (j.skipped_duplicates?.length ? ` Ignorados (já existiam): ${j.skipped_duplicates.join(", ")}.` : ""),
+      );
+    } catch {
+      setError("Falha de conexão ao importar pilares.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function suggestWithAi() {
+    setBusy(true);
+    setError("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/pillars/suggest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "ai" }),
+      });
+      const j = (await res.json()) as { prompt?: string; pillars?: SuggestedPillar[]; error?: string };
+      if (j.prompt) setPromptText(j.prompt);
+      if (!res.ok) {
+        setError(j.error ?? "Não foi possível sugerir pilares.");
+        return;
+      }
+      if (j.pillars?.length) {
+        setSuggestions(j.pillars);
+        setMsg(`O Gemini sugeriu ${j.pillars.length} pilares. Revise abaixo e clique em Importar sugestões.`);
+      } else {
+        setShowImport(true);
+        setMsg("Chave do Gemini não detectada. Copie o pedido gerado e cole o JSON abaixo.");
+      }
+    } catch {
+      setError("Falha de conexão ao consultar o Gemini.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="card col" style={{ gap: 14 }}>
       <div className="row between">
@@ -96,11 +177,29 @@ export default function PillarManager({
             {totalWeight === 100 ? "(equilibrado em 100%)" : "(recomendado somar 100%)"}
           </span>
         </div>
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setShowImport((v) => !v)}
+            disabled={busy}
+          >
+            {showImport ? "Fechar JSON" : "Importar JSON"}
+          </button>
+          <button type="button" className="btn primary" onClick={suggestWithAi} disabled={busy}>
+            {busy ? "Consultando Gemini..." : "Sugerir Pilares com IA"}
+          </button>
+        </div>
       </div>
 
       {error && (
         <p className="alert err" role="alert">
           {error}
+        </p>
+      )}
+      {msg && (
+        <p className="alert ok" role="status">
+          {msg}
         </p>
       )}
 
@@ -132,9 +231,72 @@ export default function PillarManager({
         ))}
       </div>
 
+      {suggestions.length > 0 && (
+        <div className="col" style={{ gap: 10, padding: 12, border: "1px solid var(--line-strong)", borderRadius: 10, background: "var(--soft)" }}>
+          <div className="row between">
+            <strong>Sugestões do Gemini ({suggestions.length})</strong>
+            <div className="row" style={{ gap: 8 }}>
+              <button type="button" className="btn" onClick={() => setSuggestions([])} disabled={busy}>
+                Descartar
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => importBatch({ pillars: suggestions })}
+                disabled={busy}
+              >
+                Importar sugestões
+              </button>
+            </div>
+          </div>
+          <div className="ed-list">
+            {suggestions.map((s) => (
+              <div key={s.name} className="ed-item-card">
+                <div className="row" style={{ gap: 8 }}>
+                  <span className="dot" style={{ background: s.color }} aria-hidden="true" />
+                  <strong>{s.name}</strong>
+                  <span className="chip">{s.weight_pct}%</span>
+                </div>
+                <span className="muted small">{s.description}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showImport && (
+        <div className="col" style={{ gap: 10, padding: 12, border: "1px solid var(--line-strong)", borderRadius: 10, background: "var(--soft)" }}>
+          {promptText && (
+            <label className="f">
+              <span>Pedido para a IA (copiar e colar)</span>
+              <textarea rows={4} readOnly value={promptText} />
+            </label>
+          )}
+          <label className="f">
+            <span>Colar array JSON de pilares</span>
+            <textarea
+              rows={5}
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              placeholder='[{"name":"Educativo","description":"Dicas práticas","color":"#3347D6","weight_pct":40,"weekly_target":2}]'
+            />
+          </label>
+          <div className="row" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => importBatch({ json: jsonText })}
+              disabled={!jsonText.trim() || busy}
+            >
+              Importar pilares do JSON
+            </button>
+          </div>
+        </div>
+      )}
+
       <details>
         <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>
-          + Adicionar pilar
+          + Adicionar pilar manualmente
         </summary>
         <form onSubmit={addPillar} className="grid2" style={{ marginTop: 12, gap: 12 }}>
           <label className="f">

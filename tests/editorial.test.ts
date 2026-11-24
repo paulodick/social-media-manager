@@ -5,12 +5,13 @@ import {
   normalizeThemeKey,
   parseAiCalendar,
   parseAiClassification,
+  parsePillarsInput,
   summarizePillarWeights,
   validateSlides,
 } from "../src/lib/editorial-rules.ts";
 import { createServer } from "node:http";
 import { assetFolderNames } from "../src/lib/post-folders.ts";
-import { buildCalendarPrompt, buildClassificationPrompt } from "../src/lib/editorial-prompts.ts";
+import { buildCalendarPrompt, buildClassificationPrompt, buildPillarsPrompt } from "../src/lib/editorial-prompts.ts";
 import { editorialAiConfigured, explainGeminiError, generateEditorialJson } from "../src/lib/editorial-ai.ts";
 
 test("normalizeThemeKey gera slug ASCII sem acentos", () => {
@@ -236,4 +237,23 @@ test("generateEditorialJson envia responseMimeType application/json para o Gemin
     else process.env.GEMINI_API_BASE = prevBase;
     await new Promise<void>((resolve) => srv.close(() => resolve()));
   }
+});
+
+test("parsePillarsInput aceita array direto e { pillars } e buildPillarsPrompt inclui marca", () => {
+  const fromArr = parsePillarsInput([{ name: "Educativo", weight_pct: 60 }, { name: "Oferta", weight_pct: 40, color: "#c2410c" }]);
+  assert.equal(fromArr.ok, true);
+  if (fromArr.ok) {
+    assert.equal(fromArr.pillars.length, 2);
+    assert.equal(fromArr.pillars[1].color, "#c2410c");
+  }
+
+  const fromObj = parsePillarsInput({ pillars: [{ name: "Bastidores", weight_pct: 100 }] });
+  assert.equal(fromObj.ok, true);
+
+  const empty = parsePillarsInput([]);
+  assert.equal(empty.ok, false);
+
+  const p = buildPillarsPrompt({ name: "Best Medical", segment: "Saúde", tone: "Técnico", notes: "" });
+  assert.ok(p.includes("Best Medical"));
+  assert.ok(p.includes("100"));
 });
