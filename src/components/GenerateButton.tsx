@@ -24,6 +24,8 @@ export default function GenerateButton({
   getTones,
   getBilingual,
   onResult,
+  canUndo = false,
+  onUndo,
 }: {
   clientId: string;
   network: string;
@@ -38,6 +40,8 @@ export default function GenerateButton({
   getTones: () => string[];
   getBilingual?: () => boolean;
   onResult: (r: { title: string; caption: string }) => void;
+  canUndo?: boolean;
+  onUndo?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -77,9 +81,27 @@ export default function GenerateButton({
         {busy ? "Gerando…" : label}
       </button>
       {msg && (
-        <span role={msg.kind === "err" ? "alert" : "status"} className={`small ${msg.kind === "err" ? "" : "muted"}`} style={msg.kind === "err" ? { color: "var(--bad-ink)" } : undefined}>
-          {msg.text}
-        </span>
+        msg.kind === "err" ? (
+          <span role="alert" className="small" style={{ color: "var(--bad-ink)" }}>
+            {msg.text}
+          </span>
+        ) : (
+          <span role="status" className="small muted row" style={{ gap: 8, alignItems: "center" }}>
+            <span>{msg.text}</span>
+            {canUndo && onUndo && (
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => {
+                  onUndo();
+                  setMsg(null);
+                }}
+              >
+                Desfazer
+              </button>
+            )}
+          </span>
+        )
       )}
     </>
   );

@@ -25,6 +25,8 @@ export default function CaptionTools({
   getCaption,
   getTones,
   onResult,
+  canUndo,
+  onUndo,
 }: {
   client: PromptClient;
   clientId: string;
@@ -37,6 +39,8 @@ export default function CaptionTools({
   /** Tons de voz marcados para o post agora (mesmo que ainda não salvos). */
   getTones: () => string[];
   onResult: (r: { title: string; caption: string }) => void;
+  canUndo?: boolean;
+  onUndo?: () => void;
 }) {
   const [custom, setCustom] = useState("");
   const [bilingual, setBilingual] = useState(false);
@@ -107,6 +111,8 @@ export default function CaptionTools({
     getTones,
     getBilingual: () => bilingual,
     onResult,
+    canUndo,
+    onUndo,
   };
 
   return (

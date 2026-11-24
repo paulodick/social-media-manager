@@ -136,6 +136,7 @@ export default function NetworkRow({
   }, [isNew, touched, defaults.date, defaults.time]);
 
   const [caption, setCaption] = useState(existing?.caption ?? "");
+  const [prevCaption, setPrevCaption] = useState<{ caption: string; title: string } | null>(null);
   const [lastAiCaption, setLastAiCaption] = useState("");
   const [title, setTitle] = useState(existing?.title ?? "");
   const [driveUrl, setDriveUrl] = useState(existing?.driveUrl ?? inherited?.url ?? "");
@@ -225,7 +226,7 @@ export default function NetworkRow({
           <div className="col">
             <label className="f" htmlFor={`${id}-ti`}>Título — {o.networkLabel} {o.formatLabel}</label>
             <input id={`${id}-ti`} name={`title__${k}`} type="text" maxLength={200} value={title} disabled={off}
-              onChange={(e) => setTitle(e.target.value)} placeholder="Título que aparece na rede" style={{ fontWeight: 600 }} />
+              onChange={(e) => { setTitle(e.target.value); setPrevCaption(null); }} placeholder="Título que aparece na rede" style={{ fontWeight: 600 }} />
             <span className="muted small">Esta rede tem título separado da legenda{o.titleLimit ? ` (até ${o.titleLimit} caracteres)` : ""}.</span>
           </div>
         )}
@@ -233,7 +234,7 @@ export default function NetworkRow({
         <div className="col">
           <label className="f" htmlFor={`${id}-c`}>{o.captionLabel} — {o.networkLabel} {o.formatLabel}</label>
           <textarea id={`${id}-c`} ref={capRef} name={`caption__${k}`} rows={isNew ? 4 : 7} maxLength={70000} className="auto-grow" value={caption} disabled={off}
-            onChange={(e) => setCaption(e.target.value)} />
+            onChange={(e) => { setCaption(e.target.value); setPrevCaption(null); }} />
           <div className="row between small muted">
             <span style={{ fontVariantNumeric: "tabular-nums" }}>
               {fmtNumber(caption.length)}{cfg.captionLimit ? ` de ${fmtNumber(cfg.captionLimit)}` : ""} caracteres
@@ -250,7 +251,16 @@ export default function NetworkRow({
             getBrief={getBrief}
             getCaption={() => caption}
             getTones={getTones}
+            canUndo={prevCaption !== null}
+            onUndo={() => {
+              if (!prevCaption) return;
+              setCaption(prevCaption.caption);
+              setTitle(prevCaption.title);
+              setLastAiCaption("");
+              setPrevCaption(null);
+            }}
             onResult={(r) => {
+              setPrevCaption(caption !== "" || title !== "" ? { caption, title } : null);
               setCaption(r.caption);
               setLastAiCaption(r.caption);
               if (r.title) setTitle(r.title);
