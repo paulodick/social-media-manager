@@ -8,8 +8,10 @@ import {
   summarizePillarWeights,
   validateSlides,
 } from "../src/lib/editorial-rules.ts";
+import { createServer } from "node:http";
 import { assetFolderNames } from "../src/lib/post-folders.ts";
 import { buildCalendarPrompt, buildClassificationPrompt } from "../src/lib/editorial-prompts.ts";
+import { editorialAiConfigured, explainGeminiError, generateEditorialJson } from "../src/lib/editorial-ai.ts";
 
 test("normalizeThemeKey gera slug ASCII sem acentos", () => {
   assert.equal(normalizeThemeKey("5 Erros em Manutenção!"), "5-erros-em-manutencao");
@@ -189,4 +191,49 @@ test("buildClassificationPrompt e buildCalendarPrompt incluem pilares, prontos e
   assert.ok(calp.includes("needs_creation"));
   assert.ok(calp.includes("tema-ja-postado"));
   assert.ok(calp.includes("2026-12-01"));
+});
+
+test("explainGeminiError traduz erros HTTP em frases em português", () => {
+  assert.match(explainGeminiError(400, "API key not valid"), /GEMINI_API_KEY/);
+  assert.match(explainGeminiError(403, "Forbidden"), /GEMINI_API_KEY/);
+  assert.match(explainGeminiError(429, "Resource exhausted"), /limite de uso/);
+  assert.match(explainGeminiError(503, "Unavailable"), /instável/);
+});
+
+test("generateEditorialJson envia responseMimeType application/json para o Gemini", async () => {
+  let receivedMime = "";
+  let receivedKey = "";
+  const srv = createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    receivedKey = url.searchParams.get("key") ?? "";
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+      generationConfig?: { responseMimeType?: string };
+    };
+    receivedMime = body.generationConfig?.responseMimeType ?? "";
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"entries":[]}' }] } }] }));
+  });
+  await new Promise<void>((resolve) => srv.listen(0, "127.0.0.1", resolve));
+  const addr = srv.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
+
+  const prevKey = process.env.GEMINI_API_KEY;
+  const prevBase = process.env.GEMINI_API_BASE;
+  try {
+    process.env.GEMINI_API_KEY = "test-gemini-key";
+    process.env.GEMINI_API_BASE = `http://127.0.0.1:${port}`;
+    assert.equal(editorialAiConfigured(), true);
+    const out = await generateEditorialJson("Monte o calendário");
+    assert.deepEqual(out, { text: '{"entries":[]}' });
+    assert.equal(receivedMime, "application/json");
+    assert.equal(receivedKey, "test-gemini-key");
+  } finally {
+    if (prevKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = prevKey;
+    if (prevBase === undefined) delete process.env.GEMINI_API_BASE;
+    else process.env.GEMINI_API_BASE = prevBase;
+    await new Promise<void>((resolve) => srv.close(() => resolve()));
+  }
 });

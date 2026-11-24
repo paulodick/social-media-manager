@@ -1,5 +1,5 @@
 import { isFormat, isNetwork } from "@/config/networks";
-import { aiConfigured, generateText } from "@/lib/ai";
+import { editorialAiConfigured, generateEditorialJson } from "@/lib/editorial-ai";
 import { addDays, isDay, isTime } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { isPgUniqueViolation, jsonError, readJsonBody, requireApiAuth, requireClient } from "@/lib/editorial-api";
@@ -96,15 +96,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
 
   let rawJson: unknown = body.manual_json;
   if (rawJson === undefined) {
-    if (body.mode === "prompt_only" || !aiConfigured()) {
+    if (body.mode === "prompt_only" || !editorialAiConfigured()) {
       return Response.json({ prompt, created_items: [], created_slots: [] });
     }
-    const aiRes = await generateText(prompt);
+    const aiRes = await generateEditorialJson(prompt);
     if ("error" in aiRes) return jsonError(aiRes.error, 502);
     try {
       rawJson = extractJsonPayload(aiRes.text);
     } catch {
-      return jsonError("A IA não retornou um JSON válido. Use 'Copiar pedido para a IA' ou tente novamente.", 502);
+      return jsonError("O Gemini não retornou um JSON válido. Use 'Copiar pedido para a IA' ou tente novamente.", 502);
     }
   } else if (typeof rawJson === "string") {
     try {

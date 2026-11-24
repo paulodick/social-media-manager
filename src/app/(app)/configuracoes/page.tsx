@@ -68,6 +68,12 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           good="ativas (botão Gerar legenda)."
           problem='desligadas. Para ligar, defina a variável ANTHROPIC_API_KEY. Enquanto isso, "Copiar pedido para a IA" funciona.'
         />
+        <Row
+          ok={!!process.env.GEMINI_API_KEY}
+          label="Planejamento Editorial com IA (Gemini)"
+          good="ativo (classificação e geração de calendário)."
+          problem='desligado. Para ligar, defina a variável GEMINI_API_KEY. Enquanto isso, "Copiar pedido para a IA" funciona.'
+        />
         <details className="personalize">
           <summary>Detalhes técnicos</summary>
           <ul className="muted small" style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4, paddingTop: 8 }}>
@@ -75,6 +81,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <li>Segurança do login: variável SESSION_SECRET.</li>
             <li>Google Drive: {driveConfigured() ? `conta de serviço ${serviceAccountEmail()}` : "variável GOOGLE_SERVICE_ACCOUNT_JSON."}</li>
             <li>Legendas com IA: variável ANTHROPIC_API_KEY.</li>
+            <li>Planejamento Editorial com IA: variável GEMINI_API_KEY.</li>
           </ul>
         </details>
       </section>
