@@ -9,6 +9,7 @@ import {
   validateSlides,
 } from "../src/lib/editorial-rules.ts";
 import { assetFolderNames } from "../src/lib/post-folders.ts";
+import { buildCalendarPrompt, buildClassificationPrompt } from "../src/lib/editorial-prompts.ts";
 
 test("normalizeThemeKey gera slug ASCII sem acentos", () => {
   assert.equal(normalizeThemeKey("5 Erros em Manutenção!"), "5-erros-em-manutencao");
@@ -152,4 +153,40 @@ test("parseAiCalendar alterna existing_ready e needs_creation e bloqueia tema re
     },
   );
   assert.equal(dup.ok, false);
+});
+
+test("buildClassificationPrompt e buildCalendarPrompt incluem pilares, prontos e temas recentes", () => {
+  const pillar = {
+    id: "22222222-2222-4222-8222-222222222222",
+    client_id: "00000000-0000-4000-8000-000000000001",
+    name: "Educativo",
+    description: "Dicas práticas",
+    color: "#3347D6",
+    weight_pct: 50,
+    weekly_target: 2,
+    position: 0,
+    archived_at: null,
+  };
+  const client = { name: "Best Medical", segment: "Equipamentos", tone: "Profissional", notes: "" };
+
+  const cp = buildClassificationPrompt({
+    client,
+    pillars: [pillar],
+    items: [{ id: "11111111-1111-4111-8111-111111111111", title: "Video 1", transcript: "Como limpar o filtro", brief: "", drive_meta: null }],
+  });
+  assert.ok(cp.includes("Educativo"));
+  assert.ok(cp.includes("50%"));
+  assert.ok(cp.includes("Como limpar o filtro"));
+
+  const calp = buildCalendarPrompt({
+    client,
+    pillars: [pillar],
+    existingReady: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", pillar_id: pillar.id, title: "Pronto", theme_key: "pronto-1", brief: "Resumo" }],
+    recentThemeKeys: ["tema-ja-postado"],
+    slots: [{ planned_day: "2026-12-01", planned_time: "09:30", network: "instagram", format: "reels" }],
+  });
+  assert.ok(calp.includes("existing_ready"));
+  assert.ok(calp.includes("needs_creation"));
+  assert.ok(calp.includes("tema-ja-postado"));
+  assert.ok(calp.includes("2026-12-01"));
 });
