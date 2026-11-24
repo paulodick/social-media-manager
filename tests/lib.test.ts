@@ -11,6 +11,7 @@ import { buildCaptionPrompt, buildToneBlock, splitGenerated } from "../src/lib/p
 import { TONES, MAX_TONES, validateTones, toneBlockedReason } from "../src/config/tones.ts";
 import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders, weekStart, weekDays, weekLabel, weekdayShort } from "../src/lib/dates.ts";
 import { formatSavedPublishSummary, isTargetDirty } from "../src/lib/target-dirty.ts";
+import { isValidUuid, canMarkPosted, isUndoableStatus } from "../src/lib/target-rules.ts";
 
 test("parseDriveUrl", () => {
   assert.deepEqual(parseDriveUrl("https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing"), { id: "1AbCdEfGhIjKlMnOp", kind: "file" });
@@ -361,4 +362,16 @@ test("YouTube aceita legenda de 4.800 caracteres sem aviso", () => {
   assert.equal(ok[0].level, "ok");
   const warn = captionChecks("youtube", "a".repeat(5001));
   assert.equal(warn[0].level, "warn");
+});
+
+test("markPosted: valida UUID, recusa publish_state='publishing' e aceita desfazer para draft/scheduled", () => {
+  assert.equal(isValidUuid("11111111-1111-4111-8111-111111111111"), true);
+  assert.equal(isValidUuid("nao-eh-uuid"), false);
+  assert.equal(canMarkPosted("idle").ok, true);
+  assert.equal(canMarkPosted("failed").ok, true);
+  const pub = canMarkPosted("publishing");
+  assert.equal(pub.ok, false);
+  assert.equal(isUndoableStatus("draft"), true);
+  assert.equal(isUndoableStatus("scheduled"), true);
+  assert.equal(isUndoableStatus("posted"), false);
 });

@@ -24,6 +24,7 @@ import { clearPending, readPending } from "./meta-pending";
 import { listPages } from "./publish/meta-oauth";
 import { fetchLogo } from "./logo";
 import type { MediaMeta } from "./checks";
+import { canMarkPosted, isUndoableStatus, isValidUuid } from "./target-rules";
 import { validateTones } from "@/config/tones";
 import { NETWORKS, NETWORK_IDS, folderGroup, hasTitle, isFormat, isNetwork } from "@/config/networks";
 
@@ -621,8 +622,36 @@ export async function markPosted(formData: FormData): Promise<void> {
   await requireAuth();
   const id = text(formData, "id", 40);
   const back = safePath(text(formData, "volta", 300), "/postar-hoje");
+  if (!isValidUuid(id)) redirect(back);
   const pool = await db();
-  await pool.query("update post_targets set status='posted', posted_at=coalesce(posted_at, now()), auto_confirmed_at=null where id=$1", [id]);
+  const cur = await pool.query<{ status: string; publish_state: string }>(
+    "select status, publish_state from post_targets where id=$1",
+    [id],
+  );
+  const row = cur.rows[0];
+  if (!row) redirect(back);
+  const check = canMarkPosted(row.publish_state);
+  if (!check.ok) redirect(withParam(back, "erro", check.error));
+  const upd = await pool.query(
+    "update post_targets set status='posted', posted_at=coalesce(posted_at, now()), auto_confirmed_at=null where id=$1 and publish_state <> 'publishing'",
+    [id],
+  );
+  if (!upd.rowCount) redirect(withParam(back, "erro", "Este destino está sendo publicado agora. Aguarde concluir."));
+  revalidatePath("/", "layout");
+  redirect(withParam(withParam(back, "feito", id), "antes", row.status));
+}
+
+export async function undoMarkPosted(formData: FormData): Promise<void> {
+  await requireAuth();
+  const id = text(formData, "id", 40);
+  const antes = text(formData, "antes", 20);
+  const back = safePath(text(formData, "volta", 300), "/postar-hoje");
+  if (!isValidUuid(id) || !isUndoableStatus(antes)) redirect(back);
+  const pool = await db();
+  await pool.query(
+    "update post_targets set status=$2, posted_at=null, auto_confirmed_at=null where id=$1 and publish_state <> 'publishing'",
+    [id, antes],
+  );
   revalidatePath("/", "layout");
   redirect(back);
 }
