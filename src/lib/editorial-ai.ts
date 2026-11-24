@@ -66,7 +66,7 @@ export async function generateEditorialJson(prompt: string): Promise<EditorialAi
       } | null;
 
       if (!res.ok) {
-        if (res.status === 404 && i < candidates.length - 1) continue;
+        if ((res.status === 404 || res.status === 429 || res.status >= 500) && i < candidates.length - 1) continue;
         return { error: explainGeminiError(res.status, body?.error?.message ?? "") };
       }
       const parts = body?.candidates?.[0]?.content?.parts ?? [];
