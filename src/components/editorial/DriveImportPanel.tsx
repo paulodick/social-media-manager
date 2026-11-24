@@ -7,7 +7,19 @@ type DriveFileEntry = {
   id: string;
   name: string;
   mimeType: string;
-  preview_url: string;
+  preview_url?: string;
+};
+
+type DriveCutFolderEntry = {
+  folder_id: string;
+  folder_name: string;
+  video: DriveFileEntry | null;
+  cover: DriveFileEntry | null;
+  doc: DriveFileEntry | null;
+  extra_files: DriveFileEntry[];
+  skip_video_transcription: boolean;
+  detected_guest: string;
+  detected_topic: string;
 };
 
 export default function DriveImportPanel({
@@ -23,6 +35,8 @@ export default function DriveImportPanel({
   onImported: (items: ContentItem[]) => void;
   onClassified: (items: ContentItem[]) => void;
 }) {
+  const [cutFolders, setCutFolders] = useState<DriveCutFolderEntry[]>([]);
+  const [selectedFolders, setSelectedFolders] = useState<Set<string>>(new Set());
   const [files, setFiles] = useState<DriveFileEntry[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -38,17 +52,47 @@ export default function DriveImportPanel({
     setMsg("");
     try {
       const res = await fetch(`/api/editorial/clients/${clientId}/drive/files`);
-      const j = (await res.json()) as { files?: DriveFileEntry[]; error?: string };
-      if (!res.ok || !j.files) {
+      const j = (await res.json()) as {
+        cut_folders?: DriveCutFolderEntry[];
+        files?: DriveFileEntry[];
+        error?: string;
+      };
+      if (!res.ok) {
         setErr(j.error ?? "Não foi possível listar a pasta do Drive.");
         return;
       }
-      setFiles(j.files);
-      if (!j.files.length) setMsg("Nenhuma imagem ou vídeo encontrado na pasta raiz deste cliente.");
+      const nextCuts = j.cut_folders ?? [];
+      const nextFiles = j.files ?? [];
+      setCutFolders(nextCuts);
+      setFiles(nextFiles);
+      setSelectedFolders(new Set());
+      setSelected(new Set());
+      if (!nextCuts.length && !nextFiles.length) {
+        setMsg("Nenhuma pasta de corte nem arquivo de mídia encontrado na pasta deste cliente.");
+      } else if (nextCuts.length > 0) {
+        setMsg(
+          `${nextCuts.length} pasta(s) de corte agrupadas (cada subpasta vira 1 item editorial usando o .doc como referência principal, sem transcrição pesada de vídeo).`,
+        );
+      }
     } catch {
       setErr("Falha ao consultar o Google Drive.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function toggleFolder(id: string) {
+    const next = new Set(selectedFolders);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedFolders(next);
+  }
+
+  function selectAllFolders() {
+    if (selectedFolders.size === cutFolders.length) {
+      setSelectedFolders(new Set());
+    } else {
+      setSelectedFolders(new Set(cutFolders.map((c) => c.folder_id)));
     }
   }
 
@@ -59,8 +103,10 @@ export default function DriveImportPanel({
     setSelected(next);
   }
 
+  const totalSelected = selectedFolders.size + selected.size;
+
   async function importSelected() {
-    if (!selected.size) return;
+    if (!totalSelected) return;
     setBusy(true);
     setErr("");
     setMsg("");
@@ -69,22 +115,33 @@ export default function DriveImportPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          cut_folders: Array.from(selectedFolders).map((folderId) => {
+            const cf = cutFolders.find((x) => x.folder_id === folderId);
+            return { folder_id: folderId, folder_name: cf?.folder_name };
+          }),
           files: Array.from(selected).map((id) => {
             const f = files.find((x) => x.id === id);
             return { drive_file_id: id, title: f?.name.replace(/\.[^.]+$/, "") };
           }),
         }),
       });
-      const j = (await res.json()) as { created?: ContentItem[]; skipped_duplicates?: string[]; error?: string };
+      const j = (await res.json()) as {
+        created?: ContentItem[];
+        skipped_duplicates?: string[];
+        warnings?: string[];
+        error?: string;
+      };
       if (!res.ok) {
-        setErr(j.error ?? "Erro ao importar arquivos.");
+        setErr(j.error ?? "Erro ao importar itens do Drive.");
         return;
       }
       const created = j.created ?? [];
       if (created.length) onImported(created);
+      setSelectedFolders(new Set());
       setSelected(new Set());
+      const warnText = j.warnings?.length ? ` Avisos: ${j.warnings.join(" ")}` : "";
       setMsg(
-        `Importados: ${created.length}. Já cadastrados (ignorados): ${(j.skipped_duplicates ?? []).length}.`,
+        `Importados: ${created.length}. Já cadastrados (ignorados): ${(j.skipped_duplicates ?? []).length}.${warnText}`,
       );
     } catch {
       setErr("Falha de conexão ao importar arquivos.");
@@ -117,7 +174,7 @@ export default function DriveImportPanel({
       if (j.items?.length) {
         onClassified(j.items);
         setManualJson("");
-        setMsg(`${j.applied ?? j.items.length} itens classificados por pilar e tema.`);
+        setMsg(`${j.applied ?? j.items.length} corte(s)/item(ns) classificados por pilar, convidado, assunto, capa e legenda base.`);
       } else {
         setMsg("Pedido para a IA gerado abaixo. Copie, cole no seu Claude/Gemini e depois cole o JSON de retorno.");
       }
@@ -132,14 +189,14 @@ export default function DriveImportPanel({
     <section className="card col" style={{ gap: 14 }}>
       <div className="row between">
         <div className="col" style={{ gap: 2 }}>
-          <h2>2. Absorção de conteúdo existente (Google Drive)</h2>
+          <h2>2. Absorção de cortes e acervo (Google Drive)</h2>
           <span className="muted small">
-            Importe vídeos/artes já prontos como <strong>Pronto (acervo)</strong> e classifique por pilar para evitar repetição.
+            Subpastas com vídeo + capa + <code>.doc</code> são agrupadas em <strong>1 único corte editorial</strong>, usando o <code>.doc</code> como referência principal para economizar tempo e cota do Gemini.
           </span>
         </div>
         <div className="row" style={{ gap: 8 }}>
           <button type="button" className="btn" onClick={loadDrive} disabled={!hasDriveFolder || loading}>
-            {loading ? "Lendo Drive..." : "Buscar arquivos no Drive"}
+            {loading ? "Escaneando Drive..." : "Escanear pasta no Drive"}
           </button>
           {unclassifiedItems.length > 0 && (
             <button type="button" className="btn primary" onClick={() => runClassify("ai")} disabled={busy}>
@@ -155,8 +212,51 @@ export default function DriveImportPanel({
       {err && <p className="alert err" role="alert">{err}</p>}
       {msg && <p className="alert ok" role="status">{msg}</p>}
 
+      {cutFolders.length > 0 && (
+        <div className="col" style={{ gap: 10 }}>
+          <div className="row between">
+            <span className="small" style={{ fontWeight: 600 }}>
+              Pastas de corte encontradas ({cutFolders.length})
+            </span>
+            <button type="button" className="btn" onClick={selectAllFolders} disabled={busy}>
+              {selectedFolders.size === cutFolders.length ? "Desmarcar todos" : "Selecionar todos os cortes"}
+            </button>
+          </div>
+          <div className="ed-drive-grid">
+            {cutFolders.map((cf) => {
+              const on = selectedFolders.has(cf.folder_id);
+              return (
+                <label key={cf.folder_id} className={`ed-drive-file ${on ? "on" : ""}`}>
+                  <input type="checkbox" checked={on} onChange={() => toggleFolder(cf.folder_id)} />
+                  <div className="col" style={{ gap: 4, minWidth: 0 }}>
+                    <span className="small" style={{ fontWeight: 600, wordBreak: "break-word" }}>
+                      {cf.folder_name}
+                    </span>
+                    {(cf.detected_guest || cf.detected_topic) && (
+                      <span className="muted small">
+                        {cf.detected_guest ? `Convidado: ${cf.detected_guest}` : ""}
+                        {cf.detected_guest && cf.detected_topic ? " · " : ""}
+                        {cf.detected_topic ? `Assunto: ${cf.detected_topic}` : ""}
+                      </span>
+                    )}
+                    <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                      {cf.doc && <span className="ed-badge-ready">.doc: {cf.doc.name}</span>}
+                      {cf.video && <span className="ed-badge-fmt">Vídeo: {cf.video.name}</span>}
+                      {cf.cover && <span className="ed-badge-fmt">Capa: {cf.cover.name}</span>}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {files.length > 0 && (
         <div className="col" style={{ gap: 10 }}>
+          <span className="small" style={{ fontWeight: 600 }}>
+            Arquivos avulsos na raiz ({files.length})
+          </span>
           <div className="ed-drive-grid">
             {files.map((f) => {
               const on = selected.has(f.id);
@@ -171,11 +271,14 @@ export default function DriveImportPanel({
               );
             })}
           </div>
-          <div>
-            <button type="button" className="btn primary" onClick={importSelected} disabled={!selected.size || busy}>
-              Importar {selected.size} selecionado(s) como Pronto
-            </button>
-          </div>
+        </div>
+      )}
+
+      {totalSelected > 0 && (
+        <div>
+          <button type="button" className="btn primary" onClick={importSelected} disabled={busy}>
+            {busy ? "Importando e lendo .doc..." : `Importar ${totalSelected} selecionado(s) como Pronto`}
+          </button>
         </div>
       )}
 

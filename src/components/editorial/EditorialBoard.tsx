@@ -686,6 +686,12 @@ export default function EditorialBoard({
                     <span className="n">{c.inMonth ? c.n : `${c.n}/${c.day.slice(5, 7)}`}</span>
                     {list.map((s) => {
                       const netLabel = isNetwork(s.network) ? NETWORKS[s.network].label : s.network;
+                      const slotCaption =
+                        s.network === "instagram"
+                          ? s.item.caption_instagram || s.item.caption_draft
+                          : s.network === "linkedin"
+                            ? s.item.caption_linkedin || s.item.caption_draft
+                            : s.item.caption_draft || s.item.caption_instagram || s.item.caption_linkedin;
                       return (
                         <div key={s.id} className={`ed-slot ${s.target ? "queued" : ""}`}>
                           <div className="row between" style={{ gap: 4 }}>
@@ -707,6 +713,25 @@ export default function EditorialBoard({
                             {netLabel} · {s.format}
                             {s.item.pillar_name ? ` · ${s.item.pillar_name}` : ""}
                           </span>
+                          {(s.item.guest_name || s.item.topic_tag) && (
+                            <span className="small" style={{ lineHeight: 1.25 }}>
+                              {s.item.guest_name && <strong>{s.item.guest_name}</strong>}
+                              {s.item.guest_name && s.item.topic_tag ? " · " : ""}
+                              {s.item.topic_tag && <span className="muted">{s.item.topic_tag}</span>}
+                            </span>
+                          )}
+                          {s.item.cover_idea && (
+                            <span className="muted small" style={{ lineHeight: 1.25 }}>
+                              <strong>Capa:</strong> {s.item.cover_idea.slice(0, 70)}
+                              {s.item.cover_idea.length > 70 ? "…" : ""}
+                            </span>
+                          )}
+                          {slotCaption && (
+                            <span className="muted small" style={{ lineHeight: 1.25 }}>
+                              <strong>Legenda:</strong> {slotCaption.replace(/\s+/g, " ").slice(0, 75)}
+                              {slotCaption.length > 75 ? "…" : ""}
+                            </span>
+                          )}
                           {s.target ? (
                             <div className="ed-slot-actions">
                               <StatusPill status={s.target.status} />
@@ -759,6 +784,7 @@ export default function EditorialBoard({
               const prev = idx > 0 ? chronological[idx - 1] : null;
               const next = idx < chronological.length - 1 ? chronological[idx + 1] : null;
               const hasScript = !!(s.item.script_hook || s.item.script_dev || s.item.script_cta);
+              const hasCaptions = !!(s.item.caption_instagram || s.item.caption_linkedin || s.item.caption_draft);
 
               return (
                 <div
@@ -792,6 +818,8 @@ export default function EditorialBoard({
                             {s.item.pillar_name}
                           </span>
                         )}
+                        {s.item.guest_name && <span className="ed-badge-fmt">Convidado: {s.item.guest_name}</span>}
+                        {s.item.topic_tag && <span className="chip">{s.item.topic_tag}</span>}
                         {s.plan_status === "approved" && <span className="ed-approved-pill">Aprovado</span>}
                       </div>
                       <Link
@@ -803,6 +831,35 @@ export default function EditorialBoard({
                       <span className="muted small">
                         <NetDot network={s.network} /> {netLabel} · {s.format}
                       </span>
+                      {s.item.cover_idea && (
+                        <span className="small">
+                          <strong>Ideia de capa:</strong> {s.item.cover_idea}
+                        </span>
+                      )}
+                      {hasCaptions && (
+                        <details>
+                          <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>
+                            Ver base de legenda
+                          </summary>
+                          <div className="col small" style={{ gap: 6, marginTop: 6, paddingLeft: 10, borderLeft: "2px solid var(--line-strong)" }}>
+                            {s.item.caption_instagram && (
+                              <span style={{ whiteSpace: "pre-line" }}>
+                                <strong>Instagram:</strong> {s.item.caption_instagram}
+                              </span>
+                            )}
+                            {s.item.caption_linkedin && (
+                              <span style={{ whiteSpace: "pre-line" }}>
+                                <strong>LinkedIn:</strong> {s.item.caption_linkedin}
+                              </span>
+                            )}
+                            {!s.item.caption_instagram && !s.item.caption_linkedin && s.item.caption_draft && (
+                              <span style={{ whiteSpace: "pre-line" }}>
+                                <strong>Legenda base:</strong> {s.item.caption_draft}
+                              </span>
+                            )}
+                          </div>
+                        </details>
+                      )}
                       {hasScript && (
                         <details>
                           <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>
@@ -946,9 +1003,12 @@ export default function EditorialBoard({
                       {it.pillar.name}
                     </span>
                   )}
+                  {it.guest_name && <span className="ed-badge-fmt">Convidado: {it.guest_name}</span>}
+                  {it.topic_tag && <span className="chip">{it.topic_tag}</span>}
                   <span className="muted small">Situação: {CONTENT_STATUS_LABEL[it.status] ?? it.status}</span>
                 </div>
                 <strong style={{ fontSize: 16 }}>{it.title}</strong>
+                {it.cover_idea && <span className="muted small">Capa: {it.cover_idea}</span>}
                 {it.hook && <span className="muted small">Gancho: {it.hook}</span>}
               </div>
               <div className="row" style={{ gap: 8 }}>

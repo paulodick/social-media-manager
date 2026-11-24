@@ -1,6 +1,7 @@
 import { isFormat, isNetwork } from "@/config/networks";
-import { buildMemoryBlock, listRecentAiMemory, recordAiMemory } from "@/lib/ai-memory";
+import { buildMemoryBlock, listRecentAiMemory } from "@/lib/ai-memory";
 import { editorialAiConfigured, generateEditorialJson } from "@/lib/editorial-ai";
+import { enforceCalendarAlternation, type AlternationMeta } from "@/lib/editorial-alternation";
 import { addDays, isDay, isTime } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { isPgUniqueViolation, jsonError, readJsonBody, requireApiAuth, requireClient } from "@/lib/editorial-api";
@@ -124,13 +125,25 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
   });
   if (!parsed.ok) return jsonError(parsed.error, 400);
 
+  const itemMetaById = new Map<string, AlternationMeta>(
+    existingReady.map((e) => [
+      e.id,
+      {
+        guest: e.guest_name,
+        topic: e.topic_tag || e.theme_key,
+        pillar: e.pillar_id,
+      },
+    ]),
+  );
+  const orderedEntries = enforceCalendarAlternation(parsed.entries, itemMetaById);
+
   const c = await pool.connect();
   const createdItems: ContentItem[] = [];
   const createdSlotIds: string[] = [];
 
   try {
     await c.query("begin");
-    for (const [idx, entry] of parsed.entries.entries()) {
+    for (const [idx, entry] of orderedEntries.entries()) {
       let itemId = entry.existing_item_id;
       if (entry.source_kind === "needs_creation" && entry.new_item) {
         const ni = entry.new_item;
@@ -140,9 +153,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
              script, script_hook, script_dev, script_cta, caption_draft, tones, status
            )
            values ($1,$2,'needs_creation',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'idea')
-           returning id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
-                     script, script_hook, script_dev, script_cta, transcript,
-                     caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
+           returning id, client_id, pillar_id, source_kind, content_format, title, theme_key,
+                     guest_name, topic_tag, cover_idea, cover_drive_file_id, cover_drive_url,
+                     doc_drive_file_id, source_folder_id, source_folder_name,
+                     hook, angle, brief, script, script_hook, script_dev, script_cta, transcript,
+                     caption_draft, caption_instagram, caption_linkedin, tones, status, drive_url, drive_file_id, drive_meta,
                      created_at::text as created_at, updated_at::text as updated_at`,
           [
             clientId,

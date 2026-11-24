@@ -110,8 +110,31 @@ export function parseAiClassification(
     if (!themeKey) return { ok: false, error: "Chave de tema inválida na classificação da IA." };
     const brief = String(r.brief ?? "").trim().slice(0, 1500);
     const hook = String(r.hook ?? "").trim().slice(0, 240);
+    const guestName = r.guest_name !== undefined ? String(r.guest_name ?? "").trim().slice(0, 120) : undefined;
+    const topicTag = r.topic_tag !== undefined ? String(r.topic_tag ?? "").trim().slice(0, 120) : undefined;
+    const coverIdea = r.cover_idea !== undefined ? String(r.cover_idea ?? "").trim().slice(0, 300) : undefined;
+    const captionInstagram =
+      r.caption_instagram !== undefined ? String(r.caption_instagram ?? "").trim().slice(0, 4000) : undefined;
+    const captionLinkedin =
+      r.caption_linkedin !== undefined ? String(r.caption_linkedin ?? "").trim().slice(0, 4000) : undefined;
+    const captionDraft =
+      r.caption_draft !== undefined ? String(r.caption_draft ?? "").trim().slice(0, 4000) : undefined;
     const conf = typeof r.confidence === "number" && r.confidence >= 0 && r.confidence <= 1 ? r.confidence : 0.5;
-    entries.push({ item_id: r.item_id, pillar_id: pillarId, title, theme_key: themeKey, brief, hook, confidence: conf });
+    entries.push({
+      item_id: r.item_id,
+      pillar_id: pillarId,
+      title,
+      theme_key: themeKey,
+      ...(guestName !== undefined ? { guest_name: guestName } : {}),
+      ...(topicTag !== undefined ? { topic_tag: topicTag } : {}),
+      ...(coverIdea !== undefined ? { cover_idea: coverIdea } : {}),
+      ...(captionInstagram !== undefined ? { caption_instagram: captionInstagram } : {}),
+      ...(captionLinkedin !== undefined ? { caption_linkedin: captionLinkedin } : {}),
+      ...(captionDraft !== undefined ? { caption_draft: captionDraft } : {}),
+      brief,
+      hook,
+      confidence: conf,
+    });
   }
   return { ok: true, entries };
 }

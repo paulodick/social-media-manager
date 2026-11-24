@@ -49,6 +49,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     content_format?: "video" | "carousel" | "static_image";
     pillar_id?: string | null;
     theme_key?: string;
+    guest_name?: string;
+    topic_tag?: string;
+    cover_idea?: string;
     hook?: string;
     angle?: string;
     brief?: string;
@@ -58,6 +61,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     script_cta?: string;
     transcript?: string;
     caption_draft?: string;
+    caption_instagram?: string;
+    caption_linkedin?: string;
     tones?: string[];
     status?: ContentStatus;
     drive_url?: string;
@@ -113,6 +118,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     content_format: body.content_format,
     pillar_id: body.pillar_id,
     theme_key: body.theme_key !== undefined ? normalizeThemeKey(String(body.theme_key)) : undefined,
+    guest_name: body.guest_name !== undefined ? String(body.guest_name).slice(0, 120) : undefined,
+    topic_tag: body.topic_tag !== undefined ? String(body.topic_tag).slice(0, 120) : undefined,
+    cover_idea: body.cover_idea !== undefined ? String(body.cover_idea).slice(0, 300) : undefined,
     hook: body.hook,
     angle: body.angle,
     brief: body.brief,
@@ -122,6 +130,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     script_cta: body.script_cta,
     transcript: body.transcript,
     caption_draft: body.caption_draft,
+    caption_instagram: body.caption_instagram !== undefined ? String(body.caption_instagram).slice(0, 4000) : undefined,
+    caption_linkedin: body.caption_linkedin !== undefined ? String(body.caption_linkedin).slice(0, 4000) : undefined,
     tones,
     status: body.status,
     ...driveFields,

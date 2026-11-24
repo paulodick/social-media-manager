@@ -1,3 +1,5 @@
+import { buildMemoryBlock, listRecentAiMemory } from "@/lib/ai-memory";
+import { db } from "@/lib/db";
 import { editorialAiConfigured, generateEditorialJson } from "@/lib/editorial-ai";
 import { jsonError, readJsonBody, requireApiAuth, requireClient } from "@/lib/editorial-api";
 import { buildClassificationPrompt } from "@/lib/editorial-prompts";
@@ -31,8 +33,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
     items.push(item);
   }
 
-  const pillars = await listPillars(clientId);
-  const prompt = buildClassificationPrompt({ client: data.client, pillars, items });
+  const pool = await db();
+  const [pillars, memories, styleRow] = await Promise.all([
+    listPillars(clientId),
+    listRecentAiMemory(clientId, 15),
+    pool.query<{ ai_style_notes: string }>("select ai_style_notes from clients where id = $1", [clientId]),
+  ]);
+  const memoryBlock = buildMemoryBlock(memories, styleRow.rows[0]?.ai_style_notes ?? "");
+  const prompt = buildClassificationPrompt({ client: data.client, pillars, items, memoryBlock });
 
   let rawJson: unknown = body.manual_json;
   if (rawJson === undefined) {
@@ -66,6 +74,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
       pillar_id: entry.pillar_id,
       title: entry.title,
       theme_key: entry.theme_key,
+      ...(entry.guest_name !== undefined ? { guest_name: entry.guest_name } : {}),
+      ...(entry.topic_tag !== undefined ? { topic_tag: entry.topic_tag } : {}),
+      ...(entry.cover_idea !== undefined ? { cover_idea: entry.cover_idea } : {}),
+      ...(entry.caption_instagram !== undefined ? { caption_instagram: entry.caption_instagram } : {}),
+      ...(entry.caption_linkedin !== undefined ? { caption_linkedin: entry.caption_linkedin } : {}),
+      ...(entry.caption_draft !== undefined ? { caption_draft: entry.caption_draft } : {}),
       brief: entry.brief,
       hook: entry.hook,
     });

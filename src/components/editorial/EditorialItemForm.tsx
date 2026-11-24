@@ -27,6 +27,9 @@ export default function EditorialItemForm({
   const [contentFormat, setContentFormat] = useState<ContentFormat>(initialItem.content_format ?? "video");
   const [status, setStatus] = useState<ContentStatus>(initialItem.status);
   const [themeKey, setThemeKey] = useState(initialItem.theme_key);
+  const [guestName, setGuestName] = useState(initialItem.guest_name ?? "");
+  const [topicTag, setTopicTag] = useState(initialItem.topic_tag ?? "");
+  const [coverIdea, setCoverIdea] = useState(initialItem.cover_idea ?? "");
   const [hook, setHook] = useState(initialItem.hook);
   const [angle, setAngle] = useState(initialItem.angle);
   const [brief, setBrief] = useState(initialItem.brief);
@@ -36,6 +39,8 @@ export default function EditorialItemForm({
   const [scriptCta, setScriptCta] = useState(initialItem.script_cta ?? "");
   const [transcript, setTranscript] = useState(initialItem.transcript);
   const [captionDraft, setCaptionDraft] = useState(initialItem.caption_draft);
+  const [captionInstagram, setCaptionInstagram] = useState(initialItem.caption_instagram ?? "");
+  const [captionLinkedin, setCaptionLinkedin] = useState(initialItem.caption_linkedin ?? "");
   const [tones, setTones] = useState<string[]>(initialItem.tones);
   const [driveUrl, setDriveUrl] = useState(initialItem.drive_url);
 
@@ -276,6 +281,63 @@ export default function EditorialItemForm({
               value={driveUrl}
               onChange={(e) => setDriveUrl(e.target.value)}
               placeholder="https://drive.google.com/file/d/..."
+            />
+          </label>
+        </div>
+
+        <div className="grid2" style={{ gap: 12 }}>
+          <label className="f">
+            <span>Convidado / Participante (alternância no calendário)</span>
+            <input
+              type="text"
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              maxLength={120}
+              placeholder="Ex.: Prof. Lucio Flavio, Leonardo Milner..."
+            />
+          </label>
+          <label className="f">
+            <span>Assunto / Tag principal</span>
+            <input
+              type="text"
+              value={topicTag}
+              onChange={(e) => setTopicTag(e.target.value)}
+              maxLength={120}
+              placeholder="Ex.: IA na Medicina, Gestão de Clínicas..."
+            />
+          </label>
+        </div>
+
+        <label className="f">
+          <span>Ideia / referência de capa</span>
+          <input
+            type="text"
+            value={coverIdea}
+            onChange={(e) => setCoverIdea(e.target.value)}
+            maxLength={300}
+            placeholder="Ex.: A IA vai substituir o médico? (foto do convidado em destaque)"
+          />
+        </label>
+
+        <div className="grid2" style={{ gap: 12 }}>
+          <label className="f">
+            <span>Legenda base — Instagram (opcional)</span>
+            <textarea
+              className="auto-grow"
+              value={captionInstagram}
+              onChange={(e) => setCaptionInstagram(e.target.value)}
+              rows={3}
+              placeholder="Rascunho específico para Instagram / Reels (extraído do .doc)"
+            />
+          </label>
+          <label className="f">
+            <span>Legenda base — LinkedIn (opcional)</span>
+            <textarea
+              className="auto-grow"
+              value={captionLinkedin}
+              onChange={(e) => setCaptionLinkedin(e.target.value)}
+              rows={3}
+              placeholder="Rascunho específico para LinkedIn (extraído do .doc)"
             />
           </label>
         </div>

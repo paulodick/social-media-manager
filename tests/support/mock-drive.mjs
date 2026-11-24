@@ -2,16 +2,20 @@
 import http from "node:http";
 import { pathToFileURL } from "node:url";
 
-export function startMockDrive(PORT = 4030) {
+export function startMockDrive(PORT = 4030, opts = {}) {
   const seen = [];
   const folders = new Map(); // key: `${parentId}|${name}` -> id
   const createdFolders = [];
+  const customFiles = new Map(); // id -> { id, name, mimeType, parents, size?, content?, exportText?, failMediaStatus? }
+  for (const item of opts.tree ?? []) {
+    customFiles.set(item.id, item);
+  }
   let seq = 1;
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
     seen.push({ method: req.method, path: url.pathname, query: url.search, auth: req.headers.authorization, range: req.headers.range });
 
-    // Busca de pastas: GET /files?q='PARENT' in parents and name = 'NAME' ...
+    // Busca de pastas/arquivos: GET /files?q=...
     if (req.method === "GET" && (url.pathname === "/files" || url.pathname === "/drive/v3/files")) {
       const q = url.searchParams.get("q") ?? "";
       const pm = q.match(/'([^']+)' in parents/);
@@ -24,6 +28,37 @@ export function startMockDrive(PORT = 4030) {
         res.end(JSON.stringify({ error: { code: 403, message: "Forbidden" } }));
         return;
       }
+
+      // Se há itens customizados cadastrados na árvore de teste, filtra por parent + mimeType + name
+      if (customFiles.size > 0 && !nm) {
+        const wantFolders = q.includes("mimeType = 'application/vnd.google-apps.folder'");
+        const excludeFolders = q.includes("mimeType != 'application/vnd.google-apps.folder'");
+        const wantImage = q.includes("mimeType contains 'image/'");
+        const wantVideo = q.includes("mimeType contains 'video/'");
+        const matched = [];
+        for (const f of customFiles.values()) {
+          if (!(f.parents ?? []).includes(parentId)) continue;
+          const isFolder = f.mimeType === "application/vnd.google-apps.folder";
+          if (wantFolders && !isFolder) continue;
+          if (excludeFolders && isFolder) continue;
+          if ((wantImage || wantVideo) && !excludeFolders && !wantFolders) {
+            const okImg = wantImage && f.mimeType.startsWith("image/");
+            const okVid = wantVideo && f.mimeType.startsWith("video/");
+            if (!okImg && !okVid) continue;
+          }
+          matched.push({
+            id: f.id,
+            name: f.name,
+            mimeType: f.mimeType,
+            size: f.size !== undefined ? String(f.size) : undefined,
+            parents: f.parents,
+          });
+        }
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ files: matched }));
+        return;
+      }
+
       const foundId = folders.get(`${parentId}|${name}`);
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ files: foundId ? [{ id: foundId }] : [] }));
@@ -52,7 +87,50 @@ export function startMockDrive(PORT = 4030) {
       return;
     }
 
+    // Exportação de Google Doc: GET /files/:id/export
+    const exportMatch = url.pathname.match(/\/files\/([^/]+)\/export$/);
+    if (req.method === "GET" && exportMatch) {
+      const custom = customFiles.get(exportMatch[1]);
+      if (!custom || custom.failMediaStatus) {
+        res.statusCode = custom?.failMediaStatus ?? 404;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: { code: res.statusCode, message: "Export failed" } }));
+        return;
+      }
+      res.setHeader("content-type", "text/plain; charset=utf-8");
+      res.end(custom.exportText ?? "");
+      return;
+    }
+
     const id = url.pathname.split("/").filter(Boolean).pop() ?? "";
+    const custom = customFiles.get(id);
+    if (custom) {
+      if (url.searchParams.get("alt") === "media") {
+        if (custom.failMediaStatus) {
+          res.statusCode = custom.failMediaStatus;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ error: { code: custom.failMediaStatus, message: "Download failed" } }));
+          return;
+        }
+        const buf = Buffer.isBuffer(custom.content)
+          ? custom.content
+          : Buffer.from(String(custom.content ?? ""), "utf8");
+        res.setHeader("content-type", custom.mimeType);
+        res.setHeader("content-length", String(buf.length));
+        res.end(buf);
+        return;
+      }
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({
+        id: custom.id,
+        name: custom.name,
+        mimeType: custom.mimeType,
+        size: custom.size !== undefined ? String(custom.size) : undefined,
+        parents: custom.parents ?? [],
+      }));
+      return;
+    }
+
     const video = id.startsWith("VIDEO");
     const image = id.startsWith("IMAGE");
     if (!video && !image) { res.statusCode = 404; res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ error: { code: 404, message: "File not found" } })); return; }

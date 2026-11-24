@@ -72,6 +72,8 @@ type SlotRow = {
   title: string;
   brief: string;
   caption_draft: string;
+  caption_instagram: string;
+  caption_linkedin: string;
   tones: string[];
   item_drive_file_id: string | null;
   item_drive_url: string;
@@ -82,6 +84,16 @@ type SlotRow = {
   slide_file_url: string | null;
   slide_file_meta: MediaMeta | null;
 };
+
+/** Escolhe a legenda mais adequada para a rede (Instagram/LinkedIn ou base geral). */
+export function resolveCaptionForNetwork(
+  network: string,
+  captions: { caption_draft?: string; caption_instagram?: string; caption_linkedin?: string },
+): string {
+  if (network === "instagram" && captions.caption_instagram?.trim()) return captions.caption_instagram.trim();
+  if (network === "linkedin" && captions.caption_linkedin?.trim()) return captions.caption_linkedin.trim();
+  return (captions.caption_draft || captions.caption_instagram || captions.caption_linkedin || "").trim();
+}
 
 /**
  * Envia slots planejados (do MESMO item e do MESMO dia) para a fila real:
@@ -109,7 +121,7 @@ export async function enqueueSlots(
             to_char(s.planned_day, 'YYYY-MM-DD') as day,
             to_char(s.planned_time, 'HH24:MI') as time,
             s.post_target_id,
-            i.title, i.brief, i.caption_draft, i.tones,
+            i.title, i.brief, i.caption_draft, i.caption_instagram, i.caption_linkedin, i.tones,
             i.drive_file_id as item_drive_file_id, i.drive_url as item_drive_url, i.drive_meta as item_drive_meta,
             c.drive_folder_id as root,
             a.kind as asset_kind,
@@ -175,6 +187,7 @@ export async function enqueueSlots(
         linkMeta = r.item_drive_meta;
       }
 
+      const targetCaption = resolveCaptionForNetwork(r.network, r).slice(0, 70000);
       const t = await c.query<{ id: string }>(
         `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id)
          values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10) returning id`,
@@ -184,7 +197,7 @@ export async function enqueueSlots(
           r.format,
           r.day,
           times[i],
-          r.caption_draft.slice(0, 70000),
+          targetCaption,
           linkUrl,
           linkId,
           linkMeta ? JSON.stringify(linkMeta) : null,

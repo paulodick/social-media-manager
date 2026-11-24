@@ -350,6 +350,27 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         where submission_id is not null;
     `,
   },
+  {
+    version: 17,
+    sql: `
+      -- 17: Metadados de pastas de corte do Drive (convidado, assunto, capa, .doc e legendas por rede).
+      alter table content_items
+        add column if not exists guest_name text not null default '',
+        add column if not exists topic_tag text not null default '',
+        add column if not exists cover_idea text not null default '',
+        add column if not exists cover_drive_file_id text,
+        add column if not exists cover_drive_url text not null default '',
+        add column if not exists doc_drive_file_id text,
+        add column if not exists source_folder_id text,
+        add column if not exists source_folder_name text not null default '',
+        add column if not exists caption_instagram text not null default '',
+        add column if not exists caption_linkedin text not null default '';
+
+      create unique index if not exists content_items_source_folder_uq
+        on content_items (client_id, source_folder_id)
+        where source_folder_id is not null;
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

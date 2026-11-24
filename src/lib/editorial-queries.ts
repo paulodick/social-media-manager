@@ -171,7 +171,7 @@ export async function listContentItems(
     const term = `%${f.q.trim()}%`;
     args.push(term);
     const idx = args.length;
-    where.push(`(i.title ilike $${idx} or i.brief ilike $${idx} or i.theme_key ilike $${idx})`);
+    where.push(`(i.title ilike $${idx} or i.brief ilike $${idx} or i.theme_key ilike $${idx} or i.guest_name ilike $${idx} or i.topic_tag ilike $${idx})`);
   }
   if (f.cursor) {
     const [ts, cid] = f.cursor.split("|");
@@ -195,8 +195,10 @@ export async function listContentItems(
   };
   const r = await pool.query<Row>(
     `select i.id, i.client_id, i.pillar_id, i.source_kind, i.content_format, i.title, i.theme_key,
+            i.guest_name, i.topic_tag, i.cover_idea, i.cover_drive_file_id, i.cover_drive_url,
+            i.doc_drive_file_id, i.source_folder_id, i.source_folder_name,
             i.hook, i.angle, i.brief, i.script, i.script_hook, i.script_dev, i.script_cta,
-            i.transcript, i.caption_draft,
+            i.transcript, i.caption_draft, i.caption_instagram, i.caption_linkedin,
             i.tones, i.status, i.drive_url, i.drive_file_id, i.drive_meta,
             i.created_at::text as created_at, i.updated_at::text as updated_at,
             p.name as pillar_name, p.color as pillar_color,
@@ -221,6 +223,14 @@ export async function listContentItems(
     content_format: row.content_format,
     title: row.title,
     theme_key: row.theme_key,
+    guest_name: row.guest_name ?? "",
+    topic_tag: row.topic_tag ?? "",
+    cover_idea: row.cover_idea ?? "",
+    cover_drive_file_id: row.cover_drive_file_id ?? null,
+    cover_drive_url: row.cover_drive_url ?? "",
+    doc_drive_file_id: row.doc_drive_file_id ?? null,
+    source_folder_id: row.source_folder_id ?? null,
+    source_folder_name: row.source_folder_name ?? "",
     hook: row.hook,
     angle: row.angle,
     brief: row.brief,
@@ -230,6 +240,8 @@ export async function listContentItems(
     script_cta: row.script_cta,
     transcript: row.transcript,
     caption_draft: row.caption_draft,
+    caption_instagram: row.caption_instagram ?? "",
+    caption_linkedin: row.caption_linkedin ?? "",
     tones: row.tones,
     status: row.status,
     drive_url: row.drive_url,
@@ -252,20 +264,19 @@ export async function listContentItems(
   };
 }
 
+const ITEM_RETURNING = `id, client_id, pillar_id, source_kind, content_format, title, theme_key,
+  guest_name, topic_tag, cover_idea, cover_drive_file_id, cover_drive_url,
+  doc_drive_file_id, source_folder_id, source_folder_name,
+  hook, angle, brief, script, script_hook, script_dev, script_cta, transcript,
+  caption_draft, caption_instagram, caption_linkedin, tones, status, drive_url, drive_file_id, drive_meta,
+  created_at::text as created_at, updated_at::text as updated_at`;
+
 export async function getContentItem(id: string, clientId?: string): Promise<ContentItem | null> {
   if (!isUuid(id) || (clientId !== undefined && !isUuid(clientId))) return null;
   const pool = await db();
   const sql = clientId
-    ? `select id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
-              script, script_hook, script_dev, script_cta, transcript,
-              caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
-              created_at::text as created_at, updated_at::text as updated_at
-         from content_items where id = $1 and client_id = $2`
-    : `select id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
-              script, script_hook, script_dev, script_cta, transcript,
-              caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
-              created_at::text as created_at, updated_at::text as updated_at
-         from content_items where id = $1`;
+    ? `select ${ITEM_RETURNING} from content_items where id = $1 and client_id = $2`
+    : `select ${ITEM_RETURNING} from content_items where id = $1`;
   const r = await pool.query<ContentItem>(sql, clientId ? [id, clientId] : [id]);
   return r.rows[0] ?? null;
 }
@@ -276,6 +287,14 @@ export type ContentItemInput = {
   content_format?: ContentFormat;
   title: string;
   theme_key?: string;
+  guest_name?: string;
+  topic_tag?: string;
+  cover_idea?: string;
+  cover_drive_file_id?: string | null;
+  cover_drive_url?: string;
+  doc_drive_file_id?: string | null;
+  source_folder_id?: string | null;
+  source_folder_name?: string;
   hook?: string;
   angle?: string;
   brief?: string;
@@ -285,6 +304,8 @@ export type ContentItemInput = {
   script_cta?: string;
   transcript?: string;
   caption_draft?: string;
+  caption_instagram?: string;
+  caption_linkedin?: string;
   tones?: string[];
   status?: ContentStatus;
   drive_url?: string;
@@ -296,15 +317,14 @@ export async function createContentItem(clientId: string, input: ContentItemInpu
   const pool = await db();
   const r = await pool.query<ContentItem>(
     `insert into content_items (
-       client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
-       script, script_hook, script_dev, script_cta, transcript,
-       caption_draft, tones, status, drive_url, drive_file_id, drive_meta
+       client_id, pillar_id, source_kind, content_format, title, theme_key,
+       guest_name, topic_tag, cover_idea, cover_drive_file_id, cover_drive_url,
+       doc_drive_file_id, source_folder_id, source_folder_name,
+       hook, angle, brief, script, script_hook, script_dev, script_cta, transcript,
+       caption_draft, caption_instagram, caption_linkedin, tones, status, drive_url, drive_file_id, drive_meta
      )
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-     returning id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
-               script, script_hook, script_dev, script_cta, transcript,
-               caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
-               created_at::text as created_at, updated_at::text as updated_at`,
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+     returning ${ITEM_RETURNING}`,
     [
       clientId,
       input.pillar_id ?? null,
@@ -312,6 +332,14 @@ export async function createContentItem(clientId: string, input: ContentItemInpu
       input.content_format ?? "video",
       input.title.trim(),
       (input.theme_key ?? "").trim(),
+      (input.guest_name ?? "").trim(),
+      (input.topic_tag ?? "").trim(),
+      (input.cover_idea ?? "").trim(),
+      input.cover_drive_file_id ?? null,
+      (input.cover_drive_url ?? "").trim(),
+      input.doc_drive_file_id ?? null,
+      input.source_folder_id ?? null,
+      (input.source_folder_name ?? "").trim(),
       (input.hook ?? "").trim(),
       (input.angle ?? "").trim(),
       (input.brief ?? "").trim(),
@@ -321,6 +349,8 @@ export async function createContentItem(clientId: string, input: ContentItemInpu
       (input.script_cta ?? "").trim(),
       (input.transcript ?? "").trim(),
       (input.caption_draft ?? "").trim(),
+      (input.caption_instagram ?? "").trim(),
+      (input.caption_linkedin ?? "").trim(),
       input.tones ?? [],
       input.status ?? "idea",
       input.drive_url ?? "",
@@ -344,6 +374,14 @@ export async function updateContentItem(id: string, patch: Partial<ContentItemIn
   if (patch.content_format !== undefined) push("content_format", patch.content_format);
   if (patch.title !== undefined) push("title", patch.title.trim());
   if (patch.theme_key !== undefined) push("theme_key", patch.theme_key.trim());
+  if (patch.guest_name !== undefined) push("guest_name", patch.guest_name.trim());
+  if (patch.topic_tag !== undefined) push("topic_tag", patch.topic_tag.trim());
+  if (patch.cover_idea !== undefined) push("cover_idea", patch.cover_idea.trim());
+  if (patch.cover_drive_file_id !== undefined) push("cover_drive_file_id", patch.cover_drive_file_id);
+  if (patch.cover_drive_url !== undefined) push("cover_drive_url", patch.cover_drive_url.trim());
+  if (patch.doc_drive_file_id !== undefined) push("doc_drive_file_id", patch.doc_drive_file_id);
+  if (patch.source_folder_id !== undefined) push("source_folder_id", patch.source_folder_id);
+  if (patch.source_folder_name !== undefined) push("source_folder_name", patch.source_folder_name.trim());
   if (patch.hook !== undefined) push("hook", patch.hook.trim());
   if (patch.angle !== undefined) push("angle", patch.angle.trim());
   if (patch.brief !== undefined) push("brief", patch.brief.trim());
@@ -353,6 +391,8 @@ export async function updateContentItem(id: string, patch: Partial<ContentItemIn
   if (patch.script_cta !== undefined) push("script_cta", patch.script_cta.trim());
   if (patch.transcript !== undefined) push("transcript", patch.transcript.trim());
   if (patch.caption_draft !== undefined) push("caption_draft", patch.caption_draft.trim());
+  if (patch.caption_instagram !== undefined) push("caption_instagram", patch.caption_instagram.trim());
+  if (patch.caption_linkedin !== undefined) push("caption_linkedin", patch.caption_linkedin.trim());
   if (patch.tones !== undefined) push("tones", patch.tones);
   if (patch.status !== undefined) push("status", patch.status);
   if (patch.drive_url !== undefined) push("drive_url", patch.drive_url);
@@ -364,10 +404,7 @@ export async function updateContentItem(id: string, patch: Partial<ContentItemIn
   const pool = await db();
   const r = await pool.query<ContentItem>(
     `update content_items set ${sets.join(", ")} where id = $${args.length}
-     returning id, client_id, pillar_id, source_kind, content_format, title, theme_key, hook, angle, brief,
-               script, script_hook, script_dev, script_cta, transcript,
-               caption_draft, tones, status, drive_url, drive_file_id, drive_meta,
-               created_at::text as created_at, updated_at::text as updated_at`,
+     returning ${ITEM_RETURNING}`,
     args,
   );
   return r.rows[0] ?? null;
@@ -610,7 +647,10 @@ const SLOT_SELECT = `
          s.position, s.network, s.format, s.status,
          s.plan_status, s.approved_at::text as approved_at,
          i.title as item_title, i.source_kind as item_source_kind, i.content_format as item_content_format,
-         i.status as item_status, i.script_hook as item_script_hook, i.script_dev as item_script_dev, i.script_cta as item_script_cta,
+         i.status as item_status, i.guest_name as item_guest_name, i.topic_tag as item_topic_tag,
+         i.cover_idea as item_cover_idea, i.caption_draft as item_caption_draft,
+         i.caption_instagram as item_caption_instagram, i.caption_linkedin as item_caption_linkedin,
+         i.script_hook as item_script_hook, i.script_dev as item_script_dev, i.script_cta as item_script_cta,
          i.pillar_id as item_pillar_id, p.name as item_pillar_name, p.color as item_pillar_color,
          a.kind as asset_kind, a.title as asset_title,
          t.id as target_id, t.status as target_status, t.publish_state as target_publish_state,
@@ -639,6 +679,12 @@ type SlotSqlRow = {
   item_source_kind: ContentSourceKind;
   item_content_format: ContentFormat;
   item_status: ContentStatus;
+  item_guest_name: string;
+  item_topic_tag: string;
+  item_cover_idea: string;
+  item_caption_draft: string;
+  item_caption_instagram: string;
+  item_caption_linkedin: string;
   item_script_hook: string;
   item_script_dev: string;
   item_script_cta: string;
@@ -676,6 +722,12 @@ function mapSlotRow(r: SlotSqlRow): SlotView {
       pillar_id: r.item_pillar_id,
       pillar_name: r.item_pillar_name,
       pillar_color: r.item_pillar_color,
+      guest_name: r.item_guest_name ?? "",
+      topic_tag: r.item_topic_tag ?? "",
+      cover_idea: r.item_cover_idea ?? "",
+      caption_draft: r.item_caption_draft ?? "",
+      caption_instagram: r.item_caption_instagram ?? "",
+      caption_linkedin: r.item_caption_linkedin ?? "",
       script_hook: r.item_script_hook ?? "",
       script_dev: r.item_script_dev ?? "",
       script_cta: r.item_script_cta ?? "",

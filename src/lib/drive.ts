@@ -1,9 +1,20 @@
 import { JWT } from "google-auth-library";
 import type { MediaMeta } from "./checks.ts";
+import {
+  extractTextFromDocBuffer,
+  groupFolderIntoCutBundle,
+  isIgnoredCutFolderName,
+  type DocExtractionResult,
+  type DriveCutBundle,
+} from "./drive-cuts.ts";
 
 // DRIVE_API_BASE e DRIVE_TEST_TOKEN só existem para testes com um Drive de mentira (os dois precisam estar definidos).
-const TEST_DRIVE = !!process.env.DRIVE_API_BASE && !!process.env.DRIVE_TEST_TOKEN;
-const API = TEST_DRIVE ? (process.env.DRIVE_API_BASE as string) : "https://www.googleapis.com/drive/v3";
+function isTestDrive(): boolean {
+  return !!process.env.DRIVE_API_BASE && !!process.env.DRIVE_TEST_TOKEN;
+}
+function driveApiBase(): string {
+  return isTestDrive() ? (process.env.DRIVE_API_BASE as string) : "https://www.googleapis.com/drive/v3";
+}
 // Escopo completo porque o app precisa enxergar pastas que ele não criou e criar subpastas.
 // O alcance real é limitado pelo que foi compartilhado com a conta de serviço (a pasta do cliente).
 // O app só lê arquivos e cria pastas: não envia, move nem apaga nada.
@@ -57,7 +68,7 @@ export function serviceAccountEmail(): string | null {
 type G = typeof globalThis & { _smmJwt?: JWT };
 
 async function token(): Promise<string> {
-  if (TEST_DRIVE) return process.env.DRIVE_TEST_TOKEN as string;
+  if (isTestDrive()) return process.env.DRIVE_TEST_TOKEN as string;
   const c = creds();
   if (!c) throw new Error("Google Drive não configurado.");
   const g = globalThis as G;
@@ -71,7 +82,7 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${await token()}`);
   const sep = path.includes("?") ? "&" : "?";
-  return fetch(`${API}${path}${sep}supportsAllDrives=true`, { ...init, headers, cache: "no-store" });
+  return fetch(`${driveApiBase()}${path}${sep}supportsAllDrives=true`, { ...init, headers, cache: "no-store" });
 }
 
 type DriveFile = {
@@ -347,3 +358,176 @@ export async function listFolderFiles(
     return { error: "não foi possível falar com o Google Drive agora." };
   }
 }
+
+function mapListedFile(f: DriveFile & { modifiedTime?: string }): ListedFile {
+  const dim = f.videoMediaMetadata ?? f.imageMediaMetadata;
+  return {
+    id: f.id,
+    name: f.name,
+    mimeType: f.mimeType,
+    size: f.size ? Number(f.size) : undefined,
+    width: dim?.width,
+    height: dim?.height,
+    durationMs: f.videoMediaMetadata?.durationMillis ? Number(f.videoMediaMetadata.durationMillis) : undefined,
+    modifiedTime: f.modifiedTime,
+  };
+}
+
+/** Lista subpastas diretas de uma pasta (só leitura), ordenadas por nome. */
+export async function listSubfolders(
+  folderId: string,
+  opts: { pageSize?: number } = {},
+): Promise<{ folders: { id: string; name: string }[] } | { error: string }> {
+  if (!driveConfigured()) return { error: "o Google Drive ainda não está configurado no app." };
+  if (!SAFE_ID.test(folderId)) return { error: "o link da pasta não é válido." };
+  const q = `'${folderId}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`;
+  const qs = new URLSearchParams({
+    q,
+    fields: "files(id,name)",
+    orderBy: "name asc",
+    pageSize: String(Math.min(Math.max(opts.pageSize ?? 100, 1), 100)),
+    includeItemsFromAllDrives: "true",
+  });
+  try {
+    const r = await api(`/files?${qs.toString()}`);
+    if (r.status === 403 || r.status === 404) {
+      return { error: "o app não enxerga essa pasta. Compartilhe-a com o e-mail de acesso do app." };
+    }
+    if (!r.ok) return { error: `o Google Drive respondeu com erro ${r.status}.` };
+    const j = (await r.json()) as { files?: { id: string; name: string }[] };
+    return { folders: j.files ?? [] };
+  } catch {
+    return { error: "não foi possível falar com o Google Drive agora." };
+  }
+}
+
+/** Lista todos os arquivos (não-pastas) dentro de uma subpasta (vídeo, capa, .doc/.docx/Google Doc). */
+export async function listFolderAllFiles(
+  folderId: string,
+  opts: { pageSize?: number } = {},
+): Promise<FolderListing> {
+  if (!driveConfigured()) return { error: "o Google Drive ainda não está configurado no app." };
+  if (!SAFE_ID.test(folderId)) return { error: "o link da pasta não é válido." };
+  const q = `'${folderId}' in parents and mimeType != '${FOLDER_MIME}' and trashed = false`;
+  const qs = new URLSearchParams({
+    q,
+    fields: `nextPageToken,files(${FIELDS},modifiedTime)`,
+    orderBy: "name asc",
+    pageSize: String(Math.min(Math.max(opts.pageSize ?? 50, 1), 100)),
+    includeItemsFromAllDrives: "true",
+  });
+  try {
+    const r = await api(`/files?${qs.toString()}`);
+    if (r.status === 403 || r.status === 404) {
+      return { error: "o app não enxerga essa pasta. Compartilhe-a com o e-mail de acesso do app." };
+    }
+    if (!r.ok) return { error: `o Google Drive respondeu com erro ${r.status}.` };
+    const j = (await r.json()) as { files?: (DriveFile & { modifiedTime?: string })[]; nextPageToken?: string };
+    return {
+      files: (j.files ?? []).map(mapListedFile),
+      nextPageToken: j.nextPageToken ?? null,
+    };
+  } catch {
+    return { error: "não foi possível falar com o Google Drive agora." };
+  }
+}
+
+/**
+ * Escaneia a pasta do cliente agrupando cada subpasta de corte (vídeo + capa + .doc) em um único item editorial,
+ * mantendo também eventuais arquivos avulsos na raiz.
+ */
+export async function scanClientCutFolders(
+  rootFolderId: string,
+  opts: { kinds?: ("image" | "video")[]; pageToken?: string; maxFolders?: number } = {},
+): Promise<
+  | { cut_folders: DriveCutBundle[]; loose_files: ListedFile[]; next_page_token: string | null }
+  | { error: string }
+> {
+  const [subRes, looseRes] = await Promise.all([
+    listSubfolders(rootFolderId, { pageSize: opts.maxFolders ?? 60 }),
+    listFolderFiles(rootFolderId, { kinds: opts.kinds, pageToken: opts.pageToken }),
+  ]);
+  if ("error" in looseRes) return looseRes;
+  if ("error" in subRes) {
+    // Se não deu para listar subpastas, ainda devolve os arquivos avulsos
+    return { cut_folders: [], loose_files: looseRes.files, next_page_token: looseRes.nextPageToken };
+  }
+
+  const candidateFolders = subRes.folders.filter((f) => !isIgnoredCutFolderName(f.name));
+  const cutFolders: DriveCutBundle[] = [];
+  const batchSize = 6;
+  for (let i = 0; i < candidateFolders.length; i += batchSize) {
+    const batch = candidateFolders.slice(i, i + batchSize);
+    const listings = await Promise.all(
+      batch.map(async (folder) => ({
+        folder,
+        listing: await listFolderAllFiles(folder.id, { pageSize: 30 }),
+      })),
+    );
+    for (const { folder, listing } of listings) {
+      if ("error" in listing) continue;
+      const bundle = groupFolderIntoCutBundle(folder, listing.files);
+      if (bundle) cutFolders.push(bundle);
+    }
+  }
+
+  return {
+    cut_folders: cutFolders,
+    loose_files: looseRes.files,
+    next_page_token: looseRes.nextPageToken,
+  };
+}
+
+const MAX_DOC_BYTES = 2 * 1024 * 1024; // 2 MB
+
+/**
+ * Lê texto de um arquivo de documento do Drive (Google Docs via export text/plain, ou .doc/.docx/.txt/.rtf via alt=media).
+ * Sempre tem fallback seguro e nunca envia vídeo para transcrição.
+ */
+export async function readDriveDocumentText(file: {
+  id: string;
+  name: string;
+  mimeType: string;
+}): Promise<DocExtractionResult> {
+  if (!driveConfigured()) {
+    return { text: "", format: "fallback", warning: "Google Drive não configurado." };
+  }
+  if (!SAFE_ID.test(file.id)) {
+    return { text: "", format: "fallback", warning: "ID de documento inválido." };
+  }
+  try {
+    if (file.mimeType === "application/vnd.google-apps.document") {
+      const r = await api(`/files/${file.id}/export?mimeType=${encodeURIComponent("text/plain")}`);
+      if (!r.ok) {
+        return {
+          text: "",
+          format: "fallback",
+          warning: `Não foi possível exportar "${file.name}" (erro ${r.status}); usando nome da pasta como referência.`,
+        };
+      }
+      const text = (await r.text()).replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").trim();
+      return text
+        ? { text, format: "google_doc" }
+        : { text: "", format: "fallback", warning: `Documento "${file.name}" vazio.` };
+    }
+
+    const r = await api(`/files/${file.id}?alt=media`);
+    if (!r.ok) {
+      return {
+        text: "",
+        format: "fallback",
+        warning: `Não foi possível ler "${file.name}" (erro ${r.status}); usando nome da pasta como referência.`,
+      };
+    }
+    const ab = await r.arrayBuffer();
+    const buf = Buffer.from(ab.byteLength > MAX_DOC_BYTES ? ab.slice(0, MAX_DOC_BYTES) : ab);
+    return extractTextFromDocBuffer(buf, file.name);
+  } catch {
+    return {
+      text: "",
+      format: "fallback",
+      warning: `Falha ao ler "${file.name}" no Drive; usando nome da pasta e metadados como referência.`,
+    };
+  }
+}
+

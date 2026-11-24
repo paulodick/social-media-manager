@@ -8,11 +8,20 @@ export type PromptClient = {
   notes: string;
 };
 
-/** Monta o prompt para classificar itens já existentes (acervo do Drive) por pilar e tema. */
+/** Monta o prompt para classificar itens já existentes (acervo/cortes do Drive) por pilar, convidado, assunto, capa e legenda base. */
 export function buildClassificationPrompt(input: {
   client: PromptClient;
   pillars: Pillar[];
-  items: Pick<ContentItem, "id" | "title" | "transcript" | "brief" | "drive_meta">[];
+  items: (Pick<ContentItem, "id" | "title" | "transcript" | "brief" | "drive_meta"> & {
+    guest_name?: string;
+    topic_tag?: string;
+    cover_idea?: string;
+    source_folder_name?: string;
+    caption_draft?: string;
+    caption_instagram?: string;
+    caption_linkedin?: string;
+  })[];
+  memoryBlock?: string;
 }): string {
   const pillarLines = input.pillars.length
     ? input.pillars
@@ -22,40 +31,54 @@ export function buildClassificationPrompt(input: {
 
   const itemLines = input.items
     .map((it) => {
+      const folderPart = it.source_folder_name ? ` | pasta: "${it.source_folder_name}"` : "";
       const fileName = it.drive_meta?.name ? ` | arquivo: "${it.drive_meta.name}"` : "";
-      const text = it.transcript || it.brief || "(sem transcrição/resumo)";
-      return `- item_id: "${it.id}" | título atual: "${it.title}"${fileName}\n  conteúdo/transcrição: ${text.slice(0, 800)}`;
+      const guestPart = it.guest_name ? ` | convidado detectado: "${it.guest_name}"` : "";
+      const topicPart = it.topic_tag ? ` | assunto detectado: "${it.topic_tag}"` : "";
+      const coverPart = it.cover_idea ? ` | referência de capa: "${it.cover_idea}"` : "";
+      const docRef = it.brief || it.transcript || "(sem texto do .doc/resumo)";
+      const capIg = it.caption_instagram ? `\n  legenda base Instagram: ${it.caption_instagram.slice(0, 350)}` : "";
+      const capLi = it.caption_linkedin ? `\n  legenda base LinkedIn: ${it.caption_linkedin.slice(0, 350)}` : "";
+      return `- item_id: "${it.id}" | título atual: "${it.title}"${folderPart}${fileName}${guestPart}${topicPart}${coverPart}\n  referência principal (.doc/resumo): ${docRef.slice(0, 900)}${capIg}${capLi}`;
     })
     .join("\n");
 
   return [
-    `Você é um estrategista de conteúdo para redes sociais. Classifique os conteúdos existentes abaixo para a marca "${input.client.name}" (${input.client.segment || "segmento não informado"}).`,
+    `Você é um estrategista de conteúdo para redes sociais. Organize e classifique os cortes/conteúdos existentes abaixo para a marca "${input.client.name}" (${input.client.segment || "segmento não informado"}).`,
     input.client.tone ? `Tom de voz da marca: ${input.client.tone}` : "",
+    input.client.notes ? `Observações da marca: ${input.client.notes}` : "",
+    input.memoryBlock ? `\nMEMÓRIA E APRENDIZADO DO CLIENTE:\n${input.memoryBlock}` : "",
     "",
     "PILARES DISPONÍVEIS:",
     pillarLines,
     "",
-    "ITENS EXISTENTES PARA CLASSIFICAR:",
+    "ITENS EXISTENTES PARA CLASSIFICAR (use o conteúdo do .doc, nome da pasta e capa como referência principal — não assuma transcrição de áudio):",
     itemLines,
     "",
     "REGRAS:",
     "- Responda APENAS com JSON válido (sem texto antes ou depois).",
     "- Use exatamente os UUIDs informados em item_id e pillar_id.",
+    "- Identifique e normalize guest_name (convidado/participante do corte, ou \"\" se não houver) e topic_tag (tag curta do assunto/tema principal, ex: \"IA na Medicina\").",
+    "- Registre ou refine cover_idea (ideia/texto curto de capa) e estruture legendas base em caption_instagram e caption_linkedin mantendo o tom de voz e a memória do cliente.",
     "- Gere um theme_key em slug ASCII minúsculo (ex: '5-erros-manutencao') para evitar repetição futura.",
     "- Melhore o title (até 160 caracteres), resuma em brief e sugira um hook (gancho inicial).",
     "",
     "FORMATO JSON ESPERADO:",
-    `{"classifications":[{"item_id":"uuid","pillar_id":"uuid|null","title":"...","theme_key":"slug-ascii","brief":"...","hook":"...","confidence":0.9}]}`,
+    `{"classifications":[{"item_id":"uuid","pillar_id":"uuid|null","title":"...","theme_key":"slug-ascii","guest_name":"Prof. Lucio Flavio","topic_tag":"IA na Medicina","cover_idea":"...","brief":"...","hook":"...","caption_instagram":"...","caption_linkedin":"...","caption_draft":"...","confidence":0.9}]}`,
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-/** Monta o prompt para gerar calendário alternando conteúdos prontos (`existing_ready`) e inéditos (`needs_creation`) sem repetir temas. */
+/** Monta o prompt para gerar calendário alternando conteúdos prontos (`existing_ready`), convidados, assuntos e inéditos (`needs_creation`) sem repetir temas. */
 export function buildCalendarPrompt(input: {
   client: PromptClient;
   pillars: Pillar[];
-  existingReady: Pick<ContentItem, "id" | "pillar_id" | "title" | "theme_key" | "brief">[];
+  existingReady: (Pick<ContentItem, "id" | "pillar_id" | "title" | "theme_key" | "brief"> & {
+    guest_name?: string;
+    topic_tag?: string;
+    cover_idea?: string;
+  })[];
   recentThemeKeys: string[];
   slots: { planned_day: string; planned_time: string | null; network: string; format: string }[];
   memoryBlock?: string;
@@ -66,7 +89,12 @@ export function buildCalendarPrompt(input: {
 
   const existingLines = input.existingReady.length
     ? input.existingReady
-        .map((e) => `- existing_item_id: "${e.id}" | pillar_id: "${e.pillar_id ?? ""}" | theme_key: "${e.theme_key}" | título: "${e.title}" | resumo: ${e.brief.slice(0, 200)}`)
+        .map((e) => {
+          const guest = e.guest_name ? ` | convidado: "${e.guest_name}"` : "";
+          const topic = e.topic_tag ? ` | assunto/tag: "${e.topic_tag}"` : "";
+          const cover = e.cover_idea ? ` | capa: "${e.cover_idea.slice(0, 80)}"` : "";
+          return `- existing_item_id: "${e.id}" | pillar_id: "${e.pillar_id ?? ""}" | theme_key: "${e.theme_key}"${guest}${topic}${cover} | título: "${e.title}" | resumo: ${e.brief.slice(0, 200)}`;
+        })
         .join("\n")
     : "- (nenhum conteúdo pronto disponível; gere todos como needs_creation)";
 
@@ -85,7 +113,7 @@ export function buildCalendarPrompt(input: {
     "PILARES E PESOS (%):",
     pillarLines,
     "",
-    "CONTEÚDOS JÁ PRONTOS (existing_ready) — distribua de forma alternada nos dias:",
+    "CONTEÚDOS JÁ PRONTOS (existing_ready) — distribua respeitando alternância de convidado e assunto:",
     existingLines,
     "",
     "TEMAS JÁ USADOS RECENTEMENTE (NUNCA REPETIR):",
@@ -96,7 +124,9 @@ export function buildCalendarPrompt(input: {
     "",
     "REGRAS OBRIGATÓRIAS:",
     "- Responda APENAS com JSON válido (sem markdown ou explicações extras).",
-    "- Alterne conteúdos 'existing_ready' (usando existing_item_id da lista e new_item: null) com conteúdos inéditos 'needs_creation' (existing_item_id: null e new_item completo).",
+    "- ALTERNÂNCIA DE CONVIDADOS/PARTICIPANTES: nunca agende dois cortes consecutivos do mesmo convidado/participante quando houver outros convidados disponíveis (intercale os participantes ao longo dos dias).",
+    "- ALTERNÂNCIA DE ASSUNTOS/TEMAS: evite agendar dois conteúdos consecutivos com o mesmo assunto/tag (topic_tag) ou temas muito parecidos.",
+    "- Alterne conteúdos 'existing_ready' (usando existing_item_id da lista e new_item: null) com conteúdos inéditos 'needs_creation' (existing_item_id: null e new_item completo). Se houver acervo pronto suficiente para cobrir os slots de cortes, priorize o acervo pronto respeitando a alternância de convidados e assuntos.",
     "- Em new_item.content_format, alterne os formatos: 'video' (vídeo curto falando para a câmera), 'carousel' e 'static_image'.",
     "- Quando content_format for 'video', preencha obrigatoriamente script_structured com: hook_0_3s (Gancho 0-3s), development_topics (tópicos objetivos para falar) e cta (Chamada para Ação).",
     "- Nunca repita o mesmo existing_item_id nem um theme_key da lista de recentes ou dentro do próprio calendário.",
