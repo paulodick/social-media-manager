@@ -12,6 +12,7 @@ import CopyButton from "./CopyButton";
 import PostPreview from "./Previews";
 import PublishPanel, { type PublishInfo } from "./PublishPanel";
 import { NetDot } from "./ui";
+import { formatSavedPublishSummary, isTargetDirty } from "@/lib/target-dirty";
 
 /** Destino que o post já tem (vem do banco). */
 export type ExistingTarget = {
@@ -281,7 +282,23 @@ export default function NetworkRow({
                   id={existing.id}
                   networkLabel={cfg.label}
                   info={existing.publish}
-                  dirty={caption !== existing.caption || title !== existing.title}
+                  dirty={isTargetDirty(
+                    { caption, title, day: date, time, driveUrl, thumbUrl },
+                    {
+                      caption: existing.caption,
+                      title: existing.title,
+                      day: existing.day,
+                      time: existing.time,
+                      driveUrl: existing.driveUrl,
+                      thumbUrl: existing.thumbUrl,
+                    },
+                  )}
+                  savedSummary={formatSavedPublishSummary({
+                    day: existing.day,
+                    time: existing.time,
+                    fileName: existing.meta?.name,
+                    driveUrl: existing.driveUrl,
+                  })}
                   posted={posted}
                   mode={network === "tiktok" ? "draft" : "direct"}
                   captionSent={format === "fotos"}

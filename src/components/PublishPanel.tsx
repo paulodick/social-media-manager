@@ -19,8 +19,10 @@ export default function PublishPanel(p: {
   id: string;
   networkLabel: string;
   info: PublishInfo;
-  /** A legenda na tela ainda não foi salva: o app publica o que está salvo. */
+  /** Há mudanças na tela ainda não salvas: o app publica o que está salvo. */
   dirty: boolean;
+  /** Resumo curto do que está salvo e será publicado (arquivo e data/horário). */
+  savedSummary?: string;
   posted: boolean;
   /** "draft" = a rede recebe o arquivo como rascunho e a pessoa publica no app dela (TikTok). Padrão: publica de verdade. */
   mode?: "direct" | "draft";
@@ -36,6 +38,11 @@ export default function PublishPanel(p: {
   useEffect(() => {
     setConfirming(null);
   }, [info.state, info.error, info.auto?.confirmed, info.auto?.missed]);
+
+  // Se houver edição não salva com a confirmação aberta, fecha para evitar publicar versão antiga.
+  useEffect(() => {
+    if (p.dirty) setConfirming(null);
+  }, [p.dirty]);
 
   // Enquanto publica, atualiza a tela sozinho até o resultado chegar.
   useEffect(() => {
@@ -98,7 +105,11 @@ export default function PublishPanel(p: {
           {info.state === "failed" && info.error && (
             <p className="alert err" role="alert" style={{ margin: 0 }}>{draft ? "Não enviou" : "Não publicou"}: {info.error}</p>
           )}
-          {p.dirty && <p className="muted small" style={{ margin: 0 }}>Salve a legenda antes de {draft ? "enviar" : "publicar"}: o app usa o texto que está salvo.</p>}
+          {p.dirty && (
+            <p className="alert warn" role="status" style={{ margin: 0 }}>
+              Há mudanças não salvas (legenda, título, data, horário ou arquivo). Salve antes de publicar: o app usa o que está salvo.
+            </p>
+          )}
           {confirming === null ? (
             <div className="row">
               {auto && (
@@ -109,7 +120,10 @@ export default function PublishPanel(p: {
               <button className={drafted || auto ? "btn" : "btn primary"} type="button" disabled={p.dirty} onClick={() => setConfirming("now")}>
                 {info.state === "failed" ? "Tentar de novo" : drafted ? "Enviar de novo" : draft ? "Enviar como rascunho" : "Publicar agora"}
               </button>
-              <span className="muted small">em {info.connected}</span>
+              <span className="muted small">
+                em {info.connected}
+                {p.savedSummary ? ` · ${p.savedSummary}` : ""}
+              </span>
               {auto?.missed && (
                 <button className="btn" type="submit" formAction={cancelConfirmation.bind(null, p.id)} formNoValidate>Remover confirmação</button>
               )}
@@ -120,7 +134,7 @@ export default function PublishPanel(p: {
                 Confirmar que este post está pronto? O app vai publicar <b>sozinho</b>, em <b>{auto.when}</b>, em <b>{info.connected}</b> ({p.networkLabel}), com a legenda e a mídia que estão salvas. Se você mudar horário, legenda, mídia ou título depois, a confirmação é desfeita. Dá para cancelar antes do horário.
               </p>
               <div className="row">
-                <button className="btn primary" type="submit" formAction={confirmPublication.bind(null, p.id)} formNoValidate>
+                <button className="btn primary" type="submit" formAction={confirmPublication.bind(null, p.id)} formNoValidate disabled={p.dirty}>
                   Confirmar publicação
                 </button>
                 <button className="btn" type="button" onClick={() => setConfirming(null)}>Voltar</button>
@@ -140,7 +154,7 @@ export default function PublishPanel(p: {
                 )}
               </p>
               <div className="row">
-                <button className="btn primary" type="submit" formAction={publishTarget.bind(null, p.id)} formNoValidate>
+                <button className="btn primary" type="submit" formAction={publishTarget.bind(null, p.id)} formNoValidate disabled={p.dirty}>
                   {draft ? "Confirmar e enviar" : "Confirmar e publicar"}
                 </button>
                 <button className="btn" type="button" onClick={() => setConfirming(null)}>Cancelar</button>

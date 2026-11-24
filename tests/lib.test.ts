@@ -10,6 +10,7 @@ import { explainAiError } from "../src/lib/ai.ts";
 import { buildCaptionPrompt, buildToneBlock, splitGenerated } from "../src/lib/prompt.ts";
 import { TONES, MAX_TONES, validateTones, toneBlockedReason } from "../src/config/tones.ts";
 import { monthGrid, addMonths, dayLabel, isDay, isTime, dayFolders, weekStart, weekDays, weekLabel, weekdayShort } from "../src/lib/dates.ts";
+import { formatSavedPublishSummary, isTargetDirty } from "../src/lib/target-dirty.ts";
 
 test("parseDriveUrl", () => {
   assert.deepEqual(parseDriveUrl("https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing"), { id: "1AbCdEfGhIjKlMnOp", kind: "file" });
@@ -319,4 +320,38 @@ test("pedido de legenda: sem tons fica igual ao de antes; com tons entra o mesmo
   assert.ok(com.includes(buildToneBlock(tones)));
   assert.ok(com.indexOf("Tom de voz do cliente") < com.indexOf("Tom de voz deste post"));
   assert.ok(com.indexOf("Tom de voz deste post") < com.indexOf("Ajustes pedidos para esta legenda (siga à risca)"));
+});
+
+test("isTargetDirty detecta alteração em legenda, título, data, horário, vídeo e miniatura", () => {
+  const saved = {
+    caption: "Legenda salva",
+    title: "Título salvo",
+    day: "2026-11-23",
+    time: "10:00",
+    driveUrl: "https://drive.google.com/file/d/abc/view",
+    thumbUrl: "https://drive.google.com/file/d/thumb/view",
+  };
+  assert.equal(isTargetDirty({ ...saved }, saved), false);
+  assert.equal(isTargetDirty({ ...saved, driveUrl: `  ${saved.driveUrl}  `, thumbUrl: ` ${saved.thumbUrl} ` }, saved), false);
+  assert.equal(isTargetDirty({ ...saved, caption: "Outra legenda" }, saved), true);
+  assert.equal(isTargetDirty({ ...saved, title: "Outro título" }, saved), true);
+  assert.equal(isTargetDirty({ ...saved, day: "2026-11-24" }, saved), true);
+  assert.equal(isTargetDirty({ ...saved, time: "15:30" }, saved), true);
+  assert.equal(isTargetDirty({ ...saved, driveUrl: "https://drive.google.com/file/d/novo/view" }, saved), true);
+  assert.equal(isTargetDirty({ ...saved, thumbUrl: "https://drive.google.com/file/d/nova-thumb/view" }, saved), true);
+});
+
+test("formatSavedPublishSummary resume arquivo e data/horário salvos", () => {
+  assert.equal(
+    formatSavedPublishSummary({ day: "2026-11-23", time: "17:40", fileName: "reels.mp4", driveUrl: "https://drive.google.com/file/d/abc/view" }),
+    "reels.mp4 · 23/11 às 17:40",
+  );
+  assert.equal(
+    formatSavedPublishSummary({ day: "2026-11-23", time: "09:00", fileName: null, driveUrl: "https://drive.google.com/file/d/abc/view" }),
+    "arquivo salvo · 23/11 às 09:00",
+  );
+  assert.equal(
+    formatSavedPublishSummary({ day: "2026-11-23", time: "09:00", fileName: null, driveUrl: "" }),
+    "sem arquivo · 23/11 às 09:00",
+  );
 });
