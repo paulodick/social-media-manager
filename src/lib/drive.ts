@@ -615,7 +615,7 @@ export async function scanClientCutFolders(
 const foreignDebug: string[] = [];
 async function listForeignChildFolders(rootId: string): Promise<{ id: string; name: string }[]> {
   foreignDebug.length = 0;
-  const info = new Map<string, { name: string; parent: string | null }>();
+  const info = new Map<string, { name: string; parents: string[] }>();
   const foreign: string[] = [];
   let pageToken: string | undefined;
   let seen = 0;
@@ -633,7 +633,7 @@ async function listForeignChildFolders(rootId: string): Promise<{ id: string; na
       if (!r.ok) break;
       const j = (await r.json()) as { files?: { id: string; name: string; parents?: string[] }[]; nextPageToken?: string };
       for (const f of j.files ?? []) {
-        info.set(f.id, { name: f.name, parent: f.parents?.[0] ?? null });
+        info.set(f.id, { name: f.name, parents: f.parents ?? [] });
         foreign.push(f.id);
       }
       seen += j.files?.length ?? 0;
@@ -643,22 +643,26 @@ async function listForeignChildFolders(rootId: string): Promise<{ id: string; na
     return [];
   }
 
-  // Sobe por níveis: só os pais que NÃO vieram na busca precisam ser lidos, cada um uma vez só.
+  // Sobe por níveis. Uma pasta pode ter mais de um pai (pastas antigas de outra conta "adicionadas" aqui): basta um
+  // deles ser a pasta do cliente. Só os pais que a busca não trouxe (ou trouxe sem pai) são lidos, cada um uma vez.
   const found = new Map<string, string>();
   for (const id of foreign) {
-    const p = info.get(id)?.parent;
-    if (p === rootId) found.set(id, info.get(id)?.name ?? "");
+    const v = info.get(id);
+    if (v?.parents.includes(rootId)) found.set(id, v.name);
   }
-  // A busca às vezes não informa o pai (vem vazio); ler a pasta diretamente devolve. Essas também entram na subida.
   const fetched = new Set<string>();
-  const needsRead = (id: string) => !fetched.has(id) && (!info.has(id) || info.get(id)?.parent === null);
+  const needsRead = (id: string) => id !== rootId && !fetched.has(id) && (!info.has(id) || info.get(id)?.parents.length === 0);
   let frontier = [
     ...new Set([
-      ...foreign.filter((id) => info.get(id)?.parent === null),
-      ...foreign.map((id) => info.get(id)?.parent).filter((p): p is string => !!p && p !== rootId && needsRead(p)),
+      ...foreign.filter((id) => info.get(id)?.parents.length === 0),
+      ...foreign.flatMap((id) => info.get(id)?.parents ?? []).filter(needsRead),
     ]),
   ];
   foreignDebug.push(`busca ampla: ${foreign.length} pastas; a ler: ${frontier.length}`);
+  for (const id of foreign) {
+    const v = info.get(id);
+    if (v && /^(ep|cortes)/i.test(v.name) && foreignDebug.length < 15) foreignDebug.push(`busca: ${v.name} pais ${v.parents.join(",") || "-"}`);
+  }
   let gets = 0;
   for (let level = 0; level < 6 && frontier.length && gets < 300; level++) {
     const next: string[] = [];
@@ -678,15 +682,35 @@ async function listForeignChildFolders(rootId: string): Promise<{ id: string; na
         }),
       );
       for (const [k, m] of metas.entries()) {
-        if (foreignDebug.length < 25) foreignDebug.push(`${batch[k]} -> ${m ? `${m.name} [${m.mimeType}] pai ${m.parents?.join(",") ?? "-"}` : "erro"}`);
+        if (foreignDebug.length < 25) foreignDebug.push(`${batch[k]} -> ${m ? `${m.name} pai ${m.parents?.join(",") ?? "-"}` : "erro"}`);
         if (!m || m.mimeType !== FOLDER_MIME) continue;
-        const parent = m.parents?.[0] ?? null;
-        info.set(m.id, { name: m.name, parent });
-        if (parent === rootId) found.set(m.id, m.name);
-        else if (parent && needsRead(parent)) next.push(parent);
+        const parents = m.parents ?? [];
+        info.set(m.id, { name: m.name, parents });
+        if (parents.includes(rootId)) found.set(m.id, m.name);
+        else next.push(...parents.filter(needsRead));
       }
     }
     frontier = [...new Set(next)];
+  }
+  // Pastas da busca cujo pai (visto pela busca) só é ligado ao cliente por um segundo pai: sobe pelo que já se sabe.
+  const memo = new Map<string, string | null>();
+  const topUnderRoot = (id: string, depth = 0): string | null => {
+    if (memo.has(id)) return memo.get(id) ?? null;
+    if (depth > 8) return null;
+    memo.set(id, null);
+    const v = info.get(id);
+    let res: string | null = null;
+    if (v?.parents.includes(rootId)) res = id;
+    else for (const p of v?.parents ?? []) {
+      res = topUnderRoot(p, depth + 1);
+      if (res) break;
+    }
+    memo.set(id, res);
+    return res;
+  };
+  for (const id of foreign) {
+    const top = topUnderRoot(id);
+    if (top) found.set(top, info.get(top)?.name ?? "");
   }
   return [...found].map(([id, name]) => ({ id, name }));
 }
