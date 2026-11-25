@@ -4,7 +4,7 @@
 import { addDays } from "./dates.ts";
 import { isUuid, normalizeThemeKey } from "./editorial-rules.ts";
 
-export const SEQUENCE_MAX_POSTS = 30;
+export { SEQUENCE_MAX_POSTS } from "./editorial-sequence-limits.ts";
 export const TRANSCRIPT_EXCERPT_CHARS = 1500;
 
 /** Datas dos posts: `count` datas a partir de `start`, de `everyDays` em `everyDays` dias. */
