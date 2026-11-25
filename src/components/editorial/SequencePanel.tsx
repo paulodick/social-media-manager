@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { NETWORKS, isNetwork } from "@/config/networks";
+import { SEQUENCE_MAX_POSTS } from "@/lib/editorial-sequence-limits";
 import type { SequenceRow } from "@/lib/editorial-sequence-store";
 import { AUDIENCE_LABEL, FLAG_LABEL, type Audience, type QualityFlag } from "@/lib/ready-profile-labels";
 
@@ -41,6 +42,45 @@ function syncSummary(j: SyncReply, auto: boolean): string {
   if (j.profiled !== undefined) parts.push(`${j.profiled} interpretado(s) pela IA`);
   const pending = j.profile_pending ? ` ${j.profile_pending} ainda sem ficha: sincronize de novo para continuar.` : "";
   return `${auto ? "Sincronizado automaticamente. " : ""}"${j.folder}": ${parts.join(", ")}.${pending}${j.warnings.length ? ` ${j.warnings.join(" ")}` : ""}`;
+}
+
+/**
+ * Campo de número livre (digitar qualquer valor dentro do limite). Enquanto a pessoa digita, aceita o campo vazio;
+ * ao sair, volta para o limite mais próximo.
+ */
+function NumberField({
+  id, value, min, max, onChange, suffix,
+}: { id: string; value: number; min: number; max: number; onChange: (n: number) => void; suffix: string }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = (raw: string) => {
+    const n = Math.round(Number(raw));
+    const v = Number.isFinite(n) && raw.trim() !== "" ? Math.min(max, Math.max(min, n)) : value;
+    setText(String(v));
+    onChange(v);
+  };
+  return (
+    <div className="row" style={{ gap: 6, alignItems: "center" }}>
+      <input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={1}
+        value={text}
+        style={{ width: 80 }}
+        onChange={(e) => {
+          setText(e.target.value);
+          const n = Number(e.target.value);
+          if (e.target.value.trim() !== "" && Number.isInteger(n) && n >= min && n <= max) onChange(n);
+        }}
+        onBlur={(e) => commit(e.target.value)}
+        aria-describedby={`${id}-hint`}
+      />
+      <span className="small muted" id={`${id}-hint`}>{suffix} (de {min} a {max})</span>
+    </div>
+  );
 }
 
 function CopyButton({ text, label }: { text: string; label: string }) {
@@ -308,11 +348,7 @@ export default function SequencePanel({
       <div className="row" style={{ gap: "10px 16px", alignItems: "flex-end" }}>
         <div className="col">
           <label className="f" htmlFor="seq-every">Postar a cada</label>
-          <select id="seq-every" value={every} onChange={(e) => setEvery(Number(e.target.value))}>
-            {[1, 2, 3, 4, 7].map((n) => (
-              <option key={n} value={n}>{n === 1 ? "1 dia (todo dia)" : `${n} dias`}</option>
-            ))}
-          </select>
+          <NumberField id="seq-every" value={every} min={1} max={14} onChange={setEvery} suffix={every === 1 ? "dia" : "dias"} />
         </div>
         <div className="col">
           <label className="f" htmlFor="seq-start">Começar em</label>
@@ -320,19 +356,11 @@ export default function SequencePanel({
         </div>
         <div className="col">
           <label className="f" htmlFor="seq-count">Quantos posts</label>
-          <select id="seq-count" value={count} onChange={(e) => setCount(Number(e.target.value))}>
-            {[4, 6, 8, 10, 12, 15, 20, 30].map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+          <NumberField id="seq-count" value={count} min={1} max={SEQUENCE_MAX_POSTS} onChange={setCount} suffix="posts" />
         </div>
         <div className="col">
           <label className="f" htmlFor="seq-lead">Tempo para gravar e editar</label>
-          <select id="seq-lead" value={lead} onChange={(e) => setLead(Number(e.target.value))}>
-            {[1, 2, 3, 5, 7].map((n) => (
-              <option key={n} value={n}>{n === 1 ? "1 dia" : `${n} dias`}</option>
-            ))}
-          </select>
+          <NumberField id="seq-lead" value={lead} min={0} max={30} onChange={setLead} suffix={lead === 1 ? "dia" : "dias"} />
         </div>
         <div className="col">
           <label className="f" htmlFor="seq-time">Horário</label>
