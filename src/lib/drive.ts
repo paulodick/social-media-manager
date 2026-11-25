@@ -641,42 +641,39 @@ async function listForeignChildFolders(rootId: string): Promise<{ id: string; na
     return [];
   }
 
-  let gets = 0;
-  const lookup = async (id: string): Promise<{ name: string; parent: string | null } | null> => {
-    const hit = info.get(id);
-    if (hit) return hit;
-    if (gets >= 200 || !SAFE_ID.test(id)) return null;
-    gets++;
-    try {
-      const r = await api(`/files/${id}?fields=${encodeURIComponent("id,name,parents")}&supportsAllDrives=true`);
-      if (!r.ok) return null;
-      const f = (await r.json()) as { name: string; parents?: string[] };
-      const v = { name: f.name, parent: f.parents?.[0] ?? null };
-      info.set(id, v);
-      return v;
-    } catch {
-      return null;
-    }
-  };
-
+  // Sobe por níveis: só os pais que NÃO vieram na busca precisam ser lidos, cada um uma vez só.
   const found = new Map<string, string>();
-  const dead = new Set<string>(); // pastas cuja subida já se sabe que não chega ao cliente
-  for (const start of foreign) {
-    const chain: string[] = [];
-    let cur: string | null = start;
-    let top: string | null = null;
-    for (let i = 0; i < 8 && cur && !dead.has(cur); i++) {
-      const node = await lookup(cur);
-      if (!node) break;
-      chain.push(cur);
-      if (node.parent === rootId) {
-        top = cur;
-        break;
+  for (const id of foreign) {
+    const p = info.get(id)?.parent;
+    if (p === rootId) found.set(id, info.get(id)?.name ?? "");
+  }
+  let frontier = [...new Set(foreign.map((id) => info.get(id)?.parent).filter((p): p is string => !!p && p !== rootId && !info.has(p)))];
+  let gets = 0;
+  for (let level = 0; level < 6 && frontier.length && gets < 300; level++) {
+    const next: string[] = [];
+    for (let i = 0; i < frontier.length && gets < 300; i += 8) {
+      const batch = frontier.slice(i, i + 8).filter((id) => SAFE_ID.test(id));
+      gets += batch.length;
+      const metas = await Promise.all(
+        batch.map(async (id) => {
+          try {
+            const r = await api(`/files/${id}?fields=${encodeURIComponent("id,name,parents,mimeType")}&supportsAllDrives=true`);
+            if (!r.ok) return null;
+            return { id, ...((await r.json()) as { name: string; parents?: string[]; mimeType?: string }) };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      for (const m of metas) {
+        if (!m || m.mimeType !== FOLDER_MIME) continue;
+        const parent = m.parents?.[0] ?? null;
+        info.set(m.id, { name: m.name, parent });
+        if (parent === rootId) found.set(m.id, m.name);
+        else if (parent && !info.has(parent)) next.push(parent);
       }
-      cur = node.parent;
     }
-    if (top) found.set(top, info.get(top)?.name ?? "");
-    else for (const id of chain) dead.add(id);
+    frontier = [...new Set(next)];
   }
   return [...found].map(([id, name]) => ({ id, name }));
 }
