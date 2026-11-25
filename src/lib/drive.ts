@@ -476,7 +476,7 @@ export const MAX_SCAN_FOLDERS = 800;
  */
 export async function scanClientCutFolders(
   rootFolderId: string,
-  opts: { kinds?: ("image" | "video")[]; pageToken?: string; maxFolders?: number } = {},
+  opts: { kinds?: ("image" | "video")[]; pageToken?: string; maxFolders?: number; basePath?: string[] } = {},
 ): Promise<
   | {
       cut_folders: DriveCutBundle[];
@@ -518,6 +518,16 @@ export async function scanClientCutFolders(
         listing: node.depth > 0 ? await listFolderAllFiles(node.id, { pageSize: 30 }) : null,
       })),
     );
+    if (batch.some((n) => n.depth === 0)) {
+      // Pastas de OUTRA conta dentro da pasta do cliente às vezes não aparecem na busca por "in parents" da conta do
+      // app, embora ela consiga abri-las. Procura também entre as pastas visíveis que não são do app.
+      const extra = await listForeignChildFolders(rootFolderId);
+      const root = results.find((x) => x.node.depth === 0);
+      if (root && !("error" in root.subs) && extra.length) {
+        const have = new Set(root.subs.folders.map((f) => f.id));
+        for (const f of extra) if (!have.has(f.id)) root.subs.folders.push(f);
+      }
+    }
     for (const { node, subs, listing } of results) {
       const where = node.depth === 0 ? "pasta do cliente" : [...node.path, node.name].join(" / ");
       if ("error" in subs) notes.push(`${where}: não deu para listar as subpastas (${subs.error})`);
@@ -537,7 +547,7 @@ export async function scanClientCutFolders(
         if (bundle && (bundle.video || children.length === 0)) cutFolders.push(bundle);
       }
       if (node.depth < MAX_SCAN_DEPTH) {
-        const childPath = node.depth > 0 ? [...node.path, node.name] : [];
+        const childPath = node.depth > 0 ? [...node.path, node.name] : (opts.basePath ?? []);
         for (const c of children) {
           if (queued.has(c.id)) continue;
           queued.add(c.id);
@@ -580,6 +590,34 @@ export async function scanClientCutFolders(
     folders_truncated: truncated,
     scan_notes: notes.slice(0, 20),
   };
+}
+
+/** Pastas que não são da conta do app e têm `parentId` como pai (busca ampla, até 1000 pastas). */
+async function listForeignChildFolders(parentId: string): Promise<{ id: string; name: string }[]> {
+  const out: { id: string; name: string }[] = [];
+  let pageToken: string | undefined;
+  let seen = 0;
+  try {
+    do {
+      const qs = new URLSearchParams({
+        q: `mimeType = '${FOLDER_MIME}' and trashed = false and not 'me' in owners`,
+        fields: "nextPageToken,files(id,name,parents)",
+        pageSize: "200",
+        includeItemsFromAllDrives: "true",
+        supportsAllDrives: "true",
+      });
+      if (pageToken) qs.set("pageToken", pageToken);
+      const r = await api(`/files?${qs.toString()}`);
+      if (!r.ok) return out;
+      const j = (await r.json()) as { files?: { id: string; name: string; parents?: string[] }[]; nextPageToken?: string };
+      for (const f of j.files ?? []) if (f.parents?.includes(parentId)) out.push({ id: f.id, name: f.name });
+      seen += j.files?.length ?? 0;
+      pageToken = j.nextPageToken || undefined;
+    } while (pageToken && seen < 1000);
+  } catch {
+    // é só uma tentativa extra
+  }
+  return out;
 }
 
 const MAX_DOC_BYTES = 2 * 1024 * 1024; // 2 MB

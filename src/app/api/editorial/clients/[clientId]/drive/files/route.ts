@@ -15,9 +15,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ clientId: strin
 
   const sp = new URL(req.url).searchParams;
   const folder = sp.get("folder")?.trim() || root;
+  let basePath: string[] = [];
   if (folder !== root) {
     const path = await folderPathFromRoot(folder, root);
     if (!path) return jsonError("A pasta informada está fora da pasta deste cliente.", 403);
+    const info = await getFolderName(folder);
+    // Caminho até a subpasta escaneada, para o convidado sair do nome do episódio.
+    basePath = [...path, "name" in info ? info.name : ""].filter(Boolean);
   }
 
   const kindParam = sp.get("kind");
@@ -27,7 +31,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clientId: strin
 
   const [folderInfo, scan] = await Promise.all([
     getFolderName(folder),
-    scanClientCutFolders(folder, { kinds, pageToken }),
+    scanClientCutFolders(folder, { kinds, pageToken, basePath }),
   ]);
 
   if ("error" in scan) return jsonError(scan.error, 502);
