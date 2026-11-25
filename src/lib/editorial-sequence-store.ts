@@ -3,14 +3,13 @@
 import type { MediaMeta } from "./checks.ts";
 import { db } from "./db.ts";
 import {
+  scanClientCutFolders,
   findReadyVideosFolder,
   getFileMeta,
-  listFolderAllFiles,
-  listSubfolders,
   moveItem,
   readDriveDocumentText,
 } from "./drive.ts";
-import { groupFolderIntoCutBundle, isDocFile, parseCutDocument } from "./drive-cuts.ts";
+import { parseCutDocument } from "./drive-cuts.ts";
 import { editorialAiConfigured, generateEditorialJson } from "./editorial-ai.ts";
 import { extractJsonPayload, normalizeThemeKey } from "./editorial-rules.ts";
 import type { ReadyVideo, SequenceEntry } from "./editorial-sequence.ts";
@@ -72,35 +71,34 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
   if (ready && "error" in ready) return { folder: null, created: 0, updated: 0, warnings: [ready.error] };
   if (!ready) return { folder: null, created: 0, updated: 0, warnings: ['Não achei a pasta "Reels Editados" dentro da pasta do cliente.'] };
 
-  const subs = await listSubfolders(ready.id, { max: 200 });
-  if ("error" in subs) return { folder: ready.name, created: 0, updated: 0, warnings: [subs.error] };
+  // Varre "Reels Editados" em qualquer profundidade (ex.: Reels Editados / Ep - 1 Convidado / Cortes_Reels / 01 - corte):
+  // cada pasta com vídeo vira um vídeo pronto.
+  const scan = await scanClientCutFolders(ready.id, { maxFolders: 300 });
+  if ("error" in scan) return { folder: ready.name, created: 0, updated: 0, warnings: [scan.error] };
   let created = 0;
   let updated = 0;
   const warnings: string[] = [];
-  for (const folder of subs.folders) {
-    const listing = await listFolderAllFiles(folder.id, { pageSize: 30 });
-    if ("error" in listing) {
-      warnings.push(`${folder.name}: ${listing.error}`);
-      continue;
-    }
-    const bundle = groupFolderIntoCutBundle(folder, listing.files);
-    if (!bundle?.video) {
-      warnings.push(`${folder.name}: ainda sem vídeo, ficou de fora.`);
+  if (scan.folders_truncated) warnings.push(`"${ready.name}" tem pastas demais: só as primeiras 300 foram lidas.`);
+  for (const e of scan.empty_folders) warnings.push(`${e}: ainda sem vídeo, ficou de fora.`);
+  for (const bundle of scan.cut_folders) {
+    const folder = { id: bundle.folder_id, name: bundle.folder_name };
+    const label = [...bundle.path, bundle.folder_name].join(" / ");
+    if (!bundle.video) {
+      warnings.push(`${label}: ainda sem vídeo, ficou de fora.`);
       continue;
     }
     // Lê todos os textos da pasta (até 4): transcrição da fala e/ou legenda sugerida por quem cortou o vídeo.
-    const texts = listing.files.filter(isDocFile).slice(0, 4);
     const transcripts: string[] = [];
     const captions: string[] = [];
-    for (const f of texts) {
+    for (const f of bundle.docs) {
       const doc = await readDriveDocumentText(f);
-      if (doc.warning) warnings.push(`${folder.name}: ${doc.warning}`);
+      if (doc.warning) warnings.push(`${label}: ${doc.warning}`);
       if (!doc.text.trim()) continue;
       (classifyTextFile(f.name, doc.text) === "caption" ? captions : transcripts).push(doc.text.trim());
     }
     const transcript = transcripts.join("\n\n").slice(0, TRANSCRIPT_MAX);
     const suggested = captions.join("\n\n").slice(0, TRANSCRIPT_MAX);
-    if (!transcript && !suggested) warnings.push(`${folder.name}: sem transcrição nem legenda; a IA só vai ver o nome.`);
+    if (!transcript && !suggested) warnings.push(`${label}: sem transcrição nem legenda; a IA só vai ver o nome.`);
     const fromTranscript = parseCutDocument({ folderName: folder.name, videoName: bundle.video.name, coverName: bundle.cover?.name, docText: transcript });
     const fromCaption = suggested
       ? parseCutDocument({ folderName: folder.name, videoName: bundle.video.name, coverName: bundle.cover?.name, docText: suggested })
@@ -109,7 +107,7 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       ...fromTranscript,
       title: fromTranscript.title !== folder.name ? fromTranscript.title : (fromCaption?.title ?? fromTranscript.title),
       topic_tag: fromTranscript.topic_tag || fromCaption?.topic_tag || "",
-      guest_name: fromTranscript.guest_name || fromCaption?.guest_name || "",
+      guest_name: fromTranscript.guest_name || fromCaption?.guest_name || bundle.detected_guest || "",
       caption_draft: fromCaption ? fromCaption.caption_draft || suggested : fromTranscript.caption_draft,
       caption_instagram: fromCaption?.caption_instagram || fromTranscript.caption_instagram,
       caption_linkedin: fromCaption?.caption_linkedin || fromTranscript.caption_linkedin,
@@ -120,7 +118,7 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
     const values = [
       clientId, title, normalizeThemeKey(parsed.topic_tag || title), parsed.guest_name, parsed.topic_tag, transcript,
       parsed.caption_draft, parsed.caption_instagram, parsed.caption_linkedin, driveUrl, bundle.video.id,
-      meta.error ? null : JSON.stringify(meta), folder.id, folder.name, ready.id, bundle.doc?.id ?? null,
+      meta.error ? null : JSON.stringify(meta), folder.id, label.slice(0, 300), bundle.parent_id ?? ready.id, bundle.doc?.id ?? null,
       qualityFlags(transcript, suggested), suggested,
     ];
     const upd = await pool.query(
@@ -151,7 +149,7 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       );
       created++;
     } catch (e) {
-      if ((e as { code?: string }).code === "23505") warnings.push(`${folder.name}: este vídeo já está cadastrado em outro item.`);
+      if ((e as { code?: string }).code === "23505") warnings.push(`${label}: este vídeo já está cadastrado em outro item.`);
       else throw e;
     }
   }
@@ -167,7 +165,7 @@ export async function syncContents(clientId: string): Promise<SyncResult> {
   const res = await syncReadyVideos(clientId);
   if (!res.folder) return res;
   if (!editorialAiConfigured()) {
-    res.warnings.push("Sem a chave do Gemini, os vídeos foram lidos mas não interpretados (sem ficha nem legenda).");
+    res.warnings.push("Sem chave de IA (Gemini ou Anthropic), os vídeos foram lidos mas não interpretados (sem ficha nem legenda).");
     return res;
   }
   const p = await profileReadyVideos(clientId);

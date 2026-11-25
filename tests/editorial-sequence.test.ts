@@ -436,3 +436,94 @@ test("Sincronizar conteúdos lê legenda sugerida (sozinha ou junto da transcri�
     }
   }
 });
+
+test("IA do Editorial: Claude primeiro com a chave da Anthropic e Gemini de reserva", async () => {
+  const http = await import("node:http");
+  const hits: string[] = [];
+  let claudeFails = false;
+  const srv = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      if (req.url?.startsWith("/v1/messages")) {
+        hits.push("claude");
+        if (claudeFails) {
+          res.statusCode = 529;
+          res.end(JSON.stringify({ error: { message: "overloaded" } }));
+          return;
+        }
+        res.end(JSON.stringify({ content: [{ type: "text", text: '{"ok":"claude"}' }], stop_reason: "end_turn" }));
+        return;
+      }
+      hits.push("gemini");
+      res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"ok":"gemini"}' }] } }] }));
+    });
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  const addr = srv.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
+  const keys = ["GEMINI_API_KEY", "GEMINI_API_BASE", "GEMINI_MODEL", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "EDITORIAL_AI_PROVIDER"] as const;
+  const prev = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  try {
+    Object.assign(process.env, {
+      GEMINI_API_KEY: "g", GEMINI_API_BASE: `http://127.0.0.1:${port}`, GEMINI_MODEL: "m",
+      ANTHROPIC_API_KEY: "a", ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`,
+    });
+    delete process.env.EDITORIAL_AI_PROVIDER;
+    const ai = await import("../src/lib/editorial-ai.ts");
+    assert.deepEqual(ai.editorialProviders(), ["claude", "gemini"]);
+    assert.deepEqual(await ai.generateEditorialJson("x"), { text: '{"ok":"claude"}' });
+    claudeFails = true;
+    assert.deepEqual(await ai.generateEditorialJson("x"), { text: '{"ok":"gemini"}' }, "Claude fora do ar: usa o Gemini");
+    assert.deepEqual(hits, ["claude", "claude", "gemini"]);
+    process.env.EDITORIAL_AI_PROVIDER = "gemini";
+    assert.deepEqual(ai.editorialProviders(), ["gemini", "claude"]);
+    delete process.env.ANTHROPIC_API_KEY;
+    assert.deepEqual(ai.editorialProviders(), ["gemini"]);
+  } finally {
+    for (const k of keys) {
+      if (prev[k] === undefined) delete process.env[k];
+      else process.env[k] = prev[k];
+    }
+    await new Promise<void>((r) => srv.close(() => r()));
+  }
+});
+
+test("Sincronizar lê Reels Editados em qualquer profundidade (episódio / cortes / corte)", { skip: !process.env.DATABASE_URL }, async () => {
+  const GDOC = "application/vnd.google-apps.document";
+  const tree = [
+    { id: "ROOT_NEST_CLIENTE", name: "Cliente Nest", mimeType: FOLDER, parents: [] },
+    { id: "PASTA_REELS_NEST1", name: "Reels Editados", mimeType: FOLDER, parents: ["ROOT_NEST_CLIENTE"] },
+    { id: "PASTA_NEST_EP0001", name: "Ep - 1 Lúcio Flávio", mimeType: FOLDER, parents: ["PASTA_REELS_NEST1"] },
+    { id: "PASTA_NEST_CORTES", name: "Cortes_Reels", mimeType: FOLDER, parents: ["PASTA_NEST_EP0001"] },
+    { id: "PASTA_NEST_C01000", name: "01 - Quer ser médico", mimeType: FOLDER, parents: ["PASTA_NEST_CORTES"] },
+    { id: "VIDEO_NEST_C01000", name: "corte01.mp4", mimeType: "video/mp4", size: 5000, parents: ["PASTA_NEST_C01000"] },
+    { id: "GDOC_NEST_LEGE01", name: "corte01_legenda", mimeType: GDOC, parents: ["PASTA_NEST_C01000"], exportText: "Médico de branco? #medicina #carreira" },
+    { id: "PASTA_NEST_C02000", name: "02 - Sem vídeo ainda", mimeType: FOLDER, parents: ["PASTA_NEST_CORTES"] },
+  ];
+  const drive = await startMockDrive(4075, { tree });
+  process.env.DRIVE_API_BASE = `http://127.0.0.1:${drive.port}`;
+  process.env.DRIVE_TEST_TOKEN = "token-teste";
+  process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify({ client_email: "teste@mock.local", private_key: "fake-key" });
+  const { db } = await import("../src/lib/db.ts");
+  const store = await import("../src/lib/editorial-sequence-store.ts");
+  const pool = await db();
+  const clientId = (
+    await pool.query<{ id: string }>("insert into clients (name, drive_folder_id) values ($1, 'ROOT_NEST_CLIENTE') returning id", [`Teste Nest ${Date.now()}`])
+  ).rows[0].id;
+  try {
+    const sync = await store.syncReadyVideos(clientId);
+    assert.equal(sync.created, 1, JSON.stringify(sync));
+    assert.ok(sync.warnings.some((w) => /02 - Sem vídeo ainda: ainda sem vídeo/.test(w)), JSON.stringify(sync.warnings));
+    const [v] = await store.listAvailableReady(clientId);
+    assert.equal(v.folder, "Ep - 1 Lúcio Flávio / Cortes_Reels / 01 - Quer ser médico");
+    assert.equal(v.guest, "Lúcio Flávio");
+    assert.match(v.suggested_caption ?? "", /Médico de branco/);
+    const row = await pool.query("select ready_folder_parent_id from content_items where id = $1", [v.id]);
+    assert.equal(row.rows[0].ready_folder_parent_id, "PASTA_NEST_CORTES", "volta para a pasta de onde saiu");
+  } finally {
+    await pool.query("delete from clients where id = $1", [clientId]);
+    await drive.close();
+  }
+});

@@ -6,6 +6,8 @@ export type DriveCutBundle = {
   folder_name: string;
   /** Pastas entre a pasta do cliente e esta (ex.: ["Ep - 1 Lúcio Flávio", "Cortes_Reels"]). */
   path: string[];
+  /** Pasta onde esta fica (preenchida pela varredura). */
+  parent_id?: string | null;
   video: ListedFile | null;
   cover: ListedFile | null;
   doc: ListedFile | null;

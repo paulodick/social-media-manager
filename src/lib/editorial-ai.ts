@@ -8,7 +8,22 @@ export const GEMINI_MODELS = [
   "gemini-2.5-flash-lite",
 ] as const;
 
-export const editorialAiConfigured = (): boolean => !!process.env.GEMINI_API_KEY?.trim();
+const hasGemini = (): boolean => !!process.env.GEMINI_API_KEY?.trim();
+const hasClaude = (): boolean => !!process.env.ANTHROPIC_API_KEY?.trim();
+
+/** IA do Editorial ligada: Gemini (GEMINI_API_KEY) e/ou Claude (ANTHROPIC_API_KEY). */
+export const editorialAiConfigured = (): boolean => hasGemini() || hasClaude();
+
+/**
+ * Ordem de tentativa no Editorial. Com a chave da Anthropic, Claude vem primeiro (respostas longas em JSON, como a
+ * sequência, falhavam muito no Gemini) e o Gemini fica de reserva; EDITORIAL_AI_PROVIDER=gemini inverte.
+ */
+export function editorialProviders(): ("claude" | "gemini")[] {
+  const order: ("claude" | "gemini")[] = process.env.EDITORIAL_AI_PROVIDER?.trim() === "gemini" ? ["gemini", "claude"] : ["claude", "gemini"];
+  return order.filter((p) => (p === "claude" ? hasClaude() : hasGemini()));
+}
+
+export const EDITORIAL_CLAUDE_MODEL_DEFAULT = "claude-sonnet-5-5";
 
 /** Traduz um erro da API do Gemini para uma frase amigável em português. Função pura, com teste. */
 export function explainGeminiError(status: number, message: string): string {
@@ -33,7 +48,7 @@ export function explainGeminiError(status: number, message: string): string {
 
 export type EditorialAiResult = { text: string } | { error: string };
 
-async function callGemini(prompt: string, responseMimeType?: "application/json"): Promise<EditorialAiResult> {
+async function callGemini(prompt: string, responseMimeType?: "application/json", timeoutMs = 45_000): Promise<EditorialAiResult> {
   const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) {
     return { error: "a chave do Gemini ainda não foi cadastrada (variável GEMINI_API_KEY no Render)." };
@@ -57,7 +72,7 @@ async function callGemini(prompt: string, responseMimeType?: "application/json")
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(45_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const body = (await res.json().catch(() => null)) as {
         candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
@@ -94,7 +109,56 @@ async function callGemini(prompt: string, responseMimeType?: "application/json")
  * (`responseMimeType: "application/json"`) para evitar blocos markdown extras.
  */
 export async function generateEditorialJson(prompt: string): Promise<EditorialAiResult> {
-  return callGemini(prompt, "application/json");
+  const providers = editorialProviders();
+  if (!providers.length) return callGemini(prompt, "application/json");
+  const errors: string[] = [];
+  for (const p of providers) {
+    // Sequências longas demoram: 2 minutos no Gemini (antes 45 s, que cortava a resposta) e 3 no Claude.
+    const res = p === "claude" ? await callClaudeJson(prompt) : await callGemini(prompt, "application/json", 120_000);
+    if ("text" in res) return res;
+    errors.push(`${p === "claude" ? "Claude" : "Gemini"}: ${res.error}`);
+  }
+  return { error: `a IA não conseguiu responder (${errors.join(" / ")}).` };
+}
+
+/** Claude pela API da Anthropic, pedindo só JSON. Modelo em EDITORIAL_CLAUDE_MODEL (padrão Sonnet). */
+async function callClaudeJson(prompt: string): Promise<EditorialAiResult> {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) return { error: "a chave da Anthropic não foi cadastrada (ANTHROPIC_API_KEY no Render)." };
+  const base = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
+  const model = process.env.EDITORIAL_CLAUDE_MODEL?.trim() || EDITORIAL_CLAUDE_MODEL_DEFAULT;
+  try {
+    const res = await fetch(`${base}/v1/messages`, {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model,
+        max_tokens: 16_000,
+        system: "Responda somente com o JSON pedido, sem texto antes ou depois e sem bloco de código.",
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: AbortSignal.timeout(180_000),
+    });
+    const body = (await res.json().catch(() => null)) as {
+      content?: { type: string; text?: string }[];
+      stop_reason?: string;
+      error?: { message?: string };
+    } | null;
+    if (!res.ok) {
+      const m = (body?.error?.message ?? "").toLowerCase();
+      if (res.status === 401) return { error: "a chave da Anthropic foi recusada (ANTHROPIC_API_KEY)." };
+      if (res.status === 429) return { error: "limite de uso da API da Anthropic atingido; tente em alguns minutos." };
+      if (m.includes("credit balance") || m.includes("billing")) return { error: "a conta da API da Anthropic está sem saldo." };
+      if (res.status === 529 || res.status >= 500) return { error: "a API da Anthropic está sobrecarregada agora." };
+      return { error: `a API da Anthropic respondeu com erro ${res.status}.` };
+    }
+    if (body?.stop_reason === "max_tokens") return { error: "a resposta veio cortada por ser longa demais; peça menos posts." };
+    const text = (body?.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
+    return text ? { text } : { error: "a API da Anthropic devolveu resposta vazia." };
+  } catch (e) {
+    const timeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+    return { error: timeout ? "o Claude demorou demais para responder." : "não foi possível falar com a API da Anthropic agora." };
+  }
 }
 
 /** Chama a API REST oficial do Google Gemini em texto livre (usado na geração de legendas). */

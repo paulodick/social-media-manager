@@ -103,7 +103,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
     if (body.mode === "prompt_only" || !editorialAiConfigured()) return Response.json({ prompt, rows: null });
     plan = await askAi(prompt, opts);
   }
-  if (!plan.ok) return jsonError(plan.error, plan.error.startsWith("o Gemini") || plan.error.startsWith("a ") ? 502 : 400);
+  if (!plan.ok) return jsonError(plan.error, /^(o Gemini|o Claude|a )/.test(plan.error) ? 502 : 400);
 
   await saveSequence(clientId, start, plan.entries, targets);
   return Response.json({ prompt, rows: await readSequence(clientId, today) });

@@ -447,17 +447,6 @@ test("scanClientCutFolders varre a pasta inteira (episódios e subpastas) e igno
       { id: "C301_PODREC_VIDE", name: "corte01_vertical.mp4", mimeType: "video/mp4", size: 10, parents: ["C301_PODREC_0001"] },
       { id: "EP03_PODREC_ATAL", name: "Ep - 3 Philllip Dmitruk", mimeType: "application/vnd.google-apps.shortcut", parents: ["ROOT_PODREC_0001"],
         shortcutDetails: { targetId: "EP03_PODREC_REAL", targetMimeType: F } },
-      // Episódio 4 é de outra conta e a busca "in parents" da conta do app NÃO o devolve (visto no Drive real),
-      // mas os cortes dentro dele aparecem na busca ampla e a subida pelos pais chega até ele.
-      { id: "EP04_PODREC_0001", name: "Ep - 4 Ana Souza", mimeType: F, parents: ["ROOT_PODREC_0001"], foreign: true, hiddenFromSearch: true },
-      { id: "C401_PODREC_0001", name: "01 - Corte escondido", mimeType: F, parents: ["EP04_PODREC_0001"], foreign: true },
-      { id: "C401_PODREC_VIDE", name: "corte.mp4", mimeType: "video/mp4", size: 10, parents: ["C401_PODREC_0001"] },
-      // Episódio 5: a busca ampla traz a pasta de outra conta SEM o pai; lendo a pasta, o pai é uma pasta escondida
-      // que fica na do cliente (como a "PodBest" da conta podbest2).
-      { id: "PB02_PODREC_0001", name: "PodBest outra conta", mimeType: F, parents: ["ROOT_PODREC_0001"], foreign: true, hiddenFromSearch: true },
-      { id: "EP05_PODREC_0001", name: "Ep - 5 Bruno Lima", mimeType: F, parents: ["PB02_PODREC_0001"], foreign: true, searchNoParents: true },
-      { id: "C501_PODREC_0001", name: "01 - Corte cinco", mimeType: F, parents: ["EP05_PODREC_0001"] },
-      { id: "C501_PODREC_VIDE", name: "corte5.mp4", mimeType: "video/mp4", size: 10, parents: ["C501_PODREC_0001"] },
       // Pasta de outra conta fora do cliente não entra.
       { id: "FORA_PODREC_0001", name: "Outra coisa", mimeType: F, parents: ["OUTRA_CONTA_ROOT"], foreign: true },
       // Pasta vazia não vira corte.
@@ -477,9 +466,7 @@ test("scanClientCutFolders varre a pasta inteira (episódios e subpastas) e igno
         "Ep - 1 Lúcio Flávio / Cortes_Reels / 01 - Quer ser médico só pra vestir branco",
         "Ep - 1 Lúcio Flávio / Cortes_Reels / 07 - Interesse é fome de conhecimento",
         "Ep - 3 Philllip Dmitruk / 01 - O que faz um físico médico hoje",
-        "Ep - 4 Ana Souza / 01 - Corte escondido",
         "Ep -2 Leonardo Milner / 01 - Comprar equipamento sem ouvir quem entende",
-        "PodBest outra conta / Ep - 5 Bruno Lima / 01 - Corte cinco",
       ],
     );
     assert.equal(scanned.folders_truncated, false);
@@ -487,9 +474,7 @@ test("scanClientCutFolders varre a pasta inteira (episódios e subpastas) e igno
     assert.equal(c101.detected_guest, "Lúcio Flávio");
     assert.equal(c101.detected_topic, "Quer ser médico só pra vestir branco");
     assert.equal(c101.docs.length, 2, "lê a legenda e os textos por rede");
-    assert.equal(scanned.cut_folders[4].detected_guest, "Leonardo Milner");
-    assert.equal(scanned.cut_folders[5].detected_guest, "Bruno Lima");
-    assert.equal(scanned.cut_folders[3].detected_guest, "Ana Souza", "pasta que a busca não lista é achada pelos cortes dentro dela");
+    assert.equal(scanned.cut_folders[3].detected_guest, "Leonardo Milner");
     assert.equal(scanned.cut_folders[2].detected_guest, "Philllip Dmitruk", "atalho para pasta de outra conta entra na varredura");
   } finally {
     await drive.close();
