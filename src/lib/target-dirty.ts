@@ -5,7 +5,18 @@ export type TargetEditableFields = {
   time: string;
   driveUrl: string;
   thumbUrl: string;
+  /** Instagram: texto dos campos "Marcar pessoas" e "Collab". */
+  tags?: string;
+  collabs?: string;
 };
+
+/** "@A, b" e "a,  @b" são a mesma lista. */
+const handlesKey = (s: string | undefined) =>
+  (s ?? "")
+    .split(/[\s,;]+/)
+    .map((x) => x.replace(/^@+/, "").toLowerCase())
+    .filter(Boolean)
+    .join(",");
 
 /**
  * Informa se os campos editáveis de um destino na tela divergem do que está salvo no banco.
@@ -18,7 +29,9 @@ export function isTargetDirty(current: TargetEditableFields, saved: TargetEditab
     current.day !== saved.day ||
     current.time !== saved.time ||
     current.driveUrl.trim() !== saved.driveUrl.trim() ||
-    current.thumbUrl.trim() !== saved.thumbUrl.trim()
+    current.thumbUrl.trim() !== saved.thumbUrl.trim() ||
+    handlesKey(current.tags) !== handlesKey(saved.tags) ||
+    handlesKey(current.collabs) !== handlesKey(saved.collabs)
   );
 }
 

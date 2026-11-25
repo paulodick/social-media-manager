@@ -1,3 +1,4 @@
+import { formatHandles } from "@/lib/ig-people";
 import Link from "next/link";
 import CopyButton from "@/components/CopyButton";
 import MarkPostedUndo from "@/components/MarkPostedUndo";
@@ -46,6 +47,17 @@ export default async function PostToday({ searchParams }: { searchParams: Promis
               <a className="btn wide" href={`/api/media/${t.drive_file_id}?download=1`}>2. Baixar mídia</a>
             ) : (
               <span className="muted small">Sem mídia ligada a este post.</span>
+            )}
+            {t.network === "instagram" && (t.thumb_file_id || t.user_tags?.length > 0 || t.collaborators?.length > 0) && (
+              <div className="col muted small" style={{ gap: 4 }}>
+                {t.thumb_file_id && (
+                  <span>
+                    Capa: <a href={`/api/media/${t.thumb_file_id}?download=1`} style={{ textDecoration: "underline" }}>baixar {t.thumb_meta?.name ?? "capa"}</a>
+                  </span>
+                )}
+                {t.user_tags?.length > 0 && <span>Marcar: <b>{formatHandles(t.user_tags)}</b></span>}
+                {t.collaborators?.length > 0 && <span>Convidar como collab: <b>{formatHandles(t.collaborators)}</b></span>}
+              </div>
             )}
             <form action={markPosted}>
               <input type="hidden" name="id" value={t.id} />

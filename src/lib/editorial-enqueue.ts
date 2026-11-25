@@ -1,9 +1,10 @@
-import { isFormat, isNetwork } from "../config/networks.ts";
+import { NETWORKS, isFormat, isNetwork } from "../config/networks.ts";
 import type { MediaMeta } from "./checks.ts";
 import { TZ, isTime } from "./dates.ts";
 import { db } from "./db.ts";
 import { isUuid } from "./editorial-rules.ts";
 import { ensureTargetFolders } from "./post-folders.ts";
+import { getFileMeta } from "./drive.ts";
 import { moveReadyFolderToDay } from "./editorial-sequence-store.ts";
 
 export type EnqueueResult =
@@ -79,6 +80,8 @@ type SlotRow = {
   item_drive_file_id: string | null;
   item_drive_url: string;
   item_drive_meta: MediaMeta | null;
+  /** Capa do item (imagem na pasta do corte): vira a capa do Reels no Instagram. */
+  item_cover_file_id: string | null;
   root: string | null;
   asset_kind: "carousel" | "static" | null;
   slide_file_id: string | null;
@@ -124,6 +127,7 @@ export async function enqueueSlots(
             s.post_target_id,
             i.title, i.brief, i.caption_draft, i.caption_instagram, i.caption_linkedin, i.tones,
             i.drive_file_id as item_drive_file_id, i.drive_url as item_drive_url, i.drive_meta as item_drive_meta,
+            i.cover_drive_file_id as item_cover_file_id,
             c.drive_folder_id as root,
             a.kind as asset_kind,
             sl.drive_file_id as slide_file_id, sl.drive_url as slide_file_url, sl.drive_meta as slide_file_meta
@@ -161,6 +165,15 @@ export async function enqueueSlots(
   );
   if (folders.error) warnings.push(`A pasta no Drive não foi criada: ${folders.error}`);
 
+  // Capa: só em formatos com capa própria (Instagram Reels). Lê os dados da imagem antes da transação.
+  const coverMeta = new Map<string, MediaMeta>();
+  for (const r of rows) {
+    const id = r.item_cover_file_id;
+    if (!id || coverMeta.has(id) || !(isNetwork(r.network) && NETWORKS[r.network].formats[r.format]?.thumb)) continue;
+    const m = await getFileMeta(id);
+    if (!m.error) coverMeta.set(id, m);
+  }
+
   const c = await pool.connect();
   try {
     await c.query("begin");
@@ -190,8 +203,9 @@ export async function enqueueSlots(
 
       const targetCaption = resolveCaptionForNetwork(r.network, r).slice(0, 70000);
       const t = await c.query<{ id: string }>(
-        `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id)
-         values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10) returning id`,
+        `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id,
+                                   thumb_url, thumb_file_id, thumb_meta)
+         values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10,$11,$12,$13) returning id`,
         [
           p.rows[0].id,
           r.network,
@@ -203,6 +217,11 @@ export async function enqueueSlots(
           linkId,
           linkMeta ? JSON.stringify(linkMeta) : null,
           folders.ids[i],
+          ...(() => {
+            const cid = r.item_cover_file_id;
+            const m = cid && isNetwork(r.network) && NETWORKS[r.network].formats[r.format]?.thumb ? coverMeta.get(cid) : undefined;
+            return m && cid ? [`https://drive.google.com/file/d/${cid}/view`, cid, JSON.stringify(m)] : ["", null, null];
+          })(),
         ],
       );
       const g = await c.query(

@@ -71,8 +71,8 @@ export function thumbChecks(network: NetworkId, format: string, meta: MediaMeta 
   const cfg = NETWORKS[network];
   const spec = cfg.formats[format]?.thumb;
   if (!spec) return [];
-  const where = `${cfg.label}, miniatura`;
-  if (!meta) return [{ level: "warn", text: `${where}: ainda não há miniatura ligada a este post.` }];
+  const where = `${cfg.label}, ${spec.label ?? "miniatura"}`;
+  if (!meta) return spec.optional ? [] : [{ level: "warn", text: `${where}: ainda não há miniatura ligada a este post.` }];
   if (meta.error) return [{ level: "warn", text: `${where}: ${meta.error}` }];
   const out: Check[] = [];
   if (meta.mimeType && !meta.mimeType.startsWith("image/")) {
