@@ -23,6 +23,8 @@ export type ReadyVideo = {
   topic: string;
   guest: string;
   transcript: string;
+  /** Legenda sugerida por quem cortou o vídeo (quando veio na pasta). */
+  suggested_caption?: string;
   /** Ficha feita pela IA na sincronização (vazio enquanto não houver ficha). */
   summary?: string;
   pillar?: string;
@@ -85,7 +87,12 @@ export function buildSequencePrompt(input: {
               v.audience ? `   público: ${v.audience}` : "",
               v.guest ? `   convidado: ${v.guest}` : "",
               v.flags?.includes("uncertain") ? "   atenção: transcrição com trechos incertos" : "",
-              `   transcrição: ${transcriptExcerpt(v.transcript, v.summary ? TRANSCRIPT_EXCERPT_WITH_PROFILE : TRANSCRIPT_EXCERPT_CHARS) || "(sem transcrição)"}`,
+              v.transcript.trim() || !v.suggested_caption?.trim()
+                ? `   transcrição: ${transcriptExcerpt(v.transcript, v.summary ? TRANSCRIPT_EXCERPT_WITH_PROFILE : TRANSCRIPT_EXCERPT_CHARS) || "(sem transcrição)"}`
+                : "",
+              v.suggested_caption?.trim()
+                ? `   legenda sugerida por quem cortou: ${transcriptExcerpt(v.suggested_caption, v.summary ? TRANSCRIPT_EXCERPT_WITH_PROFILE : TRANSCRIPT_EXCERPT_CHARS)}`
+                : "",
             ]
               .filter(Boolean)
               .join("\n"),
@@ -112,11 +119,11 @@ export function buildSequencePrompt(input: {
     `- "new": uma pauta nova para gravar, com tema DIFERENTE do que as transcrições já cobrem, para o conteúdo parecer sempre renovado. Só é permitido em datas a partir de ${firstNewDay} (a pessoa precisa de ${input.leadDays} dia(s) para gravar e editar).`,
     `- "skip": não postar nesse dia. Use SÓ quando não houver vídeo pronto que caiba sem repetir o tema do post anterior E ainda não der tempo de gravar uma pauta nova. Nunca use para "pausa estratégica", "equilibrar frequência" ou "responder comentários": a pessoa escolheu postar nessas datas. Explique o motivo.`,
     "",
-    "Como decidir a ordem: use o tema, o resumo, o pilar e o público de cada vídeo (e a transcrição) para entender o assunto real; evite dois posts seguidos do mesmo tema ou do mesmo pilar;",
+    "Como decidir a ordem: use o tema, o resumo, o pilar e o público de cada vídeo (e a transcrição ou a legenda sugerida) para entender o assunto real; evite dois posts seguidos do mesmo tema ou do mesmo pilar;",
     "alterne vídeos prontos e pautas novas para nunca ficar sem conteúdo; pense no que prende a atenção e alcança mais gente nas redes hoje;",
     "não repita temas publicados recentemente.",
     "",
-    "VÍDEOS JÁ GRAVADOS (com transcrição):",
+    "VÍDEOS JÁ GRAVADOS (com transcrição e/ou legenda sugerida):",
     ready,
     "",
     "PUBLICADO OU AGENDADO RECENTEMENTE (não repetir):",

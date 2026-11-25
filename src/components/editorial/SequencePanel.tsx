@@ -235,7 +235,7 @@ export default function SequencePanel({
 
   const pending = rows.filter((r) => r.kind !== "skip" && !r.approved);
   const noTranscript = ready.filter((r) => !r.has_transcript).length;
-  const flagged = ready.filter((r) => r.flags.some((f) => f !== "no_transcript" && f !== "no_speech")).length;
+  const flagged = ready.filter((r) => r.flags.some((f) => f === "uncertain" || f === "commercial_music")).length;
 
   return (
     <section className="card col" style={{ gap: 14 }} aria-labelledby="seq-h">
@@ -243,7 +243,7 @@ export default function SequencePanel({
         <div className="col" style={{ gap: 2 }}>
           <h2 id="seq-h">Próximos posts</h2>
           <span className="muted small" style={{ maxWidth: "70ch" }}>
-            <b>Sincronizar conteúdos</b> lê a pasta <b>Reels Editados</b> (vídeo + transcrição .txt, Google Doc ou .docx) e a IA faz a
+            <b>Sincronizar conteúdos</b> lê a pasta <b>Reels Editados</b> (vídeo + transcrição e/ou legenda sugerida em .txt, Google Doc ou .docx) e a IA faz a
             ficha de cada vídeo: tema, resumo, pilar, gancho e legendas. Depois ela cria pautas novas com temas que faltam e decide a
             ordem para não repetir. Nada vira post até você aprovar; ao aprovar, a pasta do vídeo vai para a pasta do dia.
           </span>
@@ -256,7 +256,7 @@ export default function SequencePanel({
       <details className="col" style={{ gap: 8 }}>
         <summary className="small" style={{ cursor: "pointer" }}>
           <b>{ready.length}</b> vídeo(s) pronto(s) disponível(is) para a sequência
-          {noTranscript ? <span className="muted"> · {noTranscript} sem transcrição (a IA só vê o nome)</span> : null}
+          {noTranscript ? <span className="muted"> · {noTranscript} sem transcrição nem legenda (a IA só vê o nome)</span> : null}
           {flagged ? <span style={{ color: "var(--accent-ink)" }}> · {flagged} pedem conferência</span> : null}
         </summary>
         <ul className="col" style={{ listStyle: "none", margin: 0, padding: 0, gap: 8 }} aria-label="Vídeos prontos">
