@@ -5,6 +5,7 @@ import { getDriveRoot } from "@/lib/drive-root";
 import { saveDriveRoot } from "@/lib/actions";
 import { activeAiProvider } from "@/lib/ai";
 import { Flash } from "@/components/ui";
+import DriveMoveTest from "@/components/DriveMoveTest";
 
 async function dbOk(): Promise<boolean> {
   try {
@@ -35,6 +36,9 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const rootId = database ? await getDriveRoot().catch(() => null) : null;
   const root = rootId && driveConfigured() ? await getFolderName(rootId) : null;
   const aiProvider = activeAiProvider();
+  const driveClients = database
+    ? (await (await db()).query<{ id: string; name: string }>("select id, name from clients where drive_folder_id is not null order by name")).rows
+    : [];
   const aiLabel = aiProvider === "gemini" ? "Gemini" : aiProvider === "claude" ? "Claude" : null;
   return (
     <main id="conteudo" tabIndex={-1} className="main narrow">
@@ -120,6 +124,16 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           <div><button type="submit" className="btn primary">Salvar pasta</button></div>
         </form>
       </section>
+      {driveConfigured() && driveClients.length > 0 && (
+        <section className="card" aria-labelledby="mover">
+          <h2 id="mover">Testar mover pastas no Drive</h2>
+          <p className="muted small" style={{ maxWidth: "70ch" }}>
+            Confere se o app consegue mover as pastas de vídeos prontos (<b>Reels Editados</b>) para a pasta do dia da postagem.
+            Só move de verdade uma subpasta <b>vazia</b>, e logo a devolve. Pastas com vídeo não são tocadas.
+          </p>
+          <DriveMoveTest clients={driveClients} />
+        </section>
+      )}
       <section className="card">
         <h2>Como liberar uma pasta do Drive</h2>
         <ol style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6 }}>

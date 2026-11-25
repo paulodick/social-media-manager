@@ -102,6 +102,21 @@ export function startMockDrive(PORT = 4030, opts = {}) {
       return;
     }
 
+    // Mover: PATCH /files/:id?addParents=&removeParents=
+    if (req.method === "PATCH") {
+      const pid = url.pathname.split("/").filter(Boolean).pop() ?? "";
+      const item = customFiles.get(pid);
+      res.setHeader("content-type", "application/json");
+      if (!item) { res.statusCode = 404; res.end(JSON.stringify({ error: { code: 404, message: "File not found" } })); return; }
+      if (item.denyMove) { res.statusCode = 403; res.end(JSON.stringify({ error: { code: 403, message: "Insufficient permissions for this file" } })); return; }
+      const add = url.searchParams.get("addParents");
+      const rem = url.searchParams.get("removeParents");
+      item.parents = [...(item.parents ?? []).filter((x) => x !== rem), ...(add ? [add] : [])];
+      item.moves = (item.moves ?? 0) + 1;
+      res.end(JSON.stringify({ id: item.id, parents: item.parents }));
+      return;
+    }
+
     const id = url.pathname.split("/").filter(Boolean).pop() ?? "";
     const custom = customFiles.get(id);
     if (custom) {
@@ -127,6 +142,8 @@ export function startMockDrive(PORT = 4030, opts = {}) {
         mimeType: custom.mimeType,
         size: custom.size !== undefined ? String(custom.size) : undefined,
         parents: custom.parents ?? [],
+        owners: [{ emailAddress: custom.owner ?? "dono@example.com" }],
+        capabilities: { canMoveItemWithinDrive: !custom.denyMove },
       }));
       return;
     }

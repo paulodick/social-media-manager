@@ -547,3 +547,122 @@ export async function readDriveDocumentText(file: {
   }
 }
 
+
+// ---------- Mover pastas (só o teste de permissão e, depois, o editorial) ----------
+
+/** Nome de pasta normalizado para comparar ("Reels Editados", "reels-editados" e "Reels_Editados" viram "reelseditados"). */
+export function normalizeFolderName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** Nomes aceitos para a pasta dos vídeos prontos de cada cliente. */
+export const READY_VIDEOS_FOLDER = "Reels Editados";
+
+/** O que o Drive diz que a conta do app pode fazer com um item. */
+export async function getMoveInfo(
+  id: string,
+): Promise<{ canMove: boolean; owner: string; parents: string[] } | { error: string }> {
+  if (!SAFE_ID.test(id)) return { error: "ID inválido." };
+  try {
+    const r = await api(`/files/${id}?fields=${encodeURIComponent("parents,owners(emailAddress),capabilities(canMoveItemWithinDrive)")}`);
+    if (!r.ok) return { error: `o Google Drive respondeu com erro ${r.status}.` };
+    const j = (await r.json()) as {
+      parents?: string[];
+      owners?: { emailAddress?: string }[];
+      capabilities?: { canMoveItemWithinDrive?: boolean };
+    };
+    return { canMove: !!j.capabilities?.canMoveItemWithinDrive, owner: j.owners?.[0]?.emailAddress ?? "", parents: j.parents ?? [] };
+  } catch {
+    return { error: "não foi possível falar com o Google Drive agora." };
+  }
+}
+
+/** Move um item de uma pasta para outra. Devolve a frase do Drive em caso de recusa. */
+export async function moveItem(id: string, fromParent: string, toParent: string): Promise<{ ok: true } | { error: string }> {
+  if (![id, fromParent, toParent].every((x) => SAFE_ID.test(x))) return { error: "ID inválido." };
+  try {
+    const qs = new URLSearchParams({ addParents: toParent, removeParents: fromParent, fields: "id,parents" });
+    const r = await api(`/files/${id}?${qs.toString()}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (r.ok) return { ok: true };
+    const j = (await r.json().catch(() => null)) as { error?: { message?: string } } | null;
+    return { error: `o Google Drive recusou (erro ${r.status}${j?.error?.message ? `: ${j.error.message}` : ""}).` };
+  } catch {
+    return { error: "não foi possível falar com o Google Drive agora." };
+  }
+}
+
+/** Quantos itens (até 1) há dentro de uma pasta: serve para achar uma pasta vazia, segura para o teste de mover. */
+async function folderIsEmpty(id: string): Promise<boolean | null> {
+  const q = `'${id}' in parents and trashed = false`;
+  const r = await api(`/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent("files(id)")}&pageSize=1&includeItemsFromAllDrives=true`);
+  if (!r.ok) return null;
+  const j = (await r.json()) as { files?: unknown[] };
+  return (j.files ?? []).length === 0;
+}
+
+export type MoveTestResult = {
+  verdict: "move" | "shortcut" | "setup";
+  lines: string[];
+};
+
+/**
+ * Teste de permissão para mover pastas na pasta do cliente:
+ * 1) acha "Reels Editados"; 2) pergunta ao Drive se o app pode mover cada subpasta (só leitura);
+ * 3) se houver uma subpasta VAZIA, move de verdade para a pasta do cliente e devolve para "Reels Editados".
+ * Nunca mexe em pasta com conteúdo e nunca apaga nada.
+ */
+export async function runDriveMoveTest(clientFolderId: string): Promise<MoveTestResult> {
+  const lines: string[] = [];
+  if (!driveConfigured()) return { verdict: "setup", lines: ["O Google Drive ainda não está configurado no app."] };
+  const subs = await listSubfolders(clientFolderId, { max: 200 });
+  if ("error" in subs) return { verdict: "setup", lines: [`Pasta do cliente: ${subs.error}`] };
+  const ready = subs.folders.find((f) => normalizeFolderName(f.name) === normalizeFolderName(READY_VIDEOS_FOLDER));
+  if (!ready) {
+    return { verdict: "setup", lines: [`Não achei a pasta "${READY_VIDEOS_FOLDER}" dentro da pasta do cliente. Crie-a e rode o teste de novo.`] };
+  }
+  lines.push(`Pasta "${ready.name}" encontrada.`);
+  const videos = await listSubfolders(ready.id, { max: 50 });
+  if ("error" in videos) return { verdict: "setup", lines: [...lines, `"${ready.name}": ${videos.error}`] };
+  if (!videos.folders.length) {
+    return { verdict: "setup", lines: [...lines, `Crie uma subpasta vazia (ex.: "Video 1") dentro de "${ready.name}" para o teste.`] };
+  }
+
+  let anyCan = false;
+  let empty: { id: string; name: string } | null = null;
+  for (const v of videos.folders.slice(0, 10)) {
+    const info = await getMoveInfo(v.id);
+    if ("error" in info) {
+      lines.push(`"${v.name}": ${info.error}`);
+      continue;
+    }
+    anyCan ||= info.canMove;
+    lines.push(`"${v.name}" (dona: ${info.owner || "desconhecida"}): o Drive diz que o app ${info.canMove ? "PODE" : "NÃO pode"} mover.`);
+    if (!empty && (await folderIsEmpty(v.id)) === true) empty = v;
+  }
+
+  if (!empty) {
+    lines.push("Nenhuma subpasta vazia: por segurança o teste não move pasta com vídeo. O resultado acima é só o que o Drive informa.");
+    return { verdict: anyCan ? "move" : "shortcut", lines };
+  }
+
+  const there = await moveItem(empty.id, ready.id, clientFolderId);
+  if ("error" in there) {
+    lines.push(`Teste real com "${empty.name}" (vazia): não moveu — ${there.error}`);
+    return { verdict: "shortcut", lines };
+  }
+  const back = await moveItem(empty.id, clientFolderId, ready.id);
+  if ("error" in back) {
+    lines.push(`Teste real com "${empty.name}": moveu, mas NÃO conseguiu devolver — ${back.error} Ela está agora na pasta do cliente; arraste de volta para "${ready.name}".`);
+    return { verdict: "move", lines };
+  }
+  lines.push(`Teste real com "${empty.name}" (vazia): moveu para a pasta do cliente e voltou para "${ready.name}".`);
+  return { verdict: "move", lines };
+}
