@@ -47,7 +47,8 @@ const VIDEO_EXT_RE = /\.(mp4|mov|m4v|webm|mkv|avi)$/i;
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif|heic)$/i;
 const COVER_HINT_RE = /(capa|thumb|cover|miniatura)/i;
 const DOC_HINT_RE = /(legenda|copy|texto|roteiro|corte|descricao|descrição)/i;
-const IGNORED_FOLDER_RE = /^(logotipo|logos?|artes|20\d{2})$/i;
+// "Reels Editados" é lida à parte (vídeos prontos da sequência), por isso não vira um corte avulso.
+const IGNORED_FOLDER_RE = /^(logotipo|logos?|artes|20\d{2}|reels[\s_-]*editados)$/i;
 
 export function isDocFile(file: { name: string; mimeType: string }): boolean {
   return DOC_MIMES.has(file.mimeType) || DOC_EXT_RE.test(file.name);

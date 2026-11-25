@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NetDot, StatusPill } from "@/components/ui";
 import { useDialogFocusTrap } from "@/components/useDialogFocusTrap";
 import { NETWORKS, isNetwork } from "@/config/networks";
@@ -18,6 +18,7 @@ import type {
 import CalendarGeneratorModal from "./CalendarGeneratorModal";
 import DriveImportPanel from "./DriveImportPanel";
 import PillarManager from "./PillarManager";
+import SequencePanel from "./SequencePanel";
 
 const WEEK = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -43,6 +44,8 @@ export default function EditorialBoard({
   initialItems,
   initialSlots,
   initialStyleNotes = "",
+  aiEnabled = false,
+  today: todayProp = "",
 }: {
   clientId: string;
   clientNetworks: string[];
@@ -52,10 +55,15 @@ export default function EditorialBoard({
   initialItems: ItemCard[];
   initialSlots: SlotView[];
   initialStyleNotes?: string;
+  aiEnabled?: boolean;
+  today?: string;
 }) {
   const [pillars, setPillars] = useState<Pillar[]>(initialPillars);
   const [items, setItems] = useState<ItemCard[]>(initialItems);
   const [slots, setSlots] = useState<SlotView[]>(initialSlots);
+  // Depois de a sequência gravar ou aprovar (router.refresh), o calendário abaixo recebe os horários novos do servidor.
+  useEffect(() => setSlots(initialSlots), [initialSlots]);
+  useEffect(() => setItems(initialItems), [initialItems]);
   const [filterPillar, setFilterPillar] = useState<string>("");
   const [filterSource, setFilterSource] = useState<"" | ContentSourceKind>("");
   const [showGen, setShowGen] = useState(false);
@@ -549,6 +557,7 @@ export default function EditorialBoard({
 
   return (
     <div className="col" style={{ gap: 20 }}>
+      <SequencePanel clientId={clientId} clientNetworks={clientNetworks} today={todayProp || today} aiEnabled={aiEnabled} />
       <PillarManager clientId={clientId} initialPillars={pillars} onChange={setPillars} />
 
       <details className="card">

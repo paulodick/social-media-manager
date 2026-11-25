@@ -371,6 +371,29 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         where source_folder_id is not null;
     `,
   },
+  {
+    version: 18,
+    sql: `
+      -- 18: Sequência de postagem montada pela IA (vídeos prontos de "Reels Editados" + ideias novas + dias sem post).
+      -- Pasta "Vídeo N" original (para voltar) e para onde o app a moveu ao aprovar.
+      alter table content_items
+        add column if not exists ready_folder_parent_id text,
+        add column if not exists ready_folder_moved_to text;
+      -- Por que a IA pôs esse conteúdo nesse dia, e se era vídeo pronto ou pauta nova.
+      alter table editorial_schedule
+        add column if not exists ai_reason text not null default '',
+        add column if not exists sequence_kind text not null default ''
+          check (sequence_kind in ('', 'ready', 'new'));
+      -- Dias em que a IA sugeriu NÃO postar (com o motivo).
+      create table if not exists editorial_sequence_skips (
+        client_id uuid not null references clients(id) on delete cascade,
+        day date not null,
+        reason text not null default '',
+        created_at timestamptz not null default now(),
+        primary key (client_id, day)
+      );
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };
