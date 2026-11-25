@@ -49,12 +49,16 @@ export default function DriveImportPanel({
   const [nextPage, setNextPage] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  async function loadDrive() {
+  const [otherLink, setOtherLink] = useState("");
+
+  async function loadDrive(folderId?: string) {
     setLoading(true);
     setErr("");
     setMsg("");
     try {
-      const res = await fetch(`/api/editorial/clients/${clientId}/drive/files`);
+      const res = await fetch(
+        `/api/editorial/clients/${clientId}/drive/files${folderId ? `?folder=${encodeURIComponent(folderId)}` : ""}`,
+      );
       const j = (await res.json()) as {
         cut_folders?: DriveCutFolderEntry[];
         files?: DriveFileEntry[];
@@ -233,7 +237,7 @@ export default function DriveImportPanel({
           </span>
         </div>
         <div className="row" style={{ gap: 8 }}>
-          <button type="button" className="btn" onClick={loadDrive} disabled={!hasDriveFolder || loading}>
+          <button type="button" className="btn" onClick={() => loadDrive()} disabled={!hasDriveFolder || loading}>
             {loading ? "Escaneando Drive..." : "Escanear pasta no Drive"}
           </button>
           {unclassifiedItems.length > 0 && (
@@ -244,6 +248,34 @@ export default function DriveImportPanel({
         </div>
       </div>
 
+      {hasDriveFolder && (
+        <form
+          className="row"
+          style={{ gap: 8, alignItems: "flex-end" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const id = otherLink.match(/folders\/([A-Za-z0-9_-]{10,})/)?.[1] ?? otherLink.match(/[?&]id=([A-Za-z0-9_-]{10,})/)?.[1] ?? otherLink.trim();
+            if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) {
+              setErr("Cole o link de uma pasta do Google Drive.");
+              return;
+            }
+            void loadDrive(id);
+          }}
+        >
+          <div className="col" style={{ flex: "1 1 320px" }}>
+            <label className="f" htmlFor="drive-other">Escanear só uma subpasta (cole o link, ex.: a pasta de um episódio)</label>
+            <input
+              id="drive-other"
+              value={otherLink}
+              onChange={(e) => setOtherLink(e.target.value)}
+              placeholder="https://drive.google.com/drive/folders/..."
+            />
+          </div>
+          <button type="submit" className="btn" disabled={loading || !otherLink.trim()}>
+            Escanear esta pasta
+          </button>
+        </form>
+      )}
       {!hasDriveFolder && (
         <p className="alert warn">Configure a pasta do Google Drive do cliente em &ldquo;Cadastro e redes&rdquo; para importar arquivos.</p>
       )}
