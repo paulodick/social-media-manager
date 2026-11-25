@@ -647,12 +647,21 @@ async function listForeignChildFolders(rootId: string): Promise<{ id: string; na
     const p = info.get(id)?.parent;
     if (p === rootId) found.set(id, info.get(id)?.name ?? "");
   }
-  let frontier = [...new Set(foreign.map((id) => info.get(id)?.parent).filter((p): p is string => !!p && p !== rootId && !info.has(p)))];
+  // A busca às vezes não informa o pai (vem vazio); ler a pasta diretamente devolve. Essas também entram na subida.
+  const fetched = new Set<string>();
+  const needsRead = (id: string) => !fetched.has(id) && (!info.has(id) || info.get(id)?.parent === null);
+  let frontier = [
+    ...new Set([
+      ...foreign.filter((id) => info.get(id)?.parent === null),
+      ...foreign.map((id) => info.get(id)?.parent).filter((p): p is string => !!p && p !== rootId && needsRead(p)),
+    ]),
+  ];
   let gets = 0;
   for (let level = 0; level < 6 && frontier.length && gets < 300; level++) {
     const next: string[] = [];
     for (let i = 0; i < frontier.length && gets < 300; i += 8) {
-      const batch = frontier.slice(i, i + 8).filter((id) => SAFE_ID.test(id));
+      const batch = frontier.slice(i, i + 8).filter((id) => SAFE_ID.test(id) && !fetched.has(id));
+      for (const id of batch) fetched.add(id);
       gets += batch.length;
       const metas = await Promise.all(
         batch.map(async (id) => {
@@ -670,7 +679,7 @@ async function listForeignChildFolders(rootId: string): Promise<{ id: string; na
         const parent = m.parents?.[0] ?? null;
         info.set(m.id, { name: m.name, parent });
         if (parent === rootId) found.set(m.id, m.name);
-        else if (parent && !info.has(parent)) next.push(parent);
+        else if (parent && needsRead(parent)) next.push(parent);
       }
     }
     frontier = [...new Set(next)];

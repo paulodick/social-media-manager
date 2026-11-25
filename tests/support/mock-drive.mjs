@@ -34,7 +34,7 @@ export function startMockDrive(PORT = 4030, opts = {}) {
       if (customFiles.size > 0 && !pm && q.includes("not 'me' in owners")) {
         const matched = [...customFiles.values()]
           .filter((f) => f.foreign && !f.hiddenFromSearch && f.mimeType === "application/vnd.google-apps.folder")
-          .map((f) => ({ id: f.id, name: f.name, parents: f.parents }));
+          .map((f) => ({ id: f.id, name: f.name, parents: f.searchNoParents ? undefined : f.parents }));
         res.setHeader("content-type", "application/json");
         res.end(JSON.stringify({ files: matched }));
         return;
