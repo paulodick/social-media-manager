@@ -485,6 +485,8 @@ export async function scanClientCutFolders(
       folders_truncated: boolean;
       /** O que a varredura viu no primeiro nível e erros do Drive, para explicar quando nada é encontrado. */
       scan_notes: string[];
+      /** Pastas finais vazias (sem arquivo nem subpasta), com o caminho. */
+      empty_folders: string[];
     }
   | { error: string }
 > {
@@ -492,13 +494,14 @@ export async function scanClientCutFolders(
   if ("error" in looseRes) return looseRes;
   // Com pageToken é o "carregar mais" dos arquivos avulsos: as pastas de corte já vieram na primeira página.
   if (opts.pageToken) {
-    return { cut_folders: [], loose_files: looseRes.files, next_page_token: looseRes.nextPageToken, folders_truncated: false, scan_notes: [] };
+    return { cut_folders: [], loose_files: looseRes.files, next_page_token: looseRes.nextPageToken, folders_truncated: false, scan_notes: [], empty_folders: [] };
   }
 
   const notes: string[] = [];
+  const empty: string[] = [];
   const maxCuts = opts.maxFolders ?? MAX_CUT_FOLDERS;
-  type Node = { id: string; name: string; path: string[]; depth: number };
-  const queue: Node[] = [{ id: rootFolderId, name: "", path: [], depth: 0 }];
+  type Node = { id: string; name: string; path: string[]; depth: number; parentId: string | null };
+  const queue: Node[] = [{ id: rootFolderId, name: "", path: [], depth: 0, parentId: null }];
   const queued = new Set([rootFolderId]); // atalhos podem apontar para a mesma pasta duas vezes
   const cutFolders: DriveCutBundle[] = [];
   let visited = 0;
@@ -518,16 +521,6 @@ export async function scanClientCutFolders(
         listing: node.depth > 0 ? await listFolderAllFiles(node.id, { pageSize: 30 }) : null,
       })),
     );
-    if (batch.some((n) => n.depth === 0)) {
-      // Pastas de OUTRA conta dentro da pasta do cliente às vezes não aparecem na busca por "in parents" da conta do
-      // app, embora ela consiga abri-las. Procura também entre as pastas visíveis que não são do app.
-      const extra = await listForeignChildFolders(rootFolderId);
-      const root = results.find((x) => x.node.depth === 0);
-      if (root && !("error" in root.subs) && extra.length) {
-        const have = new Set(root.subs.folders.map((f) => f.id));
-        for (const f of extra) if (!have.has(f.id)) root.subs.folders.push(f);
-      }
-    }
     for (const { node, subs, listing } of results) {
       const where = node.depth === 0 ? "pasta do cliente" : [...node.path, node.name].join(" / ");
       if ("error" in subs) notes.push(`${where}: não deu para listar as subpastas (${subs.error})`);
@@ -535,7 +528,7 @@ export async function scanClientCutFolders(
       if (node.depth === 0 && !("error" in subs)) {
         notes.push(
           subs.folders.length
-            ? `Subpastas na pasta do cliente: ${subs.folders.map((f) => (isIgnoredCutFolderName(f.name) ? `${f.name} (ignorada)` : f.name)).join(", ")}.`
+            ? `Subpastas na pasta do cliente: ${subs.folders.map((f) => (isIgnoredCutFolderName(f.name) ? `${f.name} (${/reels/i.test(f.name) ? "lida em Próximos posts, não aqui" : "ignorada"})` : f.name)).join(", ")}.`
             : "A pasta do cliente não tem subpastas visíveis para o app.",
         );
       }
@@ -544,14 +537,15 @@ export async function scanClientCutFolders(
       if (listing && !("error" in listing)) {
         const bundle = groupFolderIntoCutBundle({ id: node.id, name: node.name }, listing.files, node.path);
         // Pasta intermediária (episódio com subpastas) só vira corte se tiver vídeo próprio.
-        if (bundle && (bundle.video || children.length === 0)) cutFolders.push(bundle);
+        if (bundle && (bundle.video || children.length === 0)) cutFolders.push({ ...bundle, parent_id: node.parentId });
+        if (!bundle && children.length === 0 && !("error" in subs)) empty.push([...node.path, node.name].join(" / "));
       }
       if (node.depth < MAX_SCAN_DEPTH) {
         const childPath = node.depth > 0 ? [...node.path, node.name] : (opts.basePath ?? []);
         for (const c of children) {
           if (queued.has(c.id)) continue;
           queued.add(c.id);
-          queue.push({ id: c.id, name: c.name, path: childPath, depth: node.depth + 1 });
+          queue.push({ id: c.id, name: c.name, path: childPath, depth: node.depth + 1, parentId: node.id });
         }
       } else if (children.length) {
         truncated = true;
@@ -575,20 +569,6 @@ export async function scanClientCutFolders(
         const items = (j.files ?? []).map((f) => `${f.name} [${f.mimeType.replace("application/vnd.google-apps.", "")}${f.owners?.[0]?.emailAddress ? `, ${f.owners[0].emailAddress}` : ""}]`);
         notes.push(items.length ? `O app enxerga na pasta do cliente: ${items.join("; ")}.` : "O app não enxerga nenhum item na pasta do cliente.");
       }
-      const q2 = new URLSearchParams({
-        q: `mimeType = '${FOLDER_MIME}' and trashed = false and not 'me' in owners`,
-        fields: "files(id,name,parents,owners(emailAddress))",
-        pageSize: "100",
-        orderBy: "modifiedTime desc",
-      });
-      const r2 = await api(`/files?${q2.toString()}`);
-      if (r2.ok) {
-        const j2 = (await r2.json()) as { files?: { id: string; name: string; parents?: string[]; owners?: { emailAddress?: string }[] }[] };
-        const list = (j2.files ?? []).slice(0, 25).map((f) => `${f.name} (pai ${f.parents?.[0] ?? "?"}, ${f.owners?.[0]?.emailAddress ?? "?"})`);
-        notes.push(`Pastas de outras contas que o app enxerga (${j2.files?.length ?? 0}): ${list.join("; ")}.`);
-      } else {
-        notes.push(`Busca de pastas de outras contas falhou (erro ${r2.status}).`);
-      }
     } catch {
       // só diagnóstico
     }
@@ -602,117 +582,9 @@ export async function scanClientCutFolders(
     loose_files: looseRes.files,
     next_page_token: looseRes.nextPageToken,
     folders_truncated: truncated,
-    scan_notes: [...notes, ...(cutFolders.length ? [] : foreignDebug)].slice(0, 40),
+    scan_notes: notes.slice(0, 30),
+    empty_folders: empty.slice(0, 50),
   };
-}
-
-/**
- * Subpastas diretas de `rootId` que a busca "in parents" não devolve. Acontece com pastas de OUTRA conta colocadas
- * na pasta do cliente: o Drive deixa a conta do app abri-las, mas não as lista. Caminho: pega as pastas visíveis de
- * outras contas (busca ampla) e sobe pelos pais (lendo cada pasta, o que funciona) até chegar em `rootId`; a pasta
- * logo abaixo dele é a subpasta que faltava (ex.: "Ep - 2 Convidado", achada a partir dos cortes dentro dela).
- */
-const foreignDebug: string[] = [];
-async function listForeignChildFolders(rootId: string): Promise<{ id: string; name: string }[]> {
-  foreignDebug.length = 0;
-  const info = new Map<string, { name: string; parents: string[] }>();
-  const foreign: string[] = [];
-  let pageToken: string | undefined;
-  let seen = 0;
-  try {
-    do {
-      const qs = new URLSearchParams({
-        q: `mimeType = '${FOLDER_MIME}' and trashed = false and not 'me' in owners`,
-        fields: "nextPageToken,files(id,name,parents)",
-        pageSize: "200",
-        includeItemsFromAllDrives: "true",
-        supportsAllDrives: "true",
-      });
-      if (pageToken) qs.set("pageToken", pageToken);
-      const r = await api(`/files?${qs.toString()}`);
-      if (!r.ok) break;
-      const j = (await r.json()) as { files?: { id: string; name: string; parents?: string[] }[]; nextPageToken?: string };
-      for (const f of j.files ?? []) {
-        info.set(f.id, { name: f.name, parents: f.parents ?? [] });
-        foreign.push(f.id);
-      }
-      seen += j.files?.length ?? 0;
-      pageToken = j.nextPageToken || undefined;
-    } while (pageToken && seen < 1000);
-  } catch {
-    return [];
-  }
-
-  // Sobe por níveis. Uma pasta pode ter mais de um pai (pastas antigas de outra conta "adicionadas" aqui): basta um
-  // deles ser a pasta do cliente. Só os pais que a busca não trouxe (ou trouxe sem pai) são lidos, cada um uma vez.
-  const found = new Map<string, string>();
-  for (const id of foreign) {
-    const v = info.get(id);
-    if (v?.parents.includes(rootId)) found.set(id, v.name);
-  }
-  const fetched = new Set<string>();
-  const needsRead = (id: string) => id !== rootId && !fetched.has(id) && (!info.has(id) || info.get(id)?.parents.length === 0);
-  let frontier = [
-    ...new Set([
-      ...foreign.filter((id) => info.get(id)?.parents.length === 0),
-      ...foreign.flatMap((id) => info.get(id)?.parents ?? []).filter(needsRead),
-    ]),
-  ];
-  foreignDebug.push(`busca ampla: ${foreign.length} pastas; a ler: ${frontier.length}`);
-  for (const id of foreign) {
-    const v = info.get(id);
-    if (v && /^(ep|cortes)/i.test(v.name) && foreignDebug.length < 15) foreignDebug.push(`busca: ${v.name} pais ${v.parents.join(",") || "-"}`);
-  }
-  let gets = 0;
-  for (let level = 0; level < 6 && frontier.length && gets < 300; level++) {
-    const next: string[] = [];
-    for (let i = 0; i < frontier.length && gets < 300; i += 8) {
-      const batch = frontier.slice(i, i + 8).filter((id) => SAFE_ID.test(id) && !fetched.has(id));
-      for (const id of batch) fetched.add(id);
-      gets += batch.length;
-      const metas = await Promise.all(
-        batch.map(async (id) => {
-          try {
-            const r = await api(`/files/${id}?fields=${encodeURIComponent("id,name,parents,mimeType")}&supportsAllDrives=true`);
-            if (!r.ok) return null;
-            return { id, ...((await r.json()) as { name: string; parents?: string[]; mimeType?: string }) };
-          } catch {
-            return null;
-          }
-        }),
-      );
-      for (const [k, m] of metas.entries()) {
-        if (foreignDebug.length < 25) foreignDebug.push(`${batch[k]} -> ${m ? `${m.name} pai ${m.parents?.join(",") ?? "-"}` : "erro"}`);
-        if (!m || m.mimeType !== FOLDER_MIME) continue;
-        const parents = m.parents ?? [];
-        info.set(m.id, { name: m.name, parents });
-        if (parents.includes(rootId)) found.set(m.id, m.name);
-        else next.push(...parents.filter(needsRead));
-      }
-    }
-    frontier = [...new Set(next)];
-  }
-  // Pastas da busca cujo pai (visto pela busca) só é ligado ao cliente por um segundo pai: sobe pelo que já se sabe.
-  const memo = new Map<string, string | null>();
-  const topUnderRoot = (id: string, depth = 0): string | null => {
-    if (memo.has(id)) return memo.get(id) ?? null;
-    if (depth > 8) return null;
-    memo.set(id, null);
-    const v = info.get(id);
-    let res: string | null = null;
-    if (v?.parents.includes(rootId)) res = id;
-    else for (const p of v?.parents ?? []) {
-      res = topUnderRoot(p, depth + 1);
-      if (res) break;
-    }
-    memo.set(id, res);
-    return res;
-  };
-  for (const id of foreign) {
-    const top = topUnderRoot(id);
-    if (top) found.set(top, info.get(top)?.name ?? "");
-  }
-  return [...found].map(([id, name]) => ({ id, name }));
 }
 
 const MAX_DOC_BYTES = 2 * 1024 * 1024; // 2 MB
