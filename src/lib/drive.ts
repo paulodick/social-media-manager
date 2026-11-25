@@ -374,13 +374,19 @@ function mapListedFile(f: DriveFile & { modifiedTime?: string }): ListedFile {
 }
 
 /** Lista subpastas diretas de uma pasta (só leitura), ordenadas por nome. */
+const SHORTCUT_MIME = "application/vnd.google-apps.shortcut";
+
 export async function listSubfolders(
   folderId: string,
-  opts: { pageSize?: number; max?: number } = {},
+  opts: { pageSize?: number; max?: number; followShortcuts?: boolean } = {},
 ): Promise<{ folders: { id: string; name: string }[]; truncated: boolean } | { error: string }> {
   if (!driveConfigured()) return { error: "o Google Drive ainda não está configurado no app." };
   if (!SAFE_ID.test(folderId)) return { error: "o link da pasta não é válido." };
-  const q = `'${folderId}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`;
+  // Com followShortcuts, atalhos para pastas (comuns quando a pasta é de outra conta e foi "adicionada" aqui)
+  // contam como subpastas, apontando para a pasta de verdade.
+  const q = opts.followShortcuts
+    ? `'${folderId}' in parents and (mimeType = '${FOLDER_MIME}' or mimeType = '${SHORTCUT_MIME}') and trashed = false`
+    : `'${folderId}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`;
   const max = Math.max(opts.max ?? 100, 1);
   const folders: { id: string; name: string }[] = [];
   let pageToken: string | undefined;
@@ -389,7 +395,7 @@ export async function listSubfolders(
     do {
       const qs = new URLSearchParams({
         q,
-        fields: "nextPageToken,files(id,name)",
+        fields: "nextPageToken,files(id,name,mimeType,shortcutDetails(targetId,targetMimeType))",
         orderBy: "name asc",
         pageSize: String(Math.min(Math.max(opts.pageSize ?? 100, 1), 100)),
         includeItemsFromAllDrives: "true",
@@ -400,8 +406,18 @@ export async function listSubfolders(
         return { error: "o app não enxerga essa pasta. Compartilhe-a com o e-mail de acesso do app." };
       }
       if (!r.ok) return { error: `o Google Drive respondeu com erro ${r.status}.` };
-      const j = (await r.json()) as { files?: { id: string; name: string }[]; nextPageToken?: string };
-      folders.push(...(j.files ?? []));
+      const j = (await r.json()) as {
+        files?: { id: string; name: string; mimeType?: string; shortcutDetails?: { targetId?: string; targetMimeType?: string } }[];
+        nextPageToken?: string;
+      };
+      for (const f of j.files ?? []) {
+        if (f.mimeType === SHORTCUT_MIME) {
+          const t = f.shortcutDetails;
+          if (t?.targetId && t.targetMimeType === FOLDER_MIME) folders.push({ id: t.targetId, name: f.name });
+        } else {
+          folders.push({ id: f.id, name: f.name });
+        }
+      }
       pageToken = j.nextPageToken || undefined;
     } while (pageToken && folders.length < max);
     return { folders: folders.slice(0, max), truncated: folders.length > max || !!pageToken };
@@ -483,6 +499,7 @@ export async function scanClientCutFolders(
   const maxCuts = opts.maxFolders ?? MAX_CUT_FOLDERS;
   type Node = { id: string; name: string; path: string[]; depth: number };
   const queue: Node[] = [{ id: rootFolderId, name: "", path: [], depth: 0 }];
+  const queued = new Set([rootFolderId]); // atalhos podem apontar para a mesma pasta duas vezes
   const cutFolders: DriveCutBundle[] = [];
   let visited = 0;
   let truncated = false;
@@ -497,7 +514,7 @@ export async function scanClientCutFolders(
     const results = await Promise.all(
       batch.map(async (node) => ({
         node,
-        subs: await listSubfolders(node.id, { max: 300 }),
+        subs: await listSubfolders(node.id, { max: 300, followShortcuts: true }),
         listing: node.depth > 0 ? await listFolderAllFiles(node.id, { pageSize: 30 }) : null,
       })),
     );
@@ -521,10 +538,35 @@ export async function scanClientCutFolders(
       }
       if (node.depth < MAX_SCAN_DEPTH) {
         const childPath = node.depth > 0 ? [...node.path, node.name] : [];
-        for (const c of children) queue.push({ id: c.id, name: c.name, path: childPath, depth: node.depth + 1 });
+        for (const c of children) {
+          if (queued.has(c.id)) continue;
+          queued.add(c.id);
+          queue.push({ id: c.id, name: c.name, path: childPath, depth: node.depth + 1 });
+        }
       } else if (children.length) {
         truncated = true;
       }
+    }
+  }
+
+  if (!cutFolders.length) {
+    // Nada encontrado: mostra tudo o que o app enxerga na pasta do cliente (com o tipo), para achar o motivo.
+    try {
+      const qs = new URLSearchParams({
+        q: `'${rootFolderId}' in parents and trashed = false`,
+        fields: "files(name,mimeType,owners(emailAddress))",
+        pageSize: "50",
+        includeItemsFromAllDrives: "true",
+        supportsAllDrives: "true",
+      });
+      const r = await api(`/files?${qs.toString()}`);
+      if (r.ok) {
+        const j = (await r.json()) as { files?: { name: string; mimeType: string; owners?: { emailAddress?: string }[] }[] };
+        const items = (j.files ?? []).map((f) => `${f.name} [${f.mimeType.replace("application/vnd.google-apps.", "")}${f.owners?.[0]?.emailAddress ? `, ${f.owners[0].emailAddress}` : ""}]`);
+        notes.push(items.length ? `O app enxerga na pasta do cliente: ${items.join("; ")}.` : "O app não enxerga nenhum item na pasta do cliente.");
+      }
+    } catch {
+      // só diagnóstico
     }
   }
 

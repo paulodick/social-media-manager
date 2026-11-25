@@ -4,6 +4,7 @@ import {
   getFolderName,
   listFolderAllFiles,
   readDriveDocumentText,
+  scanClientCutFolders,
 } from "@/lib/drive";
 import { groupFolderIntoCutBundle, parseCutDocument } from "@/lib/drive-cuts";
 import { isPgUniqueViolation, jsonError, readJsonBody, requireApiAuth, requireClient } from "@/lib/editorial-api";
@@ -43,10 +44,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
   // (antes os primeiros itens ficavam gravados e a tela mostrava só o erro).
   // Caminho de cada pasta de corte (episódio etc.), usado também para descobrir o convidado.
   const cutPaths = new Map<string, string[]>();
+  // Pastas que só chegam à do cliente por ATALHO (pasta de outra conta adicionada aqui) não têm o cliente como
+  // ancestral de verdade: valem se a mesma varredura da tela as encontrou.
+  let scanned: Map<string, string[]> | null = null;
+  const viaScan = async (id: string): Promise<string[] | null> => {
+    if (!scanned) {
+      const r = await scanClientCutFolders(root);
+      scanned = new Map("error" in r ? [] : r.cut_folders.map((c) => [c.folder_id, c.path] as [string, string[]]));
+    }
+    return scanned.get(id) ?? null;
+  };
   for (const cf of cutFoldersInput) {
     const folderId = String(cf.folder_id ?? "").trim();
     if (!SAFE_DRIVE_ID.test(folderId)) return jsonError("ID de pasta de corte do Drive inválido.", 400);
-    const path = await folderPathFromRoot(folderId, root);
+    const path = (await folderPathFromRoot(folderId, root)) ?? (await viaScan(folderId));
     if (!path) {
       return jsonError(`A pasta ${folderId} não pertence à pasta deste cliente. Nada foi importado.`, 403);
     }

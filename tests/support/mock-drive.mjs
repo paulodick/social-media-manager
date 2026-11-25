@@ -32,6 +32,7 @@ export function startMockDrive(PORT = 4030, opts = {}) {
       // Se há itens customizados cadastrados na árvore de teste, filtra por parent + mimeType + name
       if (customFiles.size > 0 && !nm) {
         const wantFolders = q.includes("mimeType = 'application/vnd.google-apps.folder'");
+        const wantShortcuts = q.includes("mimeType = 'application/vnd.google-apps.shortcut'");
         const excludeFolders = q.includes("mimeType != 'application/vnd.google-apps.folder'");
         const wantImage = q.includes("mimeType contains 'image/'");
         const wantVideo = q.includes("mimeType contains 'video/'");
@@ -39,7 +40,8 @@ export function startMockDrive(PORT = 4030, opts = {}) {
         for (const f of customFiles.values()) {
           if (!(f.parents ?? []).includes(parentId)) continue;
           const isFolder = f.mimeType === "application/vnd.google-apps.folder";
-          if (wantFolders && !isFolder) continue;
+          const isShortcut = f.mimeType === "application/vnd.google-apps.shortcut";
+          if (wantFolders && !isFolder && !(wantShortcuts && isShortcut)) continue;
           if (excludeFolders && isFolder) continue;
           if ((wantImage || wantVideo) && !excludeFolders && !wantFolders) {
             const okImg = wantImage && f.mimeType.startsWith("image/");
@@ -52,6 +54,7 @@ export function startMockDrive(PORT = 4030, opts = {}) {
             mimeType: f.mimeType,
             size: f.size !== undefined ? String(f.size) : undefined,
             parents: f.parents,
+            shortcutDetails: f.shortcutDetails,
           });
         }
         res.setHeader("content-type", "application/json");
