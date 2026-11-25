@@ -602,7 +602,7 @@ export async function scanClientCutFolders(
     loose_files: looseRes.files,
     next_page_token: looseRes.nextPageToken,
     folders_truncated: truncated,
-    scan_notes: notes.slice(0, 30),
+    scan_notes: [...notes, ...(cutFolders.length ? [] : foreignDebug)].slice(0, 40),
   };
 }
 
@@ -612,7 +612,9 @@ export async function scanClientCutFolders(
  * outras contas (busca ampla) e sobe pelos pais (lendo cada pasta, o que funciona) até chegar em `rootId`; a pasta
  * logo abaixo dele é a subpasta que faltava (ex.: "Ep - 2 Convidado", achada a partir dos cortes dentro dela).
  */
+const foreignDebug: string[] = [];
 async function listForeignChildFolders(rootId: string): Promise<{ id: string; name: string }[]> {
+  foreignDebug.length = 0;
   const info = new Map<string, { name: string; parent: string | null }>();
   const foreign: string[] = [];
   let pageToken: string | undefined;
@@ -656,6 +658,7 @@ async function listForeignChildFolders(rootId: string): Promise<{ id: string; na
       ...foreign.map((id) => info.get(id)?.parent).filter((p): p is string => !!p && p !== rootId && needsRead(p)),
     ]),
   ];
+  foreignDebug.push(`busca ampla: ${foreign.length} pastas; a ler: ${frontier.length}`);
   let gets = 0;
   for (let level = 0; level < 6 && frontier.length && gets < 300; level++) {
     const next: string[] = [];
@@ -674,7 +677,8 @@ async function listForeignChildFolders(rootId: string): Promise<{ id: string; na
           }
         }),
       );
-      for (const m of metas) {
+      for (const [k, m] of metas.entries()) {
+        if (foreignDebug.length < 25) foreignDebug.push(`${batch[k]} -> ${m ? `${m.name} [${m.mimeType}] pai ${m.parents?.join(",") ?? "-"}` : "erro"}`);
         if (!m || m.mimeType !== FOLDER_MIME) continue;
         const parent = m.parents?.[0] ?? null;
         info.set(m.id, { name: m.name, parent });
