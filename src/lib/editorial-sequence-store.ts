@@ -35,6 +35,8 @@ export type SyncResult = {
   profiled?: number;
   /** Vídeos que ainda esperam ficha (limite por sincronização ou falha da IA). */
   profile_pending?: number;
+  /** A IA começou a fazer as fichas em segundo plano. */
+  profiling?: boolean;
 };
 
 /** Quantos vídeos a IA interpreta por sincronização (o resto fica para a próxima). */
@@ -168,11 +170,44 @@ export async function syncContents(clientId: string): Promise<SyncResult> {
     res.warnings.push("Sem chave de IA (Gemini ou Anthropic), os vídeos foram lidos mas não interpretados (sem ficha nem legenda).");
     return res;
   }
-  const p = await profileReadyVideos(clientId);
-  res.profiled = p.profiled;
-  res.profile_pending = p.pending;
-  res.warnings.push(...p.warnings);
+  // A IA leva de segundos a minutos por vídeo: a leitura da pasta volta já, e as fichas são feitas em segundo plano
+  // (a tela acompanha por profilingStatus).
+  startProfiling(clientId);
+  res.profiling = true;
   return res;
+}
+
+export type ProfilingStatus = { running: boolean; profiled: number; pending: number; warnings: string[]; finished_at: string | null };
+type G = typeof globalThis & { _smmProfiling?: Map<string, ProfilingStatus> };
+const profilingMap = (): Map<string, ProfilingStatus> => ((globalThis as G)._smmProfiling ??= new Map());
+
+export function profilingStatus(clientId: string): ProfilingStatus | null {
+  return profilingMap().get(clientId) ?? null;
+}
+
+/** Faz as fichas em segundo plano, em rodadas, até não sobrar vídeo pendente (no máximo 5 rodadas). */
+export function startProfiling(clientId: string): void {
+  const map = profilingMap();
+  if (map.get(clientId)?.running) return;
+  const st: ProfilingStatus = { running: true, profiled: 0, pending: 0, warnings: [], finished_at: null };
+  map.set(clientId, st);
+  void (async () => {
+    try {
+      for (let round = 0; round < 5; round++) {
+        const p = await profileReadyVideos(clientId);
+        st.profiled += p.profiled;
+        st.pending = p.pending;
+        st.warnings = p.warnings;
+        if (!p.pending || !p.profiled) break;
+      }
+    } catch (e) {
+      st.warnings = [`a IA parou no meio: ${e instanceof Error ? e.message : String(e)}`];
+      console.error("[fichas]", e);
+    } finally {
+      st.running = false;
+      st.finished_at = new Date().toISOString();
+    }
+  })();
 }
 
 type ProfileRow = {

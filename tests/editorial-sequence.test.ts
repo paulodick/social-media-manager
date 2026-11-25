@@ -98,6 +98,14 @@ test("buildSequencePrompt leva transcrições, datas e o primeiro dia possível 
 
 const FOLDER = "application/vnd.google-apps.folder";
 
+/** Sincroniza e espera a IA terminar as fichas (que rodam em segundo plano). */
+async function syncAndWait(store: typeof import("../src/lib/editorial-sequence-store.ts"), clientId: string) {
+  const res = await store.syncContents(clientId);
+  for (let i = 0; i < 200 && store.profilingStatus(clientId)?.running; i++) await new Promise((r) => setTimeout(r, 25));
+  const st = store.profilingStatus(clientId);
+  return { ...res, profiled: res.profiling ? (st?.profiled ?? 0) : res.profiled, warnings: [...res.warnings, ...(res.profiling ? (st?.warnings ?? []) : [])] };
+}
+
 test("Reels Editados → itens prontos com transcrição; aprovar move a pasta para o dia e excluir devolve", { skip: !process.env.DATABASE_URL }, async () => {
   const tree = [
     { id: "ROOT_SEQ_CLIENTE", name: "Cliente Seq", mimeType: FOLDER, parents: [] },
@@ -285,7 +293,7 @@ test("Sincronizar conteúdos: a IA faz a ficha uma vez, refaz quando a transcri�
   ).rows[0].id;
   await pool.query("insert into content_pillars (client_id, name, position) values ($1, 'Técnico', 0)", [clientId]);
   try {
-    const first = await store.syncContents(clientId);
+    const first = await syncAndWait(store, clientId);
     assert.equal(first.created, 1, JSON.stringify(first));
     assert.equal(first.profiled, 1, JSON.stringify(first));
     assert.equal(calls, 1);
@@ -299,7 +307,7 @@ test("Sincronizar conteúdos: a IA faz a ficha uma vez, refaz quando a transcri�
     assert.ok(synced.rows[0].ready_synced_at);
 
     // Sem mudança na transcrição: não chama a IA de novo e não apaga a ficha.
-    const again = await store.syncContents(clientId);
+    const again = await syncAndWait(store, clientId);
     assert.equal(again.profiled, 0);
     assert.equal(calls, 1);
     [v] = await store.listAvailableReady(clientId);
@@ -310,7 +318,7 @@ test("Sincronizar conteúdos: a IA faz a ficha uma vez, refaz quando a transcri�
     await pool.query("update content_items set caption_instagram = 'Minha legenda' where id = $1", [v.id]);
     (tree.find((t) => t.id === "GDOC_PRF_TRANS06") as { exportText: string }).exportText += "\nAgora com estabilizador.";
     round = 2;
-    const third = await store.syncContents(clientId);
+    const third = await syncAndWait(store, clientId);
     assert.equal(third.profiled, 1, JSON.stringify(third));
     assert.equal(calls, 2);
     [v] = await store.listAvailableReady(clientId);
@@ -409,7 +417,7 @@ test("Sincronizar conteúdos lê legenda sugerida (sozinha ou junto da transcri�
     await pool.query<{ id: string }>("insert into clients (name, drive_folder_id) values ($1, 'ROOT_LEG_CLIENTE') returning id", [`Teste Legenda ${Date.now()}`])
   ).rows[0].id;
   try {
-    const sync = await store.syncContents(clientId);
+    const sync = await syncAndWait(store, clientId);
     assert.equal(sync.created, 2, JSON.stringify(sync));
     assert.equal(sync.profiled, 2, JSON.stringify(sync));
     const ready = await store.listAvailableReady(clientId);

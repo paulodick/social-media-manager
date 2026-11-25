@@ -31,8 +31,11 @@ type SyncReply = {
   warnings: string[];
   profiled?: number;
   profile_pending?: number;
+  profiling?: boolean;
   error?: string;
 };
+
+type Profiling = { running: boolean; profiled: number; pending: number; warnings: string[]; finished_at: string | null } | null;
 
 /** Passou disso desde a última leitura, o Editorial sincroniza sozinho ao abrir. */
 const AUTO_SYNC_MS = 24 * 60 * 60 * 1000;
@@ -40,8 +43,8 @@ const AUTO_SYNC_MS = 24 * 60 * 60 * 1000;
 function syncSummary(j: SyncReply, auto: boolean): string {
   const parts = [`${j.created} vídeo(s) novo(s)`, `${j.updated} atualizado(s)`];
   if (j.profiled !== undefined) parts.push(`${j.profiled} interpretado(s) pela IA`);
-  const pending = j.profile_pending ? ` ${j.profile_pending} ainda sem ficha: sincronize de novo para continuar.` : "";
-  return `${auto ? "Sincronizado automaticamente. " : ""}"${j.folder}": ${parts.join(", ")}.${pending}${j.warnings.length ? ` ${j.warnings.join(" ")}` : ""}`;
+  const ai = j.profiling ? " A IA está lendo os vídeos e montando as fichas; a lista atualiza sozinha." : "";
+  return `${auto ? "Sincronizado automaticamente. " : ""}"${j.folder}": ${parts.join(", ")}.${ai}${j.warnings.length ? ` ${j.warnings.join(" ")}` : ""}`;
 }
 
 /**
@@ -159,14 +162,25 @@ export default function SequencePanel({
   const [prompt, setPrompt] = useState("");
   const [manual, setManual] = useState("");
 
-  async function load(): Promise<{ synced_at: string | null; ready: ReadyInfo[] } | null> {
+  const [profiling, setProfiling] = useState<Profiling>(null);
+
+  async function load(): Promise<{ synced_at: string | null; ready: ReadyInfo[]; profiling: Profiling } | null> {
     const res = await fetch(`/api/editorial/clients/${clientId}/sequence`);
     if (!res.ok) return null;
-    const j = (await res.json()) as { rows: SequenceRow[]; ready: ReadyInfo[]; synced_at: string | null };
+    const j = (await res.json()) as { rows: SequenceRow[]; ready: ReadyInfo[]; synced_at: string | null; profiling: Profiling };
     setRows(j.rows);
     setReady(j.ready);
+    setProfiling(j.profiling);
     return j;
   }
+
+  // Enquanto a IA faz as fichas em segundo plano, atualiza a lista a cada 5 s.
+  useEffect(() => {
+    if (!profiling?.running) return;
+    const t = setInterval(() => void load(), 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiling?.running, clientId]);
 
   useEffect(() => {
     void (async () => {
@@ -191,7 +205,8 @@ export default function SequencePanel({
         return;
       }
       setMsg(syncSummary(j, auto));
-      await load();
+      const after = await load();
+      if (j.profiling && after && !after.profiling) setProfiling({ running: true, profiled: 0, pending: 0, warnings: [], finished_at: null });
     } catch {
       if (!auto) setErr("Falha ao falar com o servidor.");
     } finally {
@@ -292,6 +307,15 @@ export default function SequencePanel({
           {busy === "sync" ? "Sincronizando…" : "Sincronizar conteúdos"}
         </button>
       </div>
+
+      {profiling?.running && (
+        <p className="alert" role="status">
+          A IA está lendo os vídeos e montando as fichas ({profiling.profiled} pronta(s) até agora). Pode continuar usando o app.
+        </p>
+      )}
+      {profiling && !profiling.running && profiling.warnings.length > 0 && (
+        <p className="alert warn">{profiling.warnings.join(" ")}</p>
+      )}
 
       <details className="col" style={{ gap: 8 }}>
         <summary className="small" style={{ cursor: "pointer" }}>
