@@ -70,6 +70,13 @@ test("parseSequencePlan recusa o que a IA não pode fazer", () => {
   assert.match(bad([{ date: "2026-11-26", kind: "ready", item_id: A }, { date: "2026-11-28", kind: "foo" }]), /não existe/);
 });
 
+test("readyVideoTitle pula o cabeçalho da transcrição e o nome do arquivo", async () => {
+  const { readyVideoTitle } = await import("../src/lib/editorial-sequence-store.ts");
+  const t = readyVideoTitle("Video 1", "Video 1", "TRANSCRIÇÃO — Best_Medical_Corte1_Cold_Head_REELS.mp4\n\nQuer mexer em Cold Head sem saber instalar o Windows?");
+  assert.equal(t, "Video 1: Quer mexer em Cold Head sem saber instalar o Windows?");
+  assert.equal(readyVideoTitle("Plantão 24h", "Video 2", "x"), "Plantão 24h");
+});
+
 test("buildSequencePrompt leva transcrições, datas e o primeiro dia possível para pauta nova", () => {
   const p = buildSequencePrompt({
     clientName: "Best Medical", segment: "Manutenção", tone: "", notes: "", styleNotes: "", memoryBlock: "",
@@ -80,6 +87,7 @@ test("buildSequencePrompt leva transcrições, datas e o primeiro dia possível 
   assert.match(p, /plantão 24h/);
   assert.match(p, /a partir de 2026-11-27/);
   assert.match(p, /2026-11-26, 2026-11-28/);
+  assert.match(p, /Nunca use para "pausa estratégica"/);
 });
 
 const FOLDER = "application/vnd.google-apps.folder";

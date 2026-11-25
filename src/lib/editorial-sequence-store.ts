@@ -19,12 +19,19 @@ type Pg = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; r
 
 export type SyncResult = { folder: string | null; created: number; updated: number; warnings: string[] };
 
-/** Título de referência: "Video 3" sozinho não diz nada, então junta o começo da transcrição. */
+/** Título de referência: "Video 3" sozinho não diz nada, então junta o começo da fala da transcrição. */
 export function readyVideoTitle(parsedTitle: string, folderName: string, transcript: string): string {
-  const generic = /^v[ií]deo\s*\d+$/i.test(parsedTitle.trim()) || !parsedTitle.trim();
+  const generic = /^v[ií]deo\s*\d+$/i.test(parsedTitle.trim()) || !parsedTitle.trim() || parsedTitle.trim() === folderName.trim();
   if (!generic) return parsedTitle.slice(0, 160);
-  const start = transcript.replace(/\s+/g, " ").trim().slice(0, 70);
-  return (start ? `${folderName}: ${start}${transcript.length > 70 ? "…" : ""}` : folderName).slice(0, 160);
+  // Pula cabeçalhos como "TRANSCRIÇÃO — arquivo.mp4" e linhas que são só nome de arquivo.
+  const speech = transcript
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !/^transcri[çc][aã]o\b/i.test(l) && !/\.(mp4|mov|m4v|webm)\b/i.test(l))
+    .join(" ")
+    .replace(/\s+/g, " ");
+  const start = speech.slice(0, 70);
+  return (start ? `${folderName}: ${start}${speech.length > 70 ? "…" : ""}` : folderName).slice(0, 160);
 }
 
 /**

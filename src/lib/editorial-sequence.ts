@@ -84,7 +84,7 @@ export function buildSequencePrompt(input: {
     "Para cada data escolha UM tipo:",
     `- "ready": um dos vídeos já gravados abaixo (use o item_id exato). Cada vídeo pode ser usado no máximo uma vez.`,
     `- "new": uma pauta nova para gravar, com tema DIFERENTE do que as transcrições já cobrem, para o conteúdo parecer sempre renovado. Só é permitido em datas a partir de ${firstNewDay} (a pessoa precisa de ${input.leadDays} dia(s) para gravar e editar).`,
-    `- "skip": não postar nesse dia, quando não houver conteúdo bom sem repetir tema ou sem tempo de gravar. Explique o motivo.`,
+    `- "skip": não postar nesse dia. Use SÓ quando não houver vídeo pronto que caiba sem repetir o tema do post anterior E ainda não der tempo de gravar uma pauta nova. Nunca use para "pausa estratégica", "equilibrar frequência" ou "responder comentários": a pessoa escolheu postar nessas datas. Explique o motivo.`,
     "",
     "Como decidir a ordem: leia as transcrições para entender o assunto real de cada vídeo; evite dois posts seguidos do mesmo tema;",
     "alterne vídeos prontos e pautas novas para nunca ficar sem conteúdo; pense no que prende a atenção e alcança mais gente nas redes hoje;",
