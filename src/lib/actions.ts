@@ -8,7 +8,7 @@ import { checkLoginRateLimit, extractClientIp, recordLoginFailure, resetLoginRat
 import { hashPassword, passwordProblem } from "./password";
 import { db } from "./db";
 import { TZ, isDay, isTime, monthOf } from "./dates";
-import { ensureClientFolders, ensureFolderPath, folderUrl, getFolderName, parseDriveUrl } from "./drive";
+import { ensureClientFolders, ensureFolderPath, folderUrl, getFolderName, parseDriveUrl, runDriveMoveTest, type MoveTestResult } from "./drive";
 import { ensureTargetFolders, folderNames, resolveDrive } from "./post-folders";
 import { formatMovedTargetsNotice, resolveEditRedirect } from "./post-redirect";
 import { insertPostIdempotent, parseSubmissionId } from "./post-submission";
@@ -942,4 +942,21 @@ export async function getTargetPublishState(
     [id],
   );
   return r.rows[0]?.publish_state ?? null;
+}
+
+// ---------- teste de mover pastas no Drive ----------
+
+/**
+ * Configurações › "Testar mover no Drive": confere se a conta do app consegue mover as pastas de "Reels Editados"
+ * do cliente (base do editorial que move a pasta do vídeo para o dia). Só mexe numa subpasta VAZIA e a devolve.
+ */
+export async function testDriveMove(_prev: MoveTestResult | null, formData: FormData): Promise<MoveTestResult> {
+  await requireAuth();
+  const clientId = text(formData, "client_id", 40);
+  if (!isValidUuid(clientId)) return { verdict: "setup", lines: ["Escolha um cliente."] };
+  const pool = await db();
+  const r = await pool.query<{ drive_folder_id: string | null }>("select drive_folder_id from clients where id = $1", [clientId]);
+  const folder = r.rows[0]?.drive_folder_id;
+  if (!folder) return { verdict: "setup", lines: ["Este cliente ainda não tem pasta do Drive no cadastro."] };
+  return runDriveMoveTest(folder);
 }
