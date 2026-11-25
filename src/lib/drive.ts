@@ -575,6 +575,20 @@ export async function scanClientCutFolders(
         const items = (j.files ?? []).map((f) => `${f.name} [${f.mimeType.replace("application/vnd.google-apps.", "")}${f.owners?.[0]?.emailAddress ? `, ${f.owners[0].emailAddress}` : ""}]`);
         notes.push(items.length ? `O app enxerga na pasta do cliente: ${items.join("; ")}.` : "O app não enxerga nenhum item na pasta do cliente.");
       }
+      const q2 = new URLSearchParams({
+        q: `mimeType = '${FOLDER_MIME}' and trashed = false and not 'me' in owners`,
+        fields: "files(id,name,parents,owners(emailAddress))",
+        pageSize: "100",
+        orderBy: "modifiedTime desc",
+      });
+      const r2 = await api(`/files?${q2.toString()}`);
+      if (r2.ok) {
+        const j2 = (await r2.json()) as { files?: { id: string; name: string; parents?: string[]; owners?: { emailAddress?: string }[] }[] };
+        const list = (j2.files ?? []).slice(0, 25).map((f) => `${f.name} (pai ${f.parents?.[0] ?? "?"}, ${f.owners?.[0]?.emailAddress ?? "?"})`);
+        notes.push(`Pastas de outras contas que o app enxerga (${j2.files?.length ?? 0}): ${list.join("; ")}.`);
+      } else {
+        notes.push(`Busca de pastas de outras contas falhou (erro ${r2.status}).`);
+      }
     } catch {
       // só diagnóstico
     }
@@ -588,7 +602,7 @@ export async function scanClientCutFolders(
     loose_files: looseRes.files,
     next_page_token: looseRes.nextPageToken,
     folders_truncated: truncated,
-    scan_notes: notes.slice(0, 20),
+    scan_notes: notes.slice(0, 30),
   };
 }
 
