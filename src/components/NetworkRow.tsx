@@ -298,7 +298,12 @@ export default function NetworkRow({
             scheduled: posted ? "Voltar para agendado" : "Marcar como agendado",
             posted: "Marcar como postado",
           };
-          const inMenu = (["scheduled", "posted", "draft"] as const).filter((st) => st !== existing.status && st !== primary);
+          // Com a conta conectada, "Postei manualmente" fica visível ao lado de "Publicar agora" (para quem posta pelo
+          // celular, direto na rede), em vez de escondido em "Mais ações".
+          const manualPosted = publishMain && existing.status !== "posted";
+          const inMenu = (["scheduled", "posted", "draft"] as const).filter(
+            (st) => st !== existing.status && st !== primary && !(manualPosted && st === "posted"),
+          );
           return (
             <>
               {existing.publish && (
@@ -337,6 +342,12 @@ export default function NetworkRow({
                 )}
                 <CopyButton text={caption} />
                 {downloadable && <a className="btn" href={`/api/media/${video.fileId}?download=1`}>Baixar mídia</a>}
+                {manualPosted && (
+                  <SubmitButton className="btn" name="status" value={`${existing.id}:posted`} pendingLabel="Salvando…"
+                    title="Use se você publicou direto na rede (pelo app do celular, por exemplo). Só registra; não publica nada.">
+                    Postei manualmente
+                  </SubmitButton>
+                )}
                 <details className="more" ref={moreRef}>
                   <summary className="btn">Mais ações</summary>
                   <div className="menu">
