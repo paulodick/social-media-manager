@@ -97,13 +97,20 @@ export function buildSequencePrompt(input: {
     recent,
     "",
     'Responda SOMENTE com JSON neste formato: {"entries":[',
-    '{"date":"AAAA-MM-DD","kind":"ready","item_id":"<id>","theme":"<tema curto>","reason":"<por que aqui, 1 frase>"},',
-    '{"date":"AAAA-MM-DD","kind":"new","theme":"<tema curto>","reason":"<por que aqui>","idea":{"title":"<título>","hook":"<gancho dos primeiros 3 segundos>","brief":"<o que falar>","script":"<roteiro curto>"}},',
+    '{"date":"AAAA-MM-DD","kind":"ready","item_id":"<id>","theme":"<tema em até 4 palavras>","reason":"<por que aqui, 1 frase>"},',
+    '{"date":"AAAA-MM-DD","kind":"new","theme":"<tema em até 4 palavras>","reason":"<por que aqui>","idea":{"title":"<título>","hook":"<gancho dos primeiros 3 segundos>","brief":"<o que falar>","script":"<roteiro curto>"}},',
     '{"date":"AAAA-MM-DD","kind":"skip","reason":"<por que não postar>"}',
     "]}",
   ]
     .filter((l) => l !== "")
     .join("\n");
+}
+
+/** Tema curto para a etiqueta: corta em até 60 caracteres sem partir palavra. */
+export function shortTheme(t: string): string {
+  if (t.length <= 60) return t;
+  const cut = t.slice(0, 60);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 20)).trim()}…`;
 }
 
 const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -129,7 +136,7 @@ export function parseSequencePlan(
     if (byDate.has(date)) return { ok: false, error: `A resposta trouxe mais de um conteúdo para ${date}.` };
     const kind = str(e.kind, 10);
     const reason = str(e.reason, 400);
-    const theme = str(e.theme, 60);
+    const theme = shortTheme(str(e.theme, 200));
     if (kind === "ready") {
       const id = str(e.item_id, 40);
       if (!isUuid(id) || !opts.readyIds.has(id)) {
