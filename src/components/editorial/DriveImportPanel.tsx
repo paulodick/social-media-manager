@@ -12,6 +12,8 @@ type DriveFileEntry = {
 type DriveCutFolderEntry = {
   folder_id: string;
   folder_name: string;
+  path?: string[];
+  docs?: DriveFileEntry[];
   video: DriveFileEntry | null;
   cover: DriveFileEntry | null;
   doc: DriveFileEntry | null;
@@ -262,6 +264,9 @@ export default function DriveImportPanel({
                 <label key={cf.folder_id} className={`ed-drive-file ${on ? "on" : ""}`}>
                   <input type="checkbox" checked={on} onChange={() => toggleFolder(cf.folder_id)} />
                   <div className="col" style={{ gap: 4, minWidth: 0 }}>
+                    {cf.path && cf.path.length > 0 && (
+                      <span className="muted small" style={{ wordBreak: "break-word" }}>{cf.path.join(" / ")}</span>
+                    )}
                     <span className="small" style={{ fontWeight: 600, wordBreak: "break-word" }}>
                       {cf.folder_name}
                     </span>
@@ -273,7 +278,9 @@ export default function DriveImportPanel({
                       </span>
                     )}
                     <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
-                      {cf.doc && <span className="ed-badge-ready">.doc: {cf.doc.name}</span>}
+                      {(cf.docs?.length ? cf.docs : cf.doc ? [cf.doc] : []).map((d) => (
+                        <span key={d.id} className="ed-badge-ready">Texto: {d.name}</span>
+                      ))}
                       {cf.video && <span className="ed-badge-fmt">Vídeo: {cf.video.name}</span>}
                       {cf.cover && <span className="ed-badge-fmt">Capa: {cf.cover.name}</span>}
                     </div>

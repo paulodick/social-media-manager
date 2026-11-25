@@ -448,6 +448,16 @@ export async function listFolderAllFiles(
 /** Quantas subpastas de corte o scanner lê por vez (cada uma custa uma consulta ao Drive). */
 export const MAX_CUT_FOLDERS = 300;
 
+/** Até quantos níveis abaixo da pasta do cliente a varredura procura cortes (ex.: Episódio / Cortes_Reels / 01 - ...). */
+export const MAX_SCAN_DEPTH = 5;
+/** Teto de pastas abertas numa varredura, para não ficar lendo o Drive inteiro. */
+export const MAX_SCAN_FOLDERS = 800;
+
+/**
+ * Varre TODA a pasta do cliente, em qualquer profundidade (episódios, "Cortes_Reels", subpastas de corte), e devolve
+ * cada pasta que é um corte: tem vídeo, ou não tem subpastas e tem capa ou texto. Ignora `Logotipo`, `Artes`,
+ * as pastas de ano criadas pelo app para os posts e `Reels Editados` (lida à parte pela sequência).
+ */
 export async function scanClientCutFolders(
   rootFolderId: string,
   opts: { kinds?: ("image" | "video")[]; pageToken?: string; maxFolders?: number } = {},
@@ -455,42 +465,59 @@ export async function scanClientCutFolders(
   | { cut_folders: DriveCutBundle[]; loose_files: ListedFile[]; next_page_token: string | null; folders_truncated: boolean }
   | { error: string }
 > {
-  // Com pageToken é o "carregar mais" dos arquivos avulsos: as pastas de corte já vieram na primeira página.
-  const [subRes, looseRes] = await Promise.all([
-    opts.pageToken
-      ? Promise.resolve({ folders: [] as { id: string; name: string }[], truncated: false })
-      : listSubfolders(rootFolderId, { max: opts.maxFolders ?? MAX_CUT_FOLDERS }),
-    listFolderFiles(rootFolderId, { kinds: opts.kinds, pageToken: opts.pageToken }),
-  ]);
+  const looseRes = await listFolderFiles(rootFolderId, { kinds: opts.kinds, pageToken: opts.pageToken });
   if ("error" in looseRes) return looseRes;
-  if ("error" in subRes) {
-    // Se não deu para listar subpastas, ainda devolve os arquivos avulsos
+  // Com pageToken é o "carregar mais" dos arquivos avulsos: as pastas de corte já vieram na primeira página.
+  if (opts.pageToken) {
     return { cut_folders: [], loose_files: looseRes.files, next_page_token: looseRes.nextPageToken, folders_truncated: false };
   }
 
-  const candidateFolders = subRes.folders.filter((f) => !isIgnoredCutFolderName(f.name));
+  const maxCuts = opts.maxFolders ?? MAX_CUT_FOLDERS;
+  type Node = { id: string; name: string; path: string[]; depth: number };
+  const queue: Node[] = [{ id: rootFolderId, name: "", path: [], depth: 0 }];
   const cutFolders: DriveCutBundle[] = [];
+  let visited = 0;
+  let truncated = false;
   const batchSize = 6;
-  for (let i = 0; i < candidateFolders.length; i += batchSize) {
-    const batch = candidateFolders.slice(i, i + batchSize);
-    const listings = await Promise.all(
-      batch.map(async (folder) => ({
-        folder,
-        listing: await listFolderAllFiles(folder.id, { pageSize: 30 }),
+  while (queue.length) {
+    if (visited >= MAX_SCAN_FOLDERS || cutFolders.length >= maxCuts) {
+      truncated = true;
+      break;
+    }
+    const batch = queue.splice(0, Math.min(batchSize, MAX_SCAN_FOLDERS - visited));
+    visited += batch.length;
+    const results = await Promise.all(
+      batch.map(async (node) => ({
+        node,
+        subs: await listSubfolders(node.id, { max: 300 }),
+        listing: node.depth > 0 ? await listFolderAllFiles(node.id, { pageSize: 30 }) : null,
       })),
     );
-    for (const { folder, listing } of listings) {
-      if ("error" in listing) continue;
-      const bundle = groupFolderIntoCutBundle(folder, listing.files);
-      if (bundle) cutFolders.push(bundle);
+    for (const { node, subs, listing } of results) {
+      const children = "error" in subs ? [] : subs.folders.filter((f) => !isIgnoredCutFolderName(f.name));
+      if ("folders" in subs && subs.truncated) truncated = true;
+      if (listing && !("error" in listing)) {
+        const bundle = groupFolderIntoCutBundle({ id: node.id, name: node.name }, listing.files, node.path);
+        // Pasta intermediária (episódio com subpastas) só vira corte se tiver vídeo próprio.
+        if (bundle && (bundle.video || children.length === 0)) cutFolders.push(bundle);
+      }
+      if (node.depth < MAX_SCAN_DEPTH) {
+        const childPath = node.depth > 0 ? [...node.path, node.name] : [];
+        for (const c of children) queue.push({ id: c.id, name: c.name, path: childPath, depth: node.depth + 1 });
+      } else if (children.length) {
+        truncated = true;
+      }
     }
   }
 
+  const collator = new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" });
+  cutFolders.sort((a, b) => collator.compare([...a.path, a.folder_name].join(" / "), [...b.path, b.folder_name].join(" / ")));
+
   return {
-    cut_folders: cutFolders,
+    cut_folders: cutFolders.slice(0, maxCuts),
     loose_files: looseRes.files,
     next_page_token: looseRes.nextPageToken,
-    folders_truncated: subRes.truncated,
+    folders_truncated: truncated,
   };
 }
 
