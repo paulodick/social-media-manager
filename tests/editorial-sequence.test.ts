@@ -328,3 +328,111 @@ test("Sincronizar conteúdos: a IA faz a ficha uma vez, refaz quando a transcri�
     }
   }
 });
+
+test("classifyTextFile separa transcrição de legenda sugerida; ficha e sequência usam a legenda quando não há transcrição", async () => {
+  const rp = await import("../src/lib/ready-profile.ts");
+  assert.equal(rp.classifyTextFile("legenda_sugerida.txt", "qualquer coisa"), "caption");
+  assert.equal(rp.classifyTextFile("Copy do post.docx", "x"), "caption");
+  assert.equal(rp.classifyTextFile("transcricao.txt", "#a #b"), "transcript", "nome manda mais que conteúdo");
+  assert.equal(rp.classifyTextFile("corte1.txt", "TRANSCRIÇÃO — corte1.mp4\nTexto"), "transcript");
+  assert.equal(rp.classifyTextFile("corte1.txt", "[00:01,2] fala"), "transcript");
+  assert.equal(rp.classifyTextFile("texto.txt", "Equipamento parado?\nChame a gente.\n#ressonancia #manutencao"), "caption");
+  assert.equal(rp.classifyTextFile("Video 7.txt", "E aí pessoal, hoje eu vim mostrar o reparo"), "transcript", "na dúvida, transcrição");
+
+  assert.deepEqual(rp.qualityFlags("", "Legenda pronta #a #b"), ["caption_only"]);
+  assert.deepEqual(rp.qualityFlags("", ""), ["no_transcript"]);
+  assert.equal(rp.profileHash("fala"), rp.profileHash("fala", ""), "sem legenda a impressão digital não muda");
+  assert.notEqual(rp.profileHash("fala"), rp.profileHash("fala", "legenda"));
+
+  const p = rp.buildReadyProfilePrompt({
+    clientName: "Best Medical", segment: "", tone: "", notes: "", styleNotes: "", pillars: [],
+    title: "Video 7", transcript: "", suggestedCaption: "Troca de cold head em 6 horas. #ressonancia",
+  });
+  assert.match(p, /SEM transcrição, só com a legenda sugerida/);
+  assert.match(p, /LEGENDA SUGERIDA POR QUEM CORTOU O VÍDEO:\nTroca de cold head/);
+
+  const seq = buildSequencePrompt({
+    clientName: "Best Medical", segment: "", tone: "", notes: "", styleNotes: "", memoryBlock: "", pillars: [],
+    ready: [{ id: A, title: "Video 7", topic: "", guest: "", transcript: "", suggested_caption: "Troca de cold head em 6 horas." }],
+    recent: [], dates: ["2026-11-26"], today: "2026-11-25", leadDays: 2, networks: ["Instagram reels"],
+  });
+  assert.match(seq, /legenda sugerida por quem cortou: Troca de cold head/);
+  assert.ok(!seq.includes("(sem transcrição)"));
+});
+
+test("Sincronizar conteúdos lê legenda sugerida (sozinha ou junto da transcrição)", { skip: !process.env.DATABASE_URL }, async () => {
+  const http = await import("node:http");
+  const prompts: string[] = [];
+  const gemini = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      prompts.push(JSON.parse(body).contents[0].parts[0].text);
+      const profile = { theme: "Cold head", summary: "Troca rápida.", pillar: "", audience: "gestor", hook: "6 horas",
+        caption_instagram: "IG da IA", caption_linkedin: "LI da IA" };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(profile) }] } }] }));
+    });
+  });
+  await new Promise<void>((r) => gemini.listen(0, "127.0.0.1", r));
+  const addr = gemini.address();
+  const gport = typeof addr === "object" && addr ? addr.port : 0;
+  const GDOC = "application/vnd.google-apps.document";
+  const tree = [
+    { id: "ROOT_LEG_CLIENTE", name: "Cliente Legenda", mimeType: FOLDER, parents: [] },
+    { id: "PASTA_REELS_LEG1", name: "Reels Editados", mimeType: FOLDER, parents: ["ROOT_LEG_CLIENTE"] },
+    // Só legenda sugerida, com seção do Instagram.
+    { id: "PASTA_LEG_VIDEO7", name: "Video 7", mimeType: FOLDER, parents: ["PASTA_REELS_LEG1"] },
+    { id: "VIDEO_LEG_ARQ007", name: "cold_head.mp4", mimeType: "video/mp4", size: 5000, parents: ["PASTA_LEG_VIDEO7"] },
+    { id: "GDOC_LEG_CAPT07", name: "legenda", mimeType: GDOC, parents: ["PASTA_LEG_VIDEO7"],
+      exportText: "Legenda Instagram:\nTrocamos o cold head em 6 horas.\n#ressonancia #manutencao" },
+    // Transcrição + legenda sugerida.
+    { id: "PASTA_LEG_VIDEO8", name: "Video 8", mimeType: FOLDER, parents: ["PASTA_REELS_LEG1"] },
+    { id: "VIDEO_LEG_ARQ008", name: "chiller.mp4", mimeType: "video/mp4", size: 5000, parents: ["PASTA_LEG_VIDEO8"] },
+    { id: "GDOC_LEG_TRAN08", name: "transcricao", mimeType: GDOC, parents: ["PASTA_LEG_VIDEO8"],
+      exportText: "Tema: Chiller da ressonância\nFala: Paulo\nO chiller parou no domingo." },
+    { id: "GDOC_LEG_CAPT08", name: "copy do post", mimeType: GDOC, parents: ["PASTA_LEG_VIDEO8"],
+      exportText: "Domingo, 3 da manhã, chiller parado. #ressonancia #plantao" },
+  ];
+  const drive = await startMockDrive(4073, { tree });
+  const prev = { key: process.env.GEMINI_API_KEY, base: process.env.GEMINI_API_BASE, model: process.env.GEMINI_MODEL };
+  process.env.DRIVE_API_BASE = `http://127.0.0.1:${drive.port}`;
+  process.env.DRIVE_TEST_TOKEN = "token-teste";
+  process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify({ client_email: "teste@mock.local", private_key: "fake-key" });
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  process.env.GEMINI_API_BASE = `http://127.0.0.1:${gport}`;
+  process.env.GEMINI_MODEL = "modelo-teste";
+  const { db } = await import("../src/lib/db.ts");
+  const store = await import("../src/lib/editorial-sequence-store.ts");
+  const pool = await db();
+  const clientId = (
+    await pool.query<{ id: string }>("insert into clients (name, drive_folder_id) values ($1, 'ROOT_LEG_CLIENTE') returning id", [`Teste Legenda ${Date.now()}`])
+  ).rows[0].id;
+  try {
+    const sync = await store.syncContents(clientId);
+    assert.equal(sync.created, 2, JSON.stringify(sync));
+    assert.equal(sync.profiled, 2, JSON.stringify(sync));
+    const ready = await store.listAvailableReady(clientId);
+    const v7 = ready.find((r) => r.folder === "Video 7");
+    const v8 = ready.find((r) => r.folder === "Video 8");
+    assert.ok(v7 && v8);
+    assert.equal(v7.transcript, "");
+    assert.match(v7.suggested_caption ?? "", /cold head em 6 horas/);
+    assert.deepEqual(v7.flags, ["caption_only"]);
+    assert.equal(v7.caption_instagram, "Trocamos o cold head em 6 horas.\n#ressonancia #manutencao", "seção do Instagram de quem cortou fica");
+    assert.equal(v7.caption_linkedin, "LI da IA", "LinkedIn vem da ficha da IA");
+    assert.match(v8.transcript, /chiller parou/);
+    assert.match(v8.suggested_caption ?? "", /3 da manhã/);
+    assert.deepEqual(v8.flags, []);
+    assert.ok(prompts.some((p) => /SEM transcrição, só com a legenda sugerida/.test(p) && /cold head/.test(p)));
+    assert.ok(prompts.some((p) => /chiller parou/.test(p) && /LEGENDA SUGERIDA[^\n]*\n[^\n]*3 da manhã/.test(p)));
+  } finally {
+    await pool.query("delete from clients where id = $1", [clientId]);
+    await drive.close();
+    await new Promise<void>((r) => gemini.close(() => r()));
+    for (const [k, val] of [["GEMINI_API_KEY", prev.key], ["GEMINI_API_BASE", prev.base], ["GEMINI_MODEL", prev.model]] as const) {
+      if (val === undefined) delete process.env[k];
+      else process.env[k] = val;
+    }
+  }
+});

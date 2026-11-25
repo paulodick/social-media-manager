@@ -34,7 +34,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clientId: stri
       drive_url: r.drive_url ?? "",
       flags: r.flags ?? [],
       profiled: !!r.profiled,
-      has_transcript: r.transcript.trim().length > 0,
+      has_transcript: r.transcript.trim().length > 0 || (r.suggested_caption ?? "").trim().length > 0,
     })),
   });
 }

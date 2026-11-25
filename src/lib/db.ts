@@ -407,6 +407,14 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       alter table clients add column if not exists ready_synced_at timestamptz;
     `,
   },
+  {
+    version: 20,
+    sql: `
+      -- 20: Legenda sugerida por quem cortou o vídeo (arquivo .txt/.doc na pasta "Vídeo N"), separada da transcrição.
+      -- A IA usa as duas (ou só a legenda) para entender o assunto, fazer a ficha e montar a sequência.
+      alter table content_items add column if not exists suggested_caption text not null default '';
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

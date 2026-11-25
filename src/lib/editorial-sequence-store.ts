@@ -10,12 +10,13 @@ import {
   moveItem,
   readDriveDocumentText,
 } from "./drive.ts";
-import { groupFolderIntoCutBundle, parseCutDocument } from "./drive-cuts.ts";
+import { groupFolderIntoCutBundle, isDocFile, parseCutDocument } from "./drive-cuts.ts";
 import { editorialAiConfigured, generateEditorialJson } from "./editorial-ai.ts";
 import { extractJsonPayload, normalizeThemeKey } from "./editorial-rules.ts";
 import type { ReadyVideo, SequenceEntry } from "./editorial-sequence.ts";
 import {
   buildReadyProfilePrompt,
+  classifyTextFile,
   mapLimit,
   parseReadyProfile,
   profileHash,
@@ -87,23 +88,40 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       warnings.push(`${folder.name}: ainda sem vídeo, ficou de fora.`);
       continue;
     }
-    let transcript = "";
-    if (bundle.doc) {
-      const doc = await readDriveDocumentText(bundle.doc);
-      transcript = doc.text.slice(0, TRANSCRIPT_MAX);
+    // Lê todos os textos da pasta (até 4): transcrição da fala e/ou legenda sugerida por quem cortou o vídeo.
+    const texts = listing.files.filter(isDocFile).slice(0, 4);
+    const transcripts: string[] = [];
+    const captions: string[] = [];
+    for (const f of texts) {
+      const doc = await readDriveDocumentText(f);
       if (doc.warning) warnings.push(`${folder.name}: ${doc.warning}`);
-    } else {
-      warnings.push(`${folder.name}: sem transcrição; a IA só vai ver o nome.`);
+      if (!doc.text.trim()) continue;
+      (classifyTextFile(f.name, doc.text) === "caption" ? captions : transcripts).push(doc.text.trim());
     }
-    const parsed = parseCutDocument({ folderName: folder.name, videoName: bundle.video.name, coverName: bundle.cover?.name, docText: transcript });
+    const transcript = transcripts.join("\n\n").slice(0, TRANSCRIPT_MAX);
+    const suggested = captions.join("\n\n").slice(0, TRANSCRIPT_MAX);
+    if (!transcript && !suggested) warnings.push(`${folder.name}: sem transcrição nem legenda; a IA só vai ver o nome.`);
+    const fromTranscript = parseCutDocument({ folderName: folder.name, videoName: bundle.video.name, coverName: bundle.cover?.name, docText: transcript });
+    const fromCaption = suggested
+      ? parseCutDocument({ folderName: folder.name, videoName: bundle.video.name, coverName: bundle.cover?.name, docText: suggested })
+      : null;
+    const parsed = {
+      ...fromTranscript,
+      title: fromTranscript.title !== folder.name ? fromTranscript.title : (fromCaption?.title ?? fromTranscript.title),
+      topic_tag: fromTranscript.topic_tag || fromCaption?.topic_tag || "",
+      guest_name: fromTranscript.guest_name || fromCaption?.guest_name || "",
+      caption_draft: fromCaption ? fromCaption.caption_draft || suggested : fromTranscript.caption_draft,
+      caption_instagram: fromCaption?.caption_instagram || fromTranscript.caption_instagram,
+      caption_linkedin: fromCaption?.caption_linkedin || fromTranscript.caption_linkedin,
+    };
     const meta = await getFileMeta(bundle.video.id);
-    const title = readyVideoTitle(parsed.title, folder.name, transcript);
+    const title = readyVideoTitle(parsed.title, folder.name, transcript || suggested);
     const driveUrl = `https://drive.google.com/file/d/${bundle.video.id}/view`;
     const values = [
       clientId, title, normalizeThemeKey(parsed.topic_tag || title), parsed.guest_name, parsed.topic_tag, transcript,
       parsed.caption_draft, parsed.caption_instagram, parsed.caption_linkedin, driveUrl, bundle.video.id,
       meta.error ? null : JSON.stringify(meta), folder.id, folder.name, ready.id, bundle.doc?.id ?? null,
-      qualityFlags(transcript),
+      qualityFlags(transcript, suggested), suggested,
     ];
     const upd = await pool.query(
       // Campos vazios na transcrição não apagam o que a ficha da IA (ou a pessoa) já preencheu.
@@ -114,7 +132,7 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
               caption_instagram=case when $8<>'' then $8 else caption_instagram end,
               caption_linkedin=case when $9<>'' then $9 else caption_linkedin end,
               drive_url=$10, drive_file_id=$11,
-              drive_meta=$12, source_folder_name=$14, ready_folder_parent_id=$15, doc_drive_file_id=$16, quality_flags=$17,
+              drive_meta=$12, source_folder_name=$14, ready_folder_parent_id=$15, doc_drive_file_id=$16, quality_flags=$17, suggested_caption=$18,
               source_kind='existing_ready', status=case when status='archived' then status else 'ready' end, updated_at=now()
         where client_id=$1 and source_folder_id=$13`,
       values,
@@ -127,8 +145,8 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       await pool.query(
         `insert into content_items (client_id, title, theme_key, guest_name, topic_tag, transcript, caption_draft,
                 caption_instagram, caption_linkedin, drive_url, drive_file_id, drive_meta, source_folder_id,
-                source_folder_name, ready_folder_parent_id, doc_drive_file_id, quality_flags, source_kind, content_format, status)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'existing_ready','video','ready')`,
+                source_folder_name, ready_folder_parent_id, doc_drive_file_id, quality_flags, suggested_caption, source_kind, content_format, status)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'existing_ready','video','ready')`,
         values,
       );
       created++;
@@ -163,6 +181,7 @@ type ProfileRow = {
   id: string;
   title: string;
   transcript: string;
+  suggested_caption: string;
   ai_profile: ReadyProfile | null;
   topic_tag: string;
   hook: string;
@@ -188,15 +207,15 @@ export async function profileReadyVideos(clientId: string): Promise<{ profiled: 
   );
   const pillars = pillarRows.rows.map((p) => p.name);
   const items = await pool.query<ProfileRow & { ai_profile_hash: string | null }>(
-    `select id, title, transcript, ai_profile, ai_profile_hash, topic_tag, hook, brief, caption_instagram, caption_linkedin,
+    `select id, title, transcript, suggested_caption, ai_profile, ai_profile_hash, topic_tag, hook, brief, caption_instagram, caption_linkedin,
             pillar_id, source_folder_name
        from content_items
       where client_id = $1 and source_kind = 'existing_ready' and status <> 'archived'
-        and ready_folder_parent_id is not null and length(btrim(transcript)) > 0
+        and ready_folder_parent_id is not null and (length(btrim(transcript)) > 0 or length(btrim(suggested_caption)) > 0)
       order by source_folder_name, created_at`,
     [clientId],
   );
-  const todo = items.rows.filter((r) => r.ai_profile_hash !== profileHash(r.transcript));
+  const todo = items.rows.filter((r) => r.ai_profile_hash !== profileHash(r.transcript, r.suggested_caption));
   const batch = todo.slice(0, PROFILE_MAX_PER_SYNC);
   const warnings: string[] = [];
   const results = await mapLimit(batch, 3, async (row) => {
@@ -209,6 +228,7 @@ export async function profileReadyVideos(clientId: string): Promise<{ profiled: 
       pillars,
       title: row.title,
       transcript: row.transcript,
+      suggestedCaption: row.suggested_caption,
     });
     let lastError = "";
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -260,7 +280,7 @@ async function applyProfile(row: ProfileRow, p: ReadyProfile, pillars: { id: str
     [
       row.id,
       JSON.stringify(p),
-      profileHash(row.transcript),
+      profileHash(row.transcript, row.suggested_caption),
       topic,
       normalizeThemeKey(topic || row.title),
       keep(row.hook, prev?.hook, p.hook),
@@ -276,7 +296,7 @@ async function applyProfile(row: ProfileRow, p: ReadyProfile, pillars: { id: str
 export async function listAvailableReady(clientId: string): Promise<ReadyVideo[]> {
   const pool = await db();
   const r = await pool.query<ReadyVideo>(
-    `select i.id, i.title, i.topic_tag as topic, i.guest_name as guest, i.transcript,
+    `select i.id, i.title, i.topic_tag as topic, i.guest_name as guest, i.transcript, i.suggested_caption,
             coalesce(i.ai_profile->>'summary', '') as summary, coalesce(p.name, i.ai_profile->>'pillar', '') as pillar,
             coalesce(i.ai_profile->>'audience', '') as audience, i.quality_flags as flags, i.hook,
             i.caption_instagram, i.caption_linkedin, i.drive_url, i.source_folder_name as folder,
@@ -408,7 +428,7 @@ export async function readSequence(clientId: string, from: string): Promise<Sequ
             array_agg(s.id::text order by s.network) as slot_ids,
             array_agg(s.network || ':' || s.format order by s.network) as networks,
             bool_or(s.post_target_id is not null or s.plan_status = 'approved') as approved,
-            (length(i.transcript) > 0) as has_transcript, i.hook, i.brief
+            (length(i.transcript) > 0 or length(i.suggested_caption) > 0) as has_transcript, i.hook, i.brief
        from editorial_schedule s join content_items i on i.id = s.content_item_id
       where s.client_id = $1 and s.planned_day >= $2::date and s.sequence_kind <> '' and s.status = 'planned'
       group by s.planned_day, s.sequence_kind, i.id

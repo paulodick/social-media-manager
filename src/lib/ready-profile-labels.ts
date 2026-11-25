@@ -7,10 +7,11 @@ export const AUDIENCE_LABEL: Record<Audience, string> = {
   geral: "Público geral",
 };
 
-export type QualityFlag = "no_transcript" | "uncertain" | "commercial_music" | "no_speech";
+export type QualityFlag = "no_transcript" | "caption_only" | "uncertain" | "commercial_music" | "no_speech";
 
 export const FLAG_LABEL: Record<QualityFlag, string> = {
-  no_transcript: "Sem transcrição",
+  no_transcript: "Sem transcrição nem legenda",
+  caption_only: "Só legenda sugerida (sem transcrição)",
   uncertain: "Transcrição com trechos incertos: confira de ouvido",
   commercial_music: "Música comercial: pode limitar o alcance",
   no_speech: "Sem fala (só texto na tela)",
