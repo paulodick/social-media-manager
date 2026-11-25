@@ -71,8 +71,8 @@ export default async function PostToday({ searchParams }: { searchParams: Promis
             {isConnected ? (
               <div className="col" style={{ gap: 10 }}>
                 <Link className="btn primary wide" href={`/clientes/${t.client_id}/dia/${t.day}#t-${t.id}`}>Revisar e publicar</Link>
-                <details className="personalize">
-                  <summary>Postar manualmente</summary>
+                <details className="personalize" open>
+                  <summary>Ou postar manualmente</summary>
                   <div style={{ marginTop: 10 }}>{manualSteps}</div>
                 </details>
               </div>
