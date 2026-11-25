@@ -4,8 +4,66 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { NETWORKS, isNetwork } from "@/config/networks";
 import type { SequenceRow } from "@/lib/editorial-sequence-store";
+import { AUDIENCE_LABEL, FLAG_LABEL, type Audience, type QualityFlag } from "@/lib/ready-profile-labels";
 
-type ReadyInfo = { id: string; title: string; has_transcript: boolean };
+type ReadyInfo = {
+  id: string;
+  title: string;
+  folder: string;
+  theme: string;
+  summary: string;
+  pillar: string;
+  audience: string;
+  hook: string;
+  caption_instagram: string;
+  caption_linkedin: string;
+  drive_url: string;
+  flags: string[];
+  profiled: boolean;
+  has_transcript: boolean;
+};
+
+type SyncReply = {
+  folder: string | null;
+  created: number;
+  updated: number;
+  warnings: string[];
+  profiled?: number;
+  profile_pending?: number;
+  error?: string;
+};
+
+/** Passou disso desde a última leitura, o Editorial sincroniza sozinho ao abrir. */
+const AUTO_SYNC_MS = 24 * 60 * 60 * 1000;
+
+function syncSummary(j: SyncReply, auto: boolean): string {
+  const parts = [`${j.created} vídeo(s) novo(s)`, `${j.updated} atualizado(s)`];
+  if (j.profiled !== undefined) parts.push(`${j.profiled} interpretado(s) pela IA`);
+  const pending = j.profile_pending ? ` ${j.profile_pending} ainda sem ficha: sincronize de novo para continuar.` : "";
+  return `${auto ? "Sincronizado automaticamente. " : ""}"${j.folder}": ${parts.join(", ")}.${pending}${j.warnings.length ? ` ${j.warnings.join(" ")}` : ""}`;
+}
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="btn"
+      disabled={!text}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setDone(true);
+          setTimeout(() => setDone(false), 2000);
+        } catch {
+          setDone(false);
+        }
+      }}
+    >
+      {done ? "Copiado" : label}
+    </button>
+  );
+}
 
 /** Formatos de vídeo vertical que a sequência usa (o mesmo vídeo pronto sai em todos). */
 const VIDEO_FORMATS = ["reels", "video", "shorts"];
@@ -61,36 +119,41 @@ export default function SequencePanel({
   const [prompt, setPrompt] = useState("");
   const [manual, setManual] = useState("");
 
-  async function load() {
+  async function load(): Promise<{ synced_at: string | null; ready: ReadyInfo[] } | null> {
     const res = await fetch(`/api/editorial/clients/${clientId}/sequence`);
-    if (!res.ok) return;
-    const j = (await res.json()) as { rows: SequenceRow[]; ready: ReadyInfo[] };
+    if (!res.ok) return null;
+    const j = (await res.json()) as { rows: SequenceRow[]; ready: ReadyInfo[]; synced_at: string | null };
     setRows(j.rows);
     setReady(j.ready);
+    return j;
   }
 
   useEffect(() => {
-    void load();
+    void (async () => {
+      const j = await load();
+      if (!j) return;
+      // Sincroniza sozinho se a última leitura passou de um dia (ou se há vídeos que nunca passaram pela sincronização nova).
+      const stale = j.synced_at ? Date.now() - new Date(j.synced_at).getTime() > AUTO_SYNC_MS : j.ready.length > 0;
+      if (stale) await sync(true);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
-  async function sync() {
+  async function sync(auto = false) {
     setBusy("sync");
     setErr("");
     setMsg("");
     try {
       const res = await fetch(`/api/editorial/clients/${clientId}/sequence/sync`, { method: "POST" });
-      const j = (await res.json()) as { folder: string | null; created: number; updated: number; warnings: string[]; error?: string };
+      const j = (await res.json()) as SyncReply;
       if (!res.ok || !j.folder) {
-        setErr(j.error ?? j.warnings?.join(" ") ?? "Não foi possível ler a pasta.");
+        if (!auto) setErr(j.error ?? j.warnings?.join(" ") ?? "Não foi possível ler a pasta.");
         return;
       }
-      setMsg(
-        `"${j.folder}": ${j.created} vídeo(s) novo(s), ${j.updated} atualizado(s).${j.warnings.length ? ` ${j.warnings.join(" ")}` : ""}`,
-      );
+      setMsg(syncSummary(j, auto));
       await load();
     } catch {
-      setErr("Falha ao falar com o servidor.");
+      if (!auto) setErr("Falha ao falar com o servidor.");
     } finally {
       setBusy("");
     }
@@ -172,6 +235,7 @@ export default function SequencePanel({
 
   const pending = rows.filter((r) => r.kind !== "skip" && !r.approved);
   const noTranscript = ready.filter((r) => !r.has_transcript).length;
+  const flagged = ready.filter((r) => r.flags.some((f) => f !== "no_transcript" && f !== "no_speech")).length;
 
   return (
     <section className="card col" style={{ gap: 14 }} aria-labelledby="seq-h">
@@ -179,19 +243,67 @@ export default function SequencePanel({
         <div className="col" style={{ gap: 2 }}>
           <h2 id="seq-h">Próximos posts</h2>
           <span className="muted small" style={{ maxWidth: "70ch" }}>
-            A IA lê as transcrições dos vídeos prontos da pasta <b>Reels Editados</b>, cria pautas novas com temas que faltam e decide a
+            <b>Sincronizar conteúdos</b> lê a pasta <b>Reels Editados</b> (vídeo + transcrição .txt, Google Doc ou .docx) e a IA faz a
+            ficha de cada vídeo: tema, resumo, pilar, gancho e legendas. Depois ela cria pautas novas com temas que faltam e decide a
             ordem para não repetir. Nada vira post até você aprovar; ao aprovar, a pasta do vídeo vai para a pasta do dia.
           </span>
         </div>
-        <button type="button" className="btn" onClick={sync} disabled={!!busy}>
-          {busy === "sync" ? "Lendo a pasta…" : "Ler vídeos prontos"}
+        <button type="button" className="btn" onClick={() => sync()} disabled={!!busy}>
+          {busy === "sync" ? "Sincronizando…" : "Sincronizar conteúdos"}
         </button>
       </div>
 
-      <p className="small">
-        <b>{ready.length}</b> vídeo(s) pronto(s) disponível(is) para a sequência
-        {noTranscript ? <span className="muted"> · {noTranscript} sem transcrição (a IA só vê o nome)</span> : null}.
-      </p>
+      <details className="col" style={{ gap: 8 }}>
+        <summary className="small" style={{ cursor: "pointer" }}>
+          <b>{ready.length}</b> vídeo(s) pronto(s) disponível(is) para a sequência
+          {noTranscript ? <span className="muted"> · {noTranscript} sem transcrição (a IA só vê o nome)</span> : null}
+          {flagged ? <span style={{ color: "var(--accent-ink)" }}> · {flagged} pedem conferência</span> : null}
+        </summary>
+        <ul className="col" style={{ listStyle: "none", margin: 0, padding: 0, gap: 8 }} aria-label="Vídeos prontos">
+          {ready.map((v) => (
+            <li key={v.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px" }}>
+              <details>
+                <summary style={{ cursor: "pointer" }}>
+                  <span className="muted small">{v.folder} · </span>
+                  <b>{v.theme || v.title}</b>
+                  {v.pillar && <span className="small muted"> · {v.pillar}</span>}
+                  {v.audience && <span className="small muted"> · {AUDIENCE_LABEL[v.audience as Audience] ?? v.audience}</span>}
+                  {!v.profiled && v.has_transcript && <span className="small muted"> · ainda sem ficha da IA</span>}
+                  {v.flags.map((f) => (
+                    <span key={f} className="tag" style={{ marginLeft: 6 }}>{FLAG_LABEL[f as QualityFlag] ?? f}</span>
+                  ))}
+                </summary>
+                <div className="col" style={{ gap: 8, marginTop: 8 }}>
+                  {v.summary && <p className="small" style={{ margin: 0 }}>{v.summary}</p>}
+                  {v.hook && <p className="small" style={{ margin: 0 }}><b>Gancho:</b> {v.hook}</p>}
+                  {v.caption_instagram && (
+                    <div className="col" style={{ gap: 4 }}>
+                      <span className="f">Legenda do Instagram</span>
+                      <p className="small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{v.caption_instagram}</p>
+                    </div>
+                  )}
+                  {v.caption_linkedin && (
+                    <div className="col" style={{ gap: 4 }}>
+                      <span className="f">Legenda do LinkedIn</span>
+                      <p className="small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{v.caption_linkedin}</p>
+                    </div>
+                  )}
+                  <div className="row" style={{ gap: 8 }}>
+                    <CopyButton text={v.caption_instagram} label="Copiar legenda do Instagram" />
+                    <CopyButton text={v.caption_linkedin} label="Copiar legenda do LinkedIn" />
+                    {v.drive_url && (
+                      <a className="btn" href={v.drive_url} target="_blank" rel="noreferrer">Ver vídeo no Drive</a>
+                    )}
+                  </div>
+                  <span className="muted small">
+                    Ao aprovar este vídeo na sequência, o post já sai com essas legendas (Instagram e LinkedIn), e você pode editar antes de publicar.
+                  </span>
+                </div>
+              </details>
+            </li>
+          ))}
+        </ul>
+      </details>
 
       <div className="row" style={{ gap: "10px 16px", alignItems: "flex-end" }}>
         <div className="col">

@@ -394,6 +394,19 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    version: 19,
+    sql: `
+      -- 19: "Sincronizar conteúdos": ficha de cada vídeo pronto feita pela IA na sincronização (tema, resumo, pilar,
+      -- público, gancho, legendas), impressão digital da transcrição (só refaz quando muda) e avisos de qualidade.
+      alter table content_items
+        add column if not exists ai_profile jsonb,
+        add column if not exists ai_profile_hash text,
+        add column if not exists quality_flags text[] not null default '{}';
+      -- Última sincronização da pasta "Reels Editados" (o Editorial sincroniza sozinho se passou de um dia).
+      alter table clients add column if not exists ready_synced_at timestamptz;
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

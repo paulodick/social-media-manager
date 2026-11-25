@@ -23,7 +23,21 @@ export type ReadyVideo = {
   topic: string;
   guest: string;
   transcript: string;
+  /** Ficha feita pela IA na sincronização (vazio enquanto não houver ficha). */
+  summary?: string;
+  pillar?: string;
+  audience?: string;
+  flags?: string[];
+  hook?: string;
+  caption_instagram?: string;
+  caption_linkedin?: string;
+  drive_url?: string;
+  folder?: string;
+  profiled?: boolean;
 };
+
+/** Com ficha, a IA da sequência precisa de menos transcrição: o resumo já diz do que o vídeo trata. */
+export const TRANSCRIPT_EXCERPT_WITH_PROFILE = 600;
 
 export type SequenceEntry =
   | { date: string; kind: "ready"; item_id: string; theme: string; reason: string }
@@ -62,7 +76,19 @@ export function buildSequencePrompt(input: {
     ? input.ready
         .map(
           (v, i) =>
-            `${i + 1}. item_id: ${v.id}\n   título: ${v.title}${v.topic ? `\n   assunto informado: ${v.topic}` : ""}${v.guest ? `\n   convidado: ${v.guest}` : ""}\n   transcrição: ${transcriptExcerpt(v.transcript) || "(sem transcrição)"}`,
+            [
+              `${i + 1}. item_id: ${v.id}`,
+              `   título: ${v.title}`,
+              v.topic ? `   tema: ${v.topic}` : "",
+              v.summary ? `   resumo: ${v.summary}` : "",
+              v.pillar ? `   pilar: ${v.pillar}` : "",
+              v.audience ? `   público: ${v.audience}` : "",
+              v.guest ? `   convidado: ${v.guest}` : "",
+              v.flags?.includes("uncertain") ? "   atenção: transcrição com trechos incertos" : "",
+              `   transcrição: ${transcriptExcerpt(v.transcript, v.summary ? TRANSCRIPT_EXCERPT_WITH_PROFILE : TRANSCRIPT_EXCERPT_CHARS) || "(sem transcrição)"}`,
+            ]
+              .filter(Boolean)
+              .join("\n"),
         )
         .join("\n")
     : "(nenhum vídeo pronto disponível)";
@@ -86,7 +112,7 @@ export function buildSequencePrompt(input: {
     `- "new": uma pauta nova para gravar, com tema DIFERENTE do que as transcrições já cobrem, para o conteúdo parecer sempre renovado. Só é permitido em datas a partir de ${firstNewDay} (a pessoa precisa de ${input.leadDays} dia(s) para gravar e editar).`,
     `- "skip": não postar nesse dia. Use SÓ quando não houver vídeo pronto que caiba sem repetir o tema do post anterior E ainda não der tempo de gravar uma pauta nova. Nunca use para "pausa estratégica", "equilibrar frequência" ou "responder comentários": a pessoa escolheu postar nessas datas. Explique o motivo.`,
     "",
-    "Como decidir a ordem: leia as transcrições para entender o assunto real de cada vídeo; evite dois posts seguidos do mesmo tema;",
+    "Como decidir a ordem: use o tema, o resumo, o pilar e o público de cada vídeo (e a transcrição) para entender o assunto real; evite dois posts seguidos do mesmo tema ou do mesmo pilar;",
     "alterne vídeos prontos e pautas novas para nunca ficar sem conteúdo; pense no que prende a atenção e alcança mais gente nas redes hoje;",
     "não repita temas publicados recentemente.",
     "",

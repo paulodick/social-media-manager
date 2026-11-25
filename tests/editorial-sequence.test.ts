@@ -172,3 +172,159 @@ test("Reels Editados → itens prontos com transcrição; aprovar move a pasta p
     await drive.close();
   }
 });
+
+test("ficha do vídeo pronto: avisos de qualidade, impressão digital, pedido e conferência", async () => {
+  const rp = await import("../src/lib/ready-profile.ts");
+  assert.deepEqual(rp.qualityFlags(""), ["no_transcript"]);
+  assert.deepEqual(rp.qualityFlags("Tema: X\nFala: Paulo\nPerdi a conexão [trecho incerto] do trem"), ["uncertain"]);
+  assert.deepEqual(rp.qualityFlags("Duas ressonâncias [?] paradas"), ["uncertain"]);
+  assert.deepEqual(
+    rp.qualityFlags("Fala: Sem fala — apenas texto na tela\nA trilha é a gravação comercial de uma música"),
+    ["commercial_music", "no_speech"],
+  );
+  assert.deepEqual(rp.qualityFlags("Hoje vamos falar do plantão"), []);
+
+  assert.equal(rp.profileHash("a  b\nc"), rp.profileHash("a b c"), "espaços não mudam a impressão digital");
+  assert.notEqual(rp.profileHash("a"), rp.profileHash("b"));
+
+  const prompt = rp.buildReadyProfilePrompt({
+    clientName: "Best Medical", segment: "Manutenção", tone: "Técnico", notes: "WhatsApp 11 9999", styleNotes: "",
+    pillars: ["Bastidores", "Técnico"], title: "Duas ressonâncias", transcript: "Nenhuma das duas tem estabilizador.",
+  });
+  assert.match(prompt, /Bastidores; Técnico/);
+  assert.match(prompt, /Não invente/);
+  assert.match(prompt, /\[trecho incerto\]/);
+  assert.match(prompt, /estabilizador/);
+  assert.match(prompt, /WhatsApp 11 9999/);
+
+  const ok = rp.parseReadyProfile(
+    { theme: "Rede elétrica", summary: "Falta de estabilizador.", pillar: "técnico", audience: "Gestor", hook: "Pararam juntas",
+      caption_instagram: "IG", caption_linkedin: "LI" },
+    ["Bastidores", "Técnico"],
+  );
+  assert.ok(ok.ok);
+  if (ok.ok) {
+    assert.equal(ok.profile.pillar, "Técnico", "pilar casa sem diferenciar maiúsculas");
+    assert.equal(ok.profile.audience, "gestor");
+  }
+  const strange = rp.parseReadyProfile({ theme: "T", summary: "S", pillar: "Inventado", audience: "x", caption_instagram: "a", caption_linkedin: "b" }, ["Técnico"]);
+  assert.ok(strange.ok && strange.profile.pillar === "" && strange.profile.audience === "geral");
+  assert.equal(rp.parseReadyProfile({ theme: "T", summary: "S", caption_instagram: "a" }, []).ok, false);
+  assert.equal(rp.parseReadyProfile(null, []).ok, false);
+
+  const order: number[] = [];
+  const out = await rp.mapLimit([30, 10, 20], 2, async (ms) => {
+    await new Promise((r) => setTimeout(r, ms));
+    order.push(ms);
+    return ms * 2;
+  });
+  assert.deepEqual(out, [60, 20, 40], "resultado na ordem original");
+  assert.equal(order.length, 3);
+});
+
+test("buildSequencePrompt usa a ficha (resumo, pilar, público) e avisa transcrição incerta", () => {
+  const p = buildSequencePrompt({
+    clientName: "Best Medical", segment: "", tone: "", notes: "", styleNotes: "", memoryBlock: "", pillars: [],
+    ready: [{ id: A, title: "Video 6", topic: "Rede elétrica", guest: "", transcript: "x".repeat(2000), summary: "Sem estabilizador, três máquinas pararam.", pillar: "Técnico", audience: "gestor", flags: ["uncertain"] }],
+    recent: [], dates: ["2026-11-26"], today: "2026-11-25", leadDays: 2, networks: ["Instagram reels"],
+  });
+  assert.match(p, /resumo: Sem estabilizador/);
+  assert.match(p, /pilar: Técnico/);
+  assert.match(p, /público: gestor/);
+  assert.match(p, /trechos incertos/);
+  assert.ok(!p.includes("x".repeat(700)), "com ficha, a transcrição vai mais curta");
+});
+
+test("Sincronizar conteúdos: a IA faz a ficha uma vez, refaz quando a transcrição muda e não apaga edição manual", { skip: !process.env.DATABASE_URL }, async () => {
+  const http = await import("node:http");
+  let calls = 0;
+  let round = 1;
+  const gemini = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      calls++;
+      const profile = {
+        theme: round === 1 ? "Rede elétrica" : "Estabilizador",
+        summary: `Resumo ${round}`,
+        pillar: "Técnico",
+        audience: "gestor",
+        hook: `Gancho ${round}`,
+        caption_instagram: `IG ${round}`,
+        caption_linkedin: `LI ${round}`,
+      };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(profile) }] } }] }));
+    });
+  });
+  await new Promise<void>((r) => gemini.listen(0, "127.0.0.1", r));
+  const addr = gemini.address();
+  const gport = typeof addr === "object" && addr ? addr.port : 0;
+
+  const tree = [
+    { id: "ROOT_PRF_CLIENTE", name: "Cliente Ficha", mimeType: FOLDER, parents: [] },
+    { id: "PASTA_REELS_PRF1", name: "Reels Editados", mimeType: FOLDER, parents: ["ROOT_PRF_CLIENTE"] },
+    { id: "PASTA_PRF_VIDEO6", name: "Video 6", mimeType: FOLDER, parents: ["PASTA_REELS_PRF1"] },
+    { id: "VIDEO_PRF_ARQ006", name: "duas_ressonancias.mp4", mimeType: "video/mp4", size: 5000, parents: ["PASTA_PRF_VIDEO6"] },
+    { id: "GDOC_PRF_TRANS06", name: "transcricao", mimeType: "application/vnd.google-apps.document", parents: ["PASTA_PRF_VIDEO6"],
+      exportText: "Tema: Duas ressonâncias e uma tomografia paradas no mesmo dia por oscilação de energia\nFala: Paulo\nNenhuma das duas tem estabilizador [?]." },
+  ];
+  const drive = await startMockDrive(4072, { tree });
+  const prev = { key: process.env.GEMINI_API_KEY, base: process.env.GEMINI_API_BASE, model: process.env.GEMINI_MODEL };
+  process.env.DRIVE_API_BASE = `http://127.0.0.1:${drive.port}`;
+  process.env.DRIVE_TEST_TOKEN = "token-teste";
+  process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify({ client_email: "teste@mock.local", private_key: "fake-key" });
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  process.env.GEMINI_API_BASE = `http://127.0.0.1:${gport}`;
+  process.env.GEMINI_MODEL = "modelo-teste";
+  const { db } = await import("../src/lib/db.ts");
+  const store = await import("../src/lib/editorial-sequence-store.ts");
+  const pool = await db();
+  const clientId = (
+    await pool.query<{ id: string }>("insert into clients (name, drive_folder_id) values ($1, 'ROOT_PRF_CLIENTE') returning id", [`Teste Ficha ${Date.now()}`])
+  ).rows[0].id;
+  await pool.query("insert into content_pillars (client_id, name, position) values ($1, 'Técnico', 0)", [clientId]);
+  try {
+    const first = await store.syncContents(clientId);
+    assert.equal(first.created, 1, JSON.stringify(first));
+    assert.equal(first.profiled, 1, JSON.stringify(first));
+    assert.equal(calls, 1);
+    let [v] = await store.listAvailableReady(clientId);
+    assert.equal(v.topic, "Rede elétrica", "tema curto da ficha no lugar da linha Tema: inteira");
+    assert.equal(v.summary, "Resumo 1");
+    assert.equal(v.pillar, "Técnico");
+    assert.equal(v.caption_instagram, "IG 1");
+    assert.deepEqual(v.flags, ["uncertain"]);
+    const synced = await pool.query("select ready_synced_at from clients where id = $1", [clientId]);
+    assert.ok(synced.rows[0].ready_synced_at);
+
+    // Sem mudança na transcrição: não chama a IA de novo e não apaga a ficha.
+    const again = await store.syncContents(clientId);
+    assert.equal(again.profiled, 0);
+    assert.equal(calls, 1);
+    [v] = await store.listAvailableReady(clientId);
+    assert.equal(v.caption_instagram, "IG 1");
+    assert.equal(v.topic, "Rede elétrica");
+
+    // A pessoa edita a legenda do Instagram; a transcrição muda; a IA refaz a ficha sem apagar a edição.
+    await pool.query("update content_items set caption_instagram = 'Minha legenda' where id = $1", [v.id]);
+    (tree.find((t) => t.id === "GDOC_PRF_TRANS06") as { exportText: string }).exportText += "\nAgora com estabilizador.";
+    round = 2;
+    const third = await store.syncContents(clientId);
+    assert.equal(third.profiled, 1, JSON.stringify(third));
+    assert.equal(calls, 2);
+    [v] = await store.listAvailableReady(clientId);
+    assert.equal(v.caption_instagram, "Minha legenda", "edição manual fica");
+    assert.equal(v.caption_linkedin, "LI 2", "o que ainda era da IA é atualizado");
+    assert.equal(v.topic, "Estabilizador");
+    assert.equal(v.summary, "Resumo 2");
+  } finally {
+    await pool.query("delete from clients where id = $1", [clientId]);
+    await drive.close();
+    await new Promise<void>((r) => gemini.close(() => r()));
+    for (const [k, val] of [["GEMINI_API_KEY", prev.key], ["GEMINI_API_BASE", prev.base], ["GEMINI_MODEL", prev.model]] as const) {
+      if (val === undefined) delete process.env[k];
+      else process.env[k] = val;
+    }
+  }
+});
