@@ -29,6 +29,17 @@ export function startMockDrive(PORT = 4030, opts = {}) {
         return;
       }
 
+      // Busca ampla por pastas de outras contas ("not 'me' in owners"): itens com `foreign: true`,
+      // menos os marcados `hiddenFromSearch` (o Drive real às vezes não lista uma pasta que deixa abrir).
+      if (customFiles.size > 0 && !pm && q.includes("not 'me' in owners")) {
+        const matched = [...customFiles.values()]
+          .filter((f) => f.foreign && !f.hiddenFromSearch && f.mimeType === "application/vnd.google-apps.folder")
+          .map((f) => ({ id: f.id, name: f.name, parents: f.parents }));
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ files: matched }));
+        return;
+      }
+
       // Se há itens customizados cadastrados na árvore de teste, filtra por parent + mimeType + name
       if (customFiles.size > 0 && !nm) {
         const wantFolders = q.includes("mimeType = 'application/vnd.google-apps.folder'");
@@ -39,6 +50,7 @@ export function startMockDrive(PORT = 4030, opts = {}) {
         const matched = [];
         for (const f of customFiles.values()) {
           if (!(f.parents ?? []).includes(parentId)) continue;
+          if (f.hiddenFromSearch) continue;
           const isFolder = f.mimeType === "application/vnd.google-apps.folder";
           const isShortcut = f.mimeType === "application/vnd.google-apps.shortcut";
           if (wantFolders && !isFolder && !(wantShortcuts && isShortcut)) continue;
