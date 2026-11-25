@@ -1,7 +1,7 @@
 import { todaySP } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { jsonError, requireApiAuth, requireClient } from "@/lib/editorial-api";
-import { listAvailableReady, readSequence } from "@/lib/editorial-sequence-store";
+import { listAvailableReady, profilingStatus, readSequence } from "@/lib/editorial-sequence-store";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clientId: stri
   return Response.json({
     rows,
     synced_at: synced.rows[0]?.at ?? null,
+    profiling: profilingStatus(clientId),
     ready: ready.map((r) => ({
       id: r.id,
       title: r.title,
