@@ -20,6 +20,7 @@ import { generateGeminiText } from "./editorial-ai";
 import { buildCaptionPrompt } from "./prompt";
 import { autoBlocker, checkPublishable, startPublish } from "./publisher";
 import { canAutoSchedule } from "./auto-publish";
+import { returnReadyFolders } from "./editorial-sequence-store";
 import { listTargets } from "./queries";
 import { removeMetaConnections, removeLinkedinConnection, removeTiktokConnection, saveMetaConnections } from "./connections";
 import { revokeAccess, tiktokConfig } from "./publish/tiktok-oauth";
@@ -732,7 +733,7 @@ export async function deleteTarget(targetId: string, formData: FormData): Promis
   // O id vem da ligação do botão (bind), não de campo do formulário: o React troca o `name` de botões com formAction.
   const id = String(targetId).slice(0, 40);
   if (!isValidUuid(id)) redirect("/");
-  const back = safePath(text(formData, "volta", 300), "/");
+  let back = safePath(text(formData, "volta", 300), "/");
   const pool = await db();
   const cur = await pool.query<{
     post_id: string;
@@ -754,6 +755,11 @@ export async function deleteTarget(targetId: string, formData: FormData): Promis
   const blocker = deleteTargetBlocker(row);
   if (blocker) redirect(withParam(back, "erro", blocker) + `#t-${id}`);
 
+  // Itens editoriais deste destino: se forem vídeos prontos que o app moveu para o dia, a pasta volta para "Reels Editados".
+  const linkedItems = (
+    await pool.query<{ content_item_id: string }>("select content_item_id from editorial_schedule where post_target_id = $1", [id])
+  ).rows.map((x) => x.content_item_id);
+
   const r = await pool.query<{ post_id: string }>(
     `delete from post_targets
       where id = $1
@@ -766,6 +772,8 @@ export async function deleteTarget(targetId: string, formData: FormData): Promis
     redirect(withParam(back, "erro", "Este destino não pode ser excluído.") + `#t-${id}`);
   }
   await pool.query("delete from posts p where p.id=$1 and not exists (select 1 from post_targets t where t.post_id=p.id)", [row.post_id]);
+  const folderWarnings = await returnReadyFolders(linkedItems).catch(() => ["A pasta do vídeo não voltou para \"Reels Editados\": falha ao falar com o Google Drive."]);
+  if (folderWarnings.length) back = withParam(back, "aviso", folderWarnings.join(" "));
 
   const left = await pool.query(
     `select 1
@@ -778,7 +786,8 @@ export async function deleteTarget(targetId: string, formData: FormData): Promis
   );
   revalidatePath("/", "layout");
   if (!left.rowCount) {
-    redirect(withParam(`/clientes/${row.client_id}?mes=${monthOf(row.day)}`, "ok", "Destino excluído."));
+    const cal = withParam(`/clientes/${row.client_id}?mes=${monthOf(row.day)}`, "ok", "Destino excluído.");
+    redirect(folderWarnings.length ? withParam(cal, "aviso", folderWarnings.join(" ")) : cal);
   }
   redirect(withParam(back, "ok", "Destino excluído."));
 }

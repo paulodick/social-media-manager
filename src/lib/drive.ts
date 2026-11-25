@@ -562,6 +562,13 @@ export function normalizeFolderName(name: string): string {
 /** Nomes aceitos para a pasta dos vídeos prontos de cada cliente. */
 export const READY_VIDEOS_FOLDER = "Reels Editados";
 
+/** Acha a pasta "Reels Editados" (ou variação do nome) dentro da pasta do cliente. */
+export async function findReadyVideosFolder(clientFolderId: string): Promise<{ id: string; name: string } | null | { error: string }> {
+  const subs = await listSubfolders(clientFolderId, { max: 200 });
+  if ("error" in subs) return subs;
+  return subs.folders.find((f) => normalizeFolderName(f.name) === normalizeFolderName(READY_VIDEOS_FOLDER)) ?? null;
+}
+
 /** O que o Drive diz que a conta do app pode fazer com um item. */
 export async function getMoveInfo(
   id: string,

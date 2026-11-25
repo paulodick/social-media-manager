@@ -4,6 +4,7 @@ import { TZ, isTime } from "./dates.ts";
 import { db } from "./db.ts";
 import { isUuid } from "./editorial-rules.ts";
 import { ensureTargetFolders } from "./post-folders.ts";
+import { moveReadyFolderToDay } from "./editorial-sequence-store.ts";
 
 export type EnqueueResult =
   | { ok: true; post_id: string; post_target_ids: string[]; day: string; warnings: string[] }
@@ -215,6 +216,12 @@ export async function enqueueSlots(
       ids.push(t.rows[0].id);
     }
     await c.query("commit");
+    // Vídeo pronto de "Reels Editados": a pasta "Vídeo N" vai para a pasta do post no dia (depois do commit,
+    // porque o Drive não volta atrás junto com o banco).
+    const moveWarn = await moveReadyFolderToDay(first.content_item_id, folders.ids.find((x) => !!x) ?? null).catch(
+      () => "A pasta do vídeo não foi movida para o dia: falha ao falar com o Google Drive.",
+    );
+    if (moveWarn) warnings.push(moveWarn);
     return { ok: true, post_id: p.rows[0].id, post_target_ids: ids, day: first.day, warnings };
   } catch (e) {
     await c.query("rollback").catch(() => {});

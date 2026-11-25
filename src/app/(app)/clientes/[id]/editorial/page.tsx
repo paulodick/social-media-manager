@@ -1,3 +1,4 @@
+import { editorialAiConfigured } from "@/lib/editorial-ai";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import EditorialBoard from "@/components/editorial/EditorialBoard";
@@ -94,6 +95,8 @@ export default async function ClientEditorialPage({
         initialItems={itemsRes.items}
         initialSlots={slots}
         initialStyleNotes={styleRow.rows[0]?.ai_style_notes ?? ""}
+        aiEnabled={editorialAiConfigured()}
+        today={today}
       />
     </main>
   );

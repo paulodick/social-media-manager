@@ -57,7 +57,8 @@ export default async function DayPage({
             const actual = await folderPathFromRoot(t.drive_file_id, client.drive_folder_id);
             if (actual === null) {
               pathNote = `O arquivo não está dentro da pasta do cliente. Deveria estar em ${expected.join(" / ")}.`;
-            } else if (!accepted.includes(actual.join("/"))) {
+            } else if (!accepted.includes(actual.join("/")) && !accepted.includes(actual.slice(0, -1).join("/"))) {
+              // Também vale uma subpasta dentro da pasta certa (ex.: a pasta "Vídeo 3" que o editorial moveu para o dia).
               pathNote = `O arquivo está em ${actual.join(" / ") || "(raiz da pasta do cliente)"}, mas deveria estar em ${expected.join(" / ")}.`;
             }
           }
