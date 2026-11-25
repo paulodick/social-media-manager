@@ -11,13 +11,34 @@ import {
   readDriveDocumentText,
 } from "./drive.ts";
 import { groupFolderIntoCutBundle, parseCutDocument } from "./drive-cuts.ts";
-import { normalizeThemeKey } from "./editorial-rules.ts";
+import { editorialAiConfigured, generateEditorialJson } from "./editorial-ai.ts";
+import { extractJsonPayload, normalizeThemeKey } from "./editorial-rules.ts";
 import type { ReadyVideo, SequenceEntry } from "./editorial-sequence.ts";
+import {
+  buildReadyProfilePrompt,
+  mapLimit,
+  parseReadyProfile,
+  profileHash,
+  qualityFlags,
+  type ReadyProfile,
+} from "./ready-profile.ts";
 
 const TRANSCRIPT_MAX = 20000;
 type Pg = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount: number | null }> };
 
-export type SyncResult = { folder: string | null; created: number; updated: number; warnings: string[] };
+export type SyncResult = {
+  folder: string | null;
+  created: number;
+  updated: number;
+  warnings: string[];
+  /** Vídeos que a IA interpretou nesta sincronização (ficha nova ou refeita porque a transcrição mudou). */
+  profiled?: number;
+  /** Vídeos que ainda esperam ficha (limite por sincronização ou falha da IA). */
+  profile_pending?: number;
+};
+
+/** Quantos vídeos a IA interpreta por sincronização (o resto fica para a próxima). */
+export const PROFILE_MAX_PER_SYNC = 12;
 
 /** Título de referência: "Video 3" sozinho não diz nada, então junta o começo da fala da transcrição. */
 export function readyVideoTitle(parsedTitle: string, folderName: string, transcript: string): string {
@@ -82,11 +103,18 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       clientId, title, normalizeThemeKey(parsed.topic_tag || title), parsed.guest_name, parsed.topic_tag, transcript,
       parsed.caption_draft, parsed.caption_instagram, parsed.caption_linkedin, driveUrl, bundle.video.id,
       meta.error ? null : JSON.stringify(meta), folder.id, folder.name, ready.id, bundle.doc?.id ?? null,
+      qualityFlags(transcript),
     ];
     const upd = await pool.query(
-      `update content_items set title=$2, theme_key=$3, guest_name=$4, topic_tag=$5, transcript=$6,
-              caption_draft=$7, caption_instagram=$8, caption_linkedin=$9, drive_url=$10, drive_file_id=$11,
-              drive_meta=$12, source_folder_name=$14, ready_folder_parent_id=$15, doc_drive_file_id=$16,
+      // Campos vazios na transcrição não apagam o que a ficha da IA (ou a pessoa) já preencheu.
+      `update content_items set title=$2, theme_key=$3, guest_name=$4,
+              topic_tag=case when ai_profile is not null then topic_tag when $5<>'' then $5 else topic_tag end,
+              transcript=$6,
+              caption_draft=case when $7<>'' then $7 else caption_draft end,
+              caption_instagram=case when $8<>'' then $8 else caption_instagram end,
+              caption_linkedin=case when $9<>'' then $9 else caption_linkedin end,
+              drive_url=$10, drive_file_id=$11,
+              drive_meta=$12, source_folder_name=$14, ready_folder_parent_id=$15, doc_drive_file_id=$16, quality_flags=$17,
               source_kind='existing_ready', status=case when status='archived' then status else 'ready' end, updated_at=now()
         where client_id=$1 and source_folder_id=$13`,
       values,
@@ -99,8 +127,8 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       await pool.query(
         `insert into content_items (client_id, title, theme_key, guest_name, topic_tag, transcript, caption_draft,
                 caption_instagram, caption_linkedin, drive_url, drive_file_id, drive_meta, source_folder_id,
-                source_folder_name, ready_folder_parent_id, doc_drive_file_id, source_kind, content_format, status)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'existing_ready','video','ready')`,
+                source_folder_name, ready_folder_parent_id, doc_drive_file_id, quality_flags, source_kind, content_format, status)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'existing_ready','video','ready')`,
         values,
       );
       created++;
@@ -109,15 +137,152 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       else throw e;
     }
   }
+  await pool.query("update clients set ready_synced_at = now() where id = $1", [clientId]);
   return { folder: ready.name, created, updated, warnings };
+}
+
+/**
+ * "Sincronizar conteúdos": lê a pasta e, com a chave do Gemini, faz a ficha dos vídeos novos ou com transcrição
+ * alterada. Sem chave, só lê (a sequência continua funcionando com o texto da transcrição).
+ */
+export async function syncContents(clientId: string): Promise<SyncResult> {
+  const res = await syncReadyVideos(clientId);
+  if (!res.folder) return res;
+  if (!editorialAiConfigured()) {
+    res.warnings.push("Sem a chave do Gemini, os vídeos foram lidos mas não interpretados (sem ficha nem legenda).");
+    return res;
+  }
+  const p = await profileReadyVideos(clientId);
+  res.profiled = p.profiled;
+  res.profile_pending = p.pending;
+  res.warnings.push(...p.warnings);
+  return res;
+}
+
+type ProfileRow = {
+  id: string;
+  title: string;
+  transcript: string;
+  ai_profile: ReadyProfile | null;
+  topic_tag: string;
+  hook: string;
+  brief: string;
+  caption_instagram: string;
+  caption_linkedin: string;
+  pillar_id: string | null;
+  source_folder_name: string;
+};
+
+/** Faz (ou refaz) a ficha dos vídeos prontos cuja transcrição mudou desde a última ficha. */
+export async function profileReadyVideos(clientId: string): Promise<{ profiled: number; pending: number; warnings: string[] }> {
+  const pool = await db();
+  const c = await pool.query<{ name: string; segment: string | null; tone: string | null; notes: string | null; ai_style_notes: string }>(
+    "select name, segment, tone, notes, ai_style_notes from clients where id = $1",
+    [clientId],
+  );
+  const client = c.rows[0];
+  if (!client) return { profiled: 0, pending: 0, warnings: [] };
+  const pillarRows = await pool.query<{ id: string; name: string }>(
+    "select id, name from content_pillars where client_id = $1 and archived_at is null order by position",
+    [clientId],
+  );
+  const pillars = pillarRows.rows.map((p) => p.name);
+  const items = await pool.query<ProfileRow & { ai_profile_hash: string | null }>(
+    `select id, title, transcript, ai_profile, ai_profile_hash, topic_tag, hook, brief, caption_instagram, caption_linkedin,
+            pillar_id, source_folder_name
+       from content_items
+      where client_id = $1 and source_kind = 'existing_ready' and status <> 'archived'
+        and ready_folder_parent_id is not null and length(btrim(transcript)) > 0
+      order by source_folder_name, created_at`,
+    [clientId],
+  );
+  const todo = items.rows.filter((r) => r.ai_profile_hash !== profileHash(r.transcript));
+  const batch = todo.slice(0, PROFILE_MAX_PER_SYNC);
+  const warnings: string[] = [];
+  const results = await mapLimit(batch, 3, async (row) => {
+    const prompt = buildReadyProfilePrompt({
+      clientName: client.name,
+      segment: client.segment ?? "",
+      tone: client.tone ?? "",
+      notes: client.notes ?? "",
+      styleNotes: client.ai_style_notes ?? "",
+      pillars,
+      title: row.title,
+      transcript: row.transcript,
+    });
+    let lastError = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const ask = attempt === 0 ? prompt : `${prompt}\n\nSua resposta anterior foi recusada: ${lastError} Responda de novo com o JSON completo.`;
+      const res = await generateEditorialJson(ask);
+      if ("error" in res) return { row, error: res.error };
+      let raw: unknown;
+      try {
+        raw = extractJsonPayload(res.text);
+      } catch {
+        lastError = "não era um JSON válido.";
+        continue;
+      }
+      const parsed = parseReadyProfile(raw, pillars);
+      if (parsed.ok) return { row, profile: parsed.profile };
+      lastError = parsed.error;
+    }
+    return { row, error: lastError || "a IA não respondeu." };
+  });
+  let profiled = 0;
+  for (const r of results) {
+    if ("error" in r && r.error) {
+      warnings.push(`${r.row.source_folder_name}: a IA não conseguiu interpretar (${r.error}).`);
+      continue;
+    }
+    if (!("profile" in r) || !r.profile) continue;
+    await applyProfile(r.row, r.profile, pillarRows.rows);
+    profiled++;
+  }
+  return { profiled, pending: todo.length - profiled, warnings };
+}
+
+/**
+ * Grava a ficha. Os campos visíveis (tema, gancho, resumo, legendas) só são trocados se estiverem vazios ou ainda
+ * iguais à ficha anterior: o que a pessoa editou à mão nunca é sobrescrito.
+ */
+async function applyProfile(row: ProfileRow, p: ReadyProfile, pillars: { id: string; name: string }[]): Promise<void> {
+  const prev = row.ai_profile;
+  const keep = (current: string, previous: string | undefined, next: string) =>
+    !current.trim() || (previous !== undefined && current === previous) ? next : current;
+  // Antes da primeira ficha, o tema vinha da linha "Tema:" inteira: a ficha troca pelo tema curto.
+  const topic = !prev ? p.theme : keep(row.topic_tag, prev.theme, p.theme);
+  const pillarId = row.pillar_id ?? pillars.find((x) => x.name === p.pillar)?.id ?? null;
+  const pool = await db();
+  await pool.query(
+    `update content_items set ai_profile = $2, ai_profile_hash = $3, topic_tag = $4, theme_key = $5, hook = $6, brief = $7,
+            caption_instagram = $8, caption_linkedin = $9, pillar_id = $10, updated_at = now()
+      where id = $1`,
+    [
+      row.id,
+      JSON.stringify(p),
+      profileHash(row.transcript),
+      topic,
+      normalizeThemeKey(topic || row.title),
+      keep(row.hook, prev?.hook, p.hook),
+      keep(row.brief, prev?.summary, p.summary),
+      keep(row.caption_instagram, prev?.caption_instagram, p.caption_instagram),
+      keep(row.caption_linkedin, prev?.caption_linkedin, p.caption_linkedin),
+      pillarId,
+    ],
+  );
 }
 
 /** Vídeos prontos que a IA pode usar: da "Reels Editados", ainda na pasta e sem post na fila. */
 export async function listAvailableReady(clientId: string): Promise<ReadyVideo[]> {
   const pool = await db();
   const r = await pool.query<ReadyVideo>(
-    `select i.id, i.title, i.topic_tag as topic, i.guest_name as guest, i.transcript
+    `select i.id, i.title, i.topic_tag as topic, i.guest_name as guest, i.transcript,
+            coalesce(i.ai_profile->>'summary', '') as summary, coalesce(p.name, i.ai_profile->>'pillar', '') as pillar,
+            coalesce(i.ai_profile->>'audience', '') as audience, i.quality_flags as flags, i.hook,
+            i.caption_instagram, i.caption_linkedin, i.drive_url, i.source_folder_name as folder,
+            (i.ai_profile is not null) as profiled
        from content_items i
+       left join content_pillars p on p.id = i.pillar_id
       where i.client_id = $1 and i.source_kind = 'existing_ready' and i.status = 'ready'
         and i.ready_folder_parent_id is not null and i.ready_folder_moved_to is null
         and not exists (select 1 from editorial_schedule s where s.content_item_id = i.id
