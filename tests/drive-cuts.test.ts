@@ -441,6 +441,12 @@ test("scanClientCutFolders varre a pasta inteira (episódios e subpastas) e igno
       { id: "EP02_PODREC_0001", name: "Ep -2 Leonardo Milner", mimeType: F, parents: ["ROOT_PODREC_0001"] },
       { id: "C201_PODREC_0001", name: "01 - Comprar equipamento sem ouvir quem entende", mimeType: F, parents: ["EP02_PODREC_0001"] },
       { id: "C201_PODREC_VIDE", name: "EP 2 Corte 1.mp4", mimeType: "video/mp4", size: 10, parents: ["C201_PODREC_0001"] },
+      // Episódio 3 é de outra conta: na pasta do cliente só existe um ATALHO para ele.
+      { id: "EP03_PODREC_REAL", name: "Ep - 3 Philllip Dmitruk", mimeType: F, parents: ["OUTRA_CONTA_ROOT"] },
+      { id: "C301_PODREC_0001", name: "01 - O que faz um físico médico hoje", mimeType: F, parents: ["EP03_PODREC_REAL"] },
+      { id: "C301_PODREC_VIDE", name: "corte01_vertical.mp4", mimeType: "video/mp4", size: 10, parents: ["C301_PODREC_0001"] },
+      { id: "EP03_PODREC_ATAL", name: "Ep - 3 Philllip Dmitruk", mimeType: "application/vnd.google-apps.shortcut", parents: ["ROOT_PODREC_0001"],
+        shortcutDetails: { targetId: "EP03_PODREC_REAL", targetMimeType: F } },
       // Pasta vazia não vira corte.
       { id: "VAZI_PODREC_0001", name: "Rascunhos", mimeType: F, parents: ["ROOT_PODREC_0001"] },
     ],
@@ -457,6 +463,7 @@ test("scanClientCutFolders varre a pasta inteira (episódios e subpastas) e igno
       [
         "Ep - 1 Lúcio Flávio / Cortes_Reels / 01 - Quer ser médico só pra vestir branco",
         "Ep - 1 Lúcio Flávio / Cortes_Reels / 07 - Interesse é fome de conhecimento",
+        "Ep - 3 Philllip Dmitruk / 01 - O que faz um físico médico hoje",
         "Ep -2 Leonardo Milner / 01 - Comprar equipamento sem ouvir quem entende",
       ],
     );
@@ -465,7 +472,8 @@ test("scanClientCutFolders varre a pasta inteira (episódios e subpastas) e igno
     assert.equal(c101.detected_guest, "Lúcio Flávio");
     assert.equal(c101.detected_topic, "Quer ser médico só pra vestir branco");
     assert.equal(c101.docs.length, 2, "lê a legenda e os textos por rede");
-    assert.equal(scanned.cut_folders[2].detected_guest, "Leonardo Milner");
+    assert.equal(scanned.cut_folders[3].detected_guest, "Leonardo Milner");
+    assert.equal(scanned.cut_folders[2].detected_guest, "Philllip Dmitruk", "atalho para pasta de outra conta entra na varredura");
   } finally {
     await drive.close();
   }
