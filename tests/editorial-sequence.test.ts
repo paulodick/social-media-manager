@@ -75,6 +75,12 @@ test("readyVideoTitle pula o cabeçalho da transcrição e o nome do arquivo", a
   const t = readyVideoTitle("Video 1", "Video 1", "TRANSCRIÇÃO — Best_Medical_Corte1_Cold_Head_REELS.mp4\n\nQuer mexer em Cold Head sem saber instalar o Windows?");
   assert.equal(t, "Video 1: Quer mexer em Cold Head sem saber instalar o Windows?");
   assert.equal(readyVideoTitle("Plantão 24h", "Video 2", "x"), "Plantão 24h");
+  assert.equal(
+    readyVideoTitle("Video 2", "Video 2", "TRANSCRIÇÃO — corte2.mp4\nTema: O acelerador de aprendizado\nFala: Paulo\nTexto"),
+    "O acelerador de aprendizado",
+  );
+  const { shortTheme } = await import("../src/lib/editorial-sequence.ts");
+  assert.equal(shortTheme("Reparar antes de trocar: a lógica do reparo de placas eletrônicas"), "Reparar antes de trocar: a lógica do reparo de placas…");
 });
 
 test("buildSequencePrompt leva transcrições, datas e o primeiro dia possível para pauta nova", () => {
