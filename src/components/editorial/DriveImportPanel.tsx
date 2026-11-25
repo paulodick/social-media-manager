@@ -61,6 +61,7 @@ export default function DriveImportPanel({
         next_page_token?: string | null;
         folders_truncated?: boolean;
         folders_limit?: number;
+        scan_notes?: string[];
         error?: string;
       };
       if (!res.ok) {
@@ -75,7 +76,9 @@ export default function DriveImportPanel({
       setSelectedFolders(new Set());
       setSelected(new Set());
       if (!nextCuts.length && !nextFiles.length) {
-        setMsg("Nenhuma pasta de corte nem arquivo de mídia encontrado na pasta deste cliente.");
+        setMsg(
+          `Nenhuma pasta de corte nem arquivo de mídia encontrado na pasta deste cliente.${j.scan_notes?.length ? ` ${j.scan_notes.join(" ")}` : ""}`,
+        );
       } else if (nextCuts.length > 0) {
         setMsg(
           `${nextCuts.length} pasta(s) de corte agrupadas (cada subpasta vira 1 item editorial usando o .doc como referência principal, sem transcrição pesada de vídeo).`,

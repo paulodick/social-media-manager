@@ -462,16 +462,24 @@ export async function scanClientCutFolders(
   rootFolderId: string,
   opts: { kinds?: ("image" | "video")[]; pageToken?: string; maxFolders?: number } = {},
 ): Promise<
-  | { cut_folders: DriveCutBundle[]; loose_files: ListedFile[]; next_page_token: string | null; folders_truncated: boolean }
+  | {
+      cut_folders: DriveCutBundle[];
+      loose_files: ListedFile[];
+      next_page_token: string | null;
+      folders_truncated: boolean;
+      /** O que a varredura viu no primeiro nível e erros do Drive, para explicar quando nada é encontrado. */
+      scan_notes: string[];
+    }
   | { error: string }
 > {
   const looseRes = await listFolderFiles(rootFolderId, { kinds: opts.kinds, pageToken: opts.pageToken });
   if ("error" in looseRes) return looseRes;
   // Com pageToken é o "carregar mais" dos arquivos avulsos: as pastas de corte já vieram na primeira página.
   if (opts.pageToken) {
-    return { cut_folders: [], loose_files: looseRes.files, next_page_token: looseRes.nextPageToken, folders_truncated: false };
+    return { cut_folders: [], loose_files: looseRes.files, next_page_token: looseRes.nextPageToken, folders_truncated: false, scan_notes: [] };
   }
 
+  const notes: string[] = [];
   const maxCuts = opts.maxFolders ?? MAX_CUT_FOLDERS;
   type Node = { id: string; name: string; path: string[]; depth: number };
   const queue: Node[] = [{ id: rootFolderId, name: "", path: [], depth: 0 }];
@@ -494,6 +502,16 @@ export async function scanClientCutFolders(
       })),
     );
     for (const { node, subs, listing } of results) {
+      const where = node.depth === 0 ? "pasta do cliente" : [...node.path, node.name].join(" / ");
+      if ("error" in subs) notes.push(`${where}: não deu para listar as subpastas (${subs.error})`);
+      if (listing && "error" in listing) notes.push(`${where}: não deu para listar os arquivos (${listing.error})`);
+      if (node.depth === 0 && !("error" in subs)) {
+        notes.push(
+          subs.folders.length
+            ? `Subpastas na pasta do cliente: ${subs.folders.map((f) => (isIgnoredCutFolderName(f.name) ? `${f.name} (ignorada)` : f.name)).join(", ")}.`
+            : "A pasta do cliente não tem subpastas visíveis para o app.",
+        );
+      }
       const children = "error" in subs ? [] : subs.folders.filter((f) => !isIgnoredCutFolderName(f.name));
       if ("folders" in subs && subs.truncated) truncated = true;
       if (listing && !("error" in listing)) {
@@ -518,6 +536,7 @@ export async function scanClientCutFolders(
     loose_files: looseRes.files,
     next_page_token: looseRes.nextPageToken,
     folders_truncated: truncated,
+    scan_notes: notes.slice(0, 20),
   };
 }
 

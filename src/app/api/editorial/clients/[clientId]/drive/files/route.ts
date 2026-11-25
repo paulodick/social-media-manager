@@ -40,6 +40,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clientId: strin
     files: scan.loose_files,
     next_page_token: scan.next_page_token,
     folders_truncated: scan.folders_truncated,
+    scan_notes: scan.scan_notes,
     folders_limit: MAX_CUT_FOLDERS,
   });
 }
