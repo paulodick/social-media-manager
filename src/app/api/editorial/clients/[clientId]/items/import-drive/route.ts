@@ -39,6 +39,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
     return jsonError("Importe no máximo 50 itens por vez.", 400);
   }
 
+  // Confere TUDO antes de gravar qualquer item: um ID ruim no meio da lista não pode deixar a importação pela metade
+  // (antes os primeiros itens ficavam gravados e a tela mostrava só o erro).
+  for (const cf of cutFoldersInput) {
+    const folderId = String(cf.folder_id ?? "").trim();
+    if (!SAFE_DRIVE_ID.test(folderId)) return jsonError("ID de pasta de corte do Drive inválido.", 400);
+    if (!(await folderPathFromRoot(folderId, root))) {
+      return jsonError(`A pasta ${folderId} não pertence à pasta deste cliente. Nada foi importado.`, 403);
+    }
+  }
+  for (const f of filesInput) {
+    const fileId = String(f.drive_file_id ?? "").trim();
+    if (!SAFE_DRIVE_ID.test(fileId)) return jsonError("ID de arquivo do Drive inválido.", 400);
+    if (!(await folderPathFromRoot(fileId, root))) {
+      return jsonError(`O arquivo ${fileId} não pertence à pasta deste cliente. Nada foi importado.`, 403);
+    }
+  }
+
   const created: ContentItem[] = [];
   const skippedDuplicates: string[] = [];
   const warnings: string[] = [];
@@ -46,16 +63,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
   // 1) Importação agrupada por subpasta de corte (vídeo + capa + .doc -> 1 único item editorial)
   for (const cf of cutFoldersInput) {
     const folderId = String(cf.folder_id ?? "").trim();
-    if (!SAFE_DRIVE_ID.test(folderId)) return jsonError("ID de pasta de corte do Drive inválido.", 400);
-
-    const path = await folderPathFromRoot(folderId, root);
-    if (!path) return jsonError(`A pasta ${folderId} não pertence à pasta deste cliente.`, 403);
 
     const [folderInfo, listing] = await Promise.all([
       getFolderName(folderId),
       listFolderAllFiles(folderId, { pageSize: 30 }),
     ]);
-    if ("error" in listing) return jsonError(listing.error, 502);
+    if ("error" in listing) {
+      // Falha do Drive numa pasta não derruba as outras: vira aviso e a importação segue.
+      warnings.push(`${String(cf.folder_name ?? folderId)}: ${listing.error}`);
+      continue;
+    }
 
     const folderName =
       ("name" in folderInfo ? folderInfo.name : String(cf.folder_name ?? "").trim()) || "Corte do Drive";
@@ -124,13 +141,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
   // 2) Importação de arquivos avulsos na raiz (compatibilidade)
   for (const f of filesInput) {
     const fileId = String(f.drive_file_id ?? "").trim();
-    if (!SAFE_DRIVE_ID.test(fileId)) return jsonError("ID de arquivo do Drive inválido.", 400);
-
-    const path = await folderPathFromRoot(fileId, root);
-    if (!path) return jsonError(`O arquivo ${fileId} não pertence à pasta deste cliente.`, 403);
 
     const meta = await getFileMeta(fileId);
-    if (meta.error) return jsonError(meta.error, 502);
+    if (meta.error) {
+      warnings.push(`${String(f.title ?? fileId)}: ${meta.error}`);
+      continue;
+    }
 
     const rawTitle = String(f.title ?? "").trim() || meta.name?.replace(/\.[^.]+$/, "") || "Conteúdo do Drive";
     const title = rawTitle.slice(0, 160);

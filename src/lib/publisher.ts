@@ -30,6 +30,8 @@ export async function checkPublishable(t: Target | undefined): Promise<{ ok: tru
   if (!canAutoPublish(t.network, t.format)) return { ok: false, error: "Esta rede ainda é publicada manualmente." };
   if (t.status === "posted") return { ok: false, error: "Este post já está marcado como postado." };
   if (t.publish_state === "publishing") return { ok: false, error: "Este post já está sendo publicado." };
+  // Já saiu na rede pelo app: publicar de novo duplicaria o post, mesmo que a situação tenha voltado para agendado.
+  if (t.publish_state === "published") return { ok: false, error: "Este post já foi publicado pelo app." };
   if (t.network === "linkedin" && t.format === "documento") return { ok: false, error: "Documento (PDF) do LinkedIn ainda é publicado manualmente." };
   // LinkedIn aceita post só de texto no Feed; as demais redes (e o Vídeo do LinkedIn) precisam do arquivo.
   const textOnly = t.network === "linkedin" && t.format === "feed" && !t.drive_file_id;
@@ -46,6 +48,11 @@ export async function checkPublishable(t: Target | undefined): Promise<{ ok: tru
   }
   if (!t.caption.trim() && t.format !== "stories") return { ok: false, error: "Escreva a legenda antes de publicar." };
   if (!textOnly && !driveConfigured()) return { ok: false, error: "O Google Drive não está configurado." };
+  // Rede desmarcada no cadastro do cliente não publica, mesmo que a conta continue conectada.
+  const active = await (await db()).query("select 1 from client_networks where client_id = $1 and network = $2", [t.client_id, t.network]);
+  if (!active.rows[0]) {
+    return { ok: false, error: "Esta rede está desmarcada no cadastro do cliente. Marque-a de novo em Editar cliente para publicar." };
+  }
   const conn = await getConnection(t.client_id, t.network);
   if (!conn) return { ok: false, error: "A conta desta rede ainda não está conectada." };
   if (conn.expires_at && conn.expires_at.getTime() <= Date.now()) {
@@ -90,7 +97,7 @@ export async function startPublish(targetId: string, opts: { auto?: boolean } = 
             and scheduled_at <= now() and scheduled_at > now() - interval '${AUTO_WINDOW_MIN} minutes'
           returning id`
       : `update post_targets set publish_state='publishing', publish_started_at=now(), publish_error=''
-          where id=$1 and status <> 'posted'
+          where id=$1 and status <> 'posted' and publish_state <> 'published'
             and (publish_state <> 'publishing' or publish_started_at < now() - interval '15 minutes')
           returning id`,
     [targetId],

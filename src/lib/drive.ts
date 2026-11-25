@@ -376,26 +376,35 @@ function mapListedFile(f: DriveFile & { modifiedTime?: string }): ListedFile {
 /** Lista subpastas diretas de uma pasta (só leitura), ordenadas por nome. */
 export async function listSubfolders(
   folderId: string,
-  opts: { pageSize?: number } = {},
-): Promise<{ folders: { id: string; name: string }[] } | { error: string }> {
+  opts: { pageSize?: number; max?: number } = {},
+): Promise<{ folders: { id: string; name: string }[]; truncated: boolean } | { error: string }> {
   if (!driveConfigured()) return { error: "o Google Drive ainda não está configurado no app." };
   if (!SAFE_ID.test(folderId)) return { error: "o link da pasta não é válido." };
   const q = `'${folderId}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`;
-  const qs = new URLSearchParams({
-    q,
-    fields: "files(id,name)",
-    orderBy: "name asc",
-    pageSize: String(Math.min(Math.max(opts.pageSize ?? 100, 1), 100)),
-    includeItemsFromAllDrives: "true",
-  });
+  const max = Math.max(opts.max ?? 100, 1);
+  const folders: { id: string; name: string }[] = [];
+  let pageToken: string | undefined;
   try {
-    const r = await api(`/files?${qs.toString()}`);
-    if (r.status === 403 || r.status === 404) {
-      return { error: "o app não enxerga essa pasta. Compartilhe-a com o e-mail de acesso do app." };
-    }
-    if (!r.ok) return { error: `o Google Drive respondeu com erro ${r.status}.` };
-    const j = (await r.json()) as { files?: { id: string; name: string }[] };
-    return { folders: j.files ?? [] };
+    // Percorre as páginas do Drive: antes só a primeira (60 pastas) era lida e o resto sumia sem aviso.
+    do {
+      const qs = new URLSearchParams({
+        q,
+        fields: "nextPageToken,files(id,name)",
+        orderBy: "name asc",
+        pageSize: String(Math.min(Math.max(opts.pageSize ?? 100, 1), 100)),
+        includeItemsFromAllDrives: "true",
+      });
+      if (pageToken) qs.set("pageToken", pageToken);
+      const r = await api(`/files?${qs.toString()}`);
+      if (r.status === 403 || r.status === 404) {
+        return { error: "o app não enxerga essa pasta. Compartilhe-a com o e-mail de acesso do app." };
+      }
+      if (!r.ok) return { error: `o Google Drive respondeu com erro ${r.status}.` };
+      const j = (await r.json()) as { files?: { id: string; name: string }[]; nextPageToken?: string };
+      folders.push(...(j.files ?? []));
+      pageToken = j.nextPageToken || undefined;
+    } while (pageToken && folders.length < max);
+    return { folders: folders.slice(0, max), truncated: folders.length > max || !!pageToken };
   } catch {
     return { error: "não foi possível falar com o Google Drive agora." };
   }
@@ -436,21 +445,27 @@ export async function listFolderAllFiles(
  * Escaneia a pasta do cliente agrupando cada subpasta de corte (vídeo + capa + .doc) em um único item editorial,
  * mantendo também eventuais arquivos avulsos na raiz.
  */
+/** Quantas subpastas de corte o scanner lê por vez (cada uma custa uma consulta ao Drive). */
+export const MAX_CUT_FOLDERS = 300;
+
 export async function scanClientCutFolders(
   rootFolderId: string,
   opts: { kinds?: ("image" | "video")[]; pageToken?: string; maxFolders?: number } = {},
 ): Promise<
-  | { cut_folders: DriveCutBundle[]; loose_files: ListedFile[]; next_page_token: string | null }
+  | { cut_folders: DriveCutBundle[]; loose_files: ListedFile[]; next_page_token: string | null; folders_truncated: boolean }
   | { error: string }
 > {
+  // Com pageToken é o "carregar mais" dos arquivos avulsos: as pastas de corte já vieram na primeira página.
   const [subRes, looseRes] = await Promise.all([
-    listSubfolders(rootFolderId, { pageSize: opts.maxFolders ?? 60 }),
+    opts.pageToken
+      ? Promise.resolve({ folders: [] as { id: string; name: string }[], truncated: false })
+      : listSubfolders(rootFolderId, { max: opts.maxFolders ?? MAX_CUT_FOLDERS }),
     listFolderFiles(rootFolderId, { kinds: opts.kinds, pageToken: opts.pageToken }),
   ]);
   if ("error" in looseRes) return looseRes;
   if ("error" in subRes) {
     // Se não deu para listar subpastas, ainda devolve os arquivos avulsos
-    return { cut_folders: [], loose_files: looseRes.files, next_page_token: looseRes.nextPageToken };
+    return { cut_folders: [], loose_files: looseRes.files, next_page_token: looseRes.nextPageToken, folders_truncated: false };
   }
 
   const candidateFolders = subRes.folders.filter((f) => !isIgnoredCutFolderName(f.name));
@@ -475,6 +490,7 @@ export async function scanClientCutFolders(
     cut_folders: cutFolders,
     loose_files: looseRes.files,
     next_page_token: looseRes.nextPageToken,
+    folders_truncated: subRes.truncated,
   };
 }
 

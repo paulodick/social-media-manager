@@ -58,7 +58,8 @@ export default async function ClientWeek({
 
   const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
   const summary = [
-    plural(targets.length, "post", "posts"),
+    // Cada rede de um post conta separado (um post em Instagram e LinkedIn = 2 publicações).
+    plural(targets.length, "publicação", "publicações"),
     missing ? `${missing} sem mídia` : "",
     withWarn ? plural(withWarn, "com aviso", "com avisos") : "",
     late ? plural(late, "atrasado", "atrasados") : "",

@@ -7,7 +7,6 @@ type DriveFileEntry = {
   id: string;
   name: string;
   mimeType: string;
-  preview_url?: string;
 };
 
 type DriveCutFolderEntry = {
@@ -45,6 +44,8 @@ export default function DriveImportPanel({
   const [err, setErr] = useState("");
   const [prompt, setPrompt] = useState("");
   const [manualJson, setManualJson] = useState("");
+  const [nextPage, setNextPage] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   async function loadDrive() {
     setLoading(true);
@@ -55,6 +56,9 @@ export default function DriveImportPanel({
       const j = (await res.json()) as {
         cut_folders?: DriveCutFolderEntry[];
         files?: DriveFileEntry[];
+        next_page_token?: string | null;
+        folders_truncated?: boolean;
+        folders_limit?: number;
         error?: string;
       };
       if (!res.ok) {
@@ -65,6 +69,7 @@ export default function DriveImportPanel({
       const nextFiles = j.files ?? [];
       setCutFolders(nextCuts);
       setFiles(nextFiles);
+      setNextPage(j.next_page_token ?? null);
       setSelectedFolders(new Set());
       setSelected(new Set());
       if (!nextCuts.length && !nextFiles.length) {
@@ -74,10 +79,38 @@ export default function DriveImportPanel({
           `${nextCuts.length} pasta(s) de corte agrupadas (cada subpasta vira 1 item editorial usando o .doc como referência principal, sem transcrição pesada de vídeo).`,
         );
       }
+      if (j.folders_truncated) {
+        setErr(
+          `A pasta do cliente tem mais de ${j.folders_limit ?? 300} subpastas: só as primeiras, em ordem alfabética, foram lidas. Importe estas e organize as demais em outra pasta.`,
+        );
+      }
     } catch {
       setErr("Falha ao consultar o Google Drive.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadMoreFiles() {
+    if (!nextPage) return;
+    setLoadingMore(true);
+    setErr("");
+    try {
+      const res = await fetch(
+        `/api/editorial/clients/${clientId}/drive/files?page_token=${encodeURIComponent(nextPage)}`,
+      );
+      const j = (await res.json()) as { files?: DriveFileEntry[]; next_page_token?: string | null; error?: string };
+      if (!res.ok) {
+        setErr(j.error ?? "Não foi possível carregar mais arquivos.");
+        return;
+      }
+      const more = j.files ?? [];
+      setFiles((prev) => [...prev, ...more.filter((f) => !prev.some((p) => p.id === f.id))]);
+      setNextPage(j.next_page_token ?? null);
+    } catch {
+      setErr("Falha ao consultar o Google Drive.");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -271,6 +304,13 @@ export default function DriveImportPanel({
               );
             })}
           </div>
+          {nextPage && (
+            <div>
+              <button type="button" className="btn" onClick={loadMoreFiles} disabled={loadingMore}>
+                {loadingMore ? "Carregando…" : "Carregar mais arquivos"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

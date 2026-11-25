@@ -476,3 +476,28 @@ export function parseGenerateWeekdays(raw: unknown): number[] | null {
   const valid = [...new Set(raw.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))];
   return valid.length > 0 ? valid : null;
 }
+
+/**
+ * Confere se o calendário devolvido pela IA (ou colado à mão) cabe nos horários pedidos: só dias do período e dos
+ * dias da semana marcados, só as redes/formatos escolhidos, no máximo um item por dia + rede + formato.
+ * Sem isso, uma resposta fora do pedido criava posts em domingos desmarcados, em redes não escolhidas ou em dobro.
+ * Devolve a frase do problema, ou null se está tudo certo. Função pura, com teste.
+ */
+export function checkCalendarFitsSlots(
+  entries: { planned_day: string; network: string; format: string }[],
+  slots: { planned_day: string; network: string; format: string }[],
+): string | null {
+  const allowed = new Set(slots.map((s) => `${s.planned_day}|${s.network}|${s.format}`));
+  const used = new Set<string>();
+  for (const e of entries) {
+    const key = `${e.planned_day}|${e.network}|${e.format}`;
+    if (!allowed.has(key)) {
+      return `A resposta trouxe ${e.planned_day} em ${e.network}/${e.format}, que está fora do período, dos dias da semana ou das redes escolhidas. Gere de novo.`;
+    }
+    if (used.has(key)) {
+      return `A resposta trouxe mais de um conteúdo para ${e.planned_day} em ${e.network}/${e.format}. Gere de novo.`;
+    }
+    used.add(key);
+  }
+  return null;
+}

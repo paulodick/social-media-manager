@@ -179,26 +179,33 @@ export default function NetworkRow({
   const posted = existing?.status === "posted";
   const id = `${idPrefix}${k.replace(":", "-")}`;
   const off = !open;
+  // Já saiu (ou está saindo) na rede pelo app: o conteúdo fica travado para o banco continuar igual ao que foi publicado.
+  const locked = existing?.publish?.state === "published" || existing?.publish?.state === "publishing";
 
   const fields = (
     <div className="target-split">
       <div className="col" style={{ gap: 14, minWidth: 0 }}>
+        {locked && (
+          <p className="muted small" role="note">
+            {existing?.publish?.state === "publishing" ? "Publicando agora" : "Publicado pelo app"}: data, legenda e mídia ficam travadas para o registro continuar igual ao que está na rede.
+          </p>
+        )}
         <div className="grid2">
           <div className="col">
             <label className="f" htmlFor={`${id}-d`}>Data</label>
-            <input id={`${id}-d`} name={`date__${k}`} type="date" value={date} required disabled={off}
+            <input id={`${id}-d`} name={`date__${k}`} type="date" value={date} required disabled={off} readOnly={locked}
               onChange={(e) => { setDate(e.target.value); setTouched(true); }} />
           </div>
           <div className="col">
             <label className="f" htmlFor={`${id}-h`}>Horário</label>
-            <input id={`${id}-h`} name={`time__${k}`} type="time" value={time} required disabled={off}
+            <input id={`${id}-h`} name={`time__${k}`} type="time" value={time} required disabled={off} readOnly={locked}
               onChange={(e) => { setTime(e.target.value); setTouched(true); }} />
           </div>
         </div>
 
         <div className="col">
           <label className="f" htmlFor={`${id}-u`}>Link do vídeo/arquivo no Google Drive{isNew ? " (opcional)" : ""}</label>
-          <input id={`${id}-u`} name={`drive__${k}`} type="text" value={driveUrl} disabled={off}
+          <input id={`${id}-u`} name={`drive__${k}`} type="text" value={driveUrl} disabled={off} readOnly={locked}
             onChange={(e) => setDriveUrl(e.target.value)} placeholder="https://drive.google.com/file/d/…/view" />
           <span className="muted small">
             {inherited && isNew && driveUrl.trim() === inherited.url ? <>Mesmo vídeo do {inherited.from} (formato igual, mesma pasta no Drive). Troque o link se for outro vídeo. </> : null}
@@ -212,7 +219,7 @@ export default function NetworkRow({
         {fmt?.thumb && (
           <div className="col">
             <label className="f" htmlFor={`${id}-t`}>Link da miniatura no Google Drive{isNew ? " (opcional)" : ""}</label>
-            <input id={`${id}-t`} name={`thumb__${k}`} type="text" value={thumbUrl} disabled={off}
+            <input id={`${id}-t`} name={`thumb__${k}`} type="text" value={thumbUrl} disabled={off} readOnly={locked}
               onChange={(e) => setThumbUrl(e.target.value)} placeholder="https://drive.google.com/file/d/…/view" />
             <span className="muted small">
               {fmt.thumb.guide}
@@ -225,7 +232,7 @@ export default function NetworkRow({
         {withTitle && (
           <div className="col">
             <label className="f" htmlFor={`${id}-ti`}>Título — {o.networkLabel} {o.formatLabel}</label>
-            <input id={`${id}-ti`} name={`title__${k}`} type="text" maxLength={200} value={title} disabled={off}
+            <input id={`${id}-ti`} name={`title__${k}`} type="text" maxLength={200} value={title} disabled={off} readOnly={locked}
               onChange={(e) => { setTitle(e.target.value); setPrevCaption(null); }} placeholder="Título que aparece na rede" style={{ fontWeight: 600 }} />
             <span className="muted small">Esta rede tem título separado da legenda{o.titleLimit ? ` (até ${o.titleLimit} caracteres)` : ""}.</span>
           </div>
@@ -233,7 +240,7 @@ export default function NetworkRow({
 
         <div className="col">
           <label className="f" htmlFor={`${id}-c`}>{o.captionLabel} — {o.networkLabel} {o.formatLabel}</label>
-          <textarea id={`${id}-c`} ref={capRef} name={`caption__${k}`} rows={isNew ? 4 : 7} maxLength={70000} className="auto-grow" value={caption} disabled={off}
+          <textarea id={`${id}-c`} ref={capRef} name={`caption__${k}`} rows={isNew ? 4 : 7} maxLength={70000} className="auto-grow" value={caption} disabled={off} readOnly={locked}
             onChange={(e) => { setCaption(e.target.value); setPrevCaption(null); }} />
           <div className="row between small muted">
             <span style={{ fontVariantNumeric: "tabular-nums" }}>

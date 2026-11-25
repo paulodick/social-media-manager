@@ -1,9 +1,13 @@
-import { db } from "./db";
-import { decryptToken, encryptToken } from "./crypto";
+import { db } from "./db.ts";
+import { decryptToken, encryptToken } from "./crypto.ts";
 import type { MetaPage } from "./publish/meta-oauth";
 import type { TiktokTokens } from "./publish/tiktok-oauth";
 
-/** Guarda a Página do Facebook e, se houver, o Instagram profissional ligado a ela. Tokens vão criptografados. */
+/**
+ * Guarda a Página do Facebook e, se houver, o Instagram profissional ligado a ela. Tokens vão criptografados.
+ * Tudo numa transação. Se a Página nova não tem Instagram, a conexão antiga do Instagram (de outra Página, com outro
+ * token) é apagada: senão o app continuaria publicando num Instagram que a tela diz não existir.
+ */
 export async function saveMetaConnections(clientId: string, page: MetaPage): Promise<{ instagram: string | null }> {
   const pool = await db();
   const enc = encryptToken(page.token);
@@ -12,13 +16,25 @@ export async function saveMetaConnections(clientId: string, page: MetaPage): Pro
                   on conflict (client_id, network) do update
                     set account_id = excluded.account_id, account_name = excluded.account_name,
                         page_id = excluded.page_id, token_enc = excluded.token_enc, updated_at = now()`;
-  await pool.query(upsert, [clientId, "facebook", page.id, page.name, page.id, enc]);
-  if (page.ig) {
-    const name = page.ig.username ? `@${page.ig.username}` : page.ig.id;
-    await pool.query(upsert, [clientId, "instagram", page.ig.id, name, page.id, enc]);
-    return { instagram: name };
+  const c = await pool.connect();
+  try {
+    await c.query("begin");
+    await c.query(upsert, [clientId, "facebook", page.id, page.name, page.id, enc]);
+    let instagram: string | null = null;
+    if (page.ig) {
+      instagram = page.ig.username ? `@${page.ig.username}` : page.ig.id;
+      await c.query(upsert, [clientId, "instagram", page.ig.id, instagram, page.id, enc]);
+    } else {
+      await c.query("delete from network_connections where client_id = $1 and network = 'instagram'", [clientId]);
+    }
+    await c.query("commit");
+    return { instagram };
+  } catch (e) {
+    await c.query("rollback").catch(() => {});
+    throw e;
+  } finally {
+    c.release();
   }
-  return { instagram: null };
 }
 
 export async function removeMetaConnections(clientId: string): Promise<void> {

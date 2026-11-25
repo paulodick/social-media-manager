@@ -1,4 +1,4 @@
-import { folderPathFromRoot, getFolderName, scanClientCutFolders } from "@/lib/drive";
+import { MAX_CUT_FOLDERS, folderPathFromRoot, getFolderName, scanClientCutFolders } from "@/lib/drive";
 import { jsonError, requireApiAuth, requireClient } from "@/lib/editorial-api";
 
 export const dynamic = "force-dynamic";
@@ -35,15 +35,11 @@ export async function GET(req: Request, ctx: { params: Promise<{ clientId: strin
 
   return Response.json({
     folder: { id: folder, name: folderName },
-    cut_folders: scan.cut_folders.map((c) => ({
-      ...c,
-      video: c.video ? { ...c.video, preview_url: `/api/media/${c.video.id}` } : null,
-      cover: c.cover ? { ...c.cover, preview_url: `/api/media/${c.cover.id}` } : null,
-    })),
-    files: scan.loose_files.map((f) => ({
-      ...f,
-      preview_url: `/api/media/${f.id}`,
-    })),
+    // Sem preview_url: /api/media só serve arquivos já ligados a um post, então o endereço daria 404 aqui.
+    cut_folders: scan.cut_folders,
+    files: scan.loose_files,
     next_page_token: scan.next_page_token,
+    folders_truncated: scan.folders_truncated,
+    folders_limit: MAX_CUT_FOLDERS,
   });
 }

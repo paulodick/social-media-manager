@@ -27,7 +27,12 @@ export function explainAiError(status: number, message: string): string {
   return `a IA não respondeu (código ${status}). Use "Copiar pedido para a IA" por enquanto.`;
 }
 
+/** Teto da resposta. Legenda bilíngue ou longa do LinkedIn passa de 1.200 tokens; 4.000 cobre os 3.000 caracteres com folga. */
+export const AI_MAX_TOKENS = 4000;
+
 export type AiResult = { text: string } | { error: string };
+
+export const TRUNCATED_MSG = "a legenda gerada ficou longa demais e veio cortada. Peça um texto mais curto em \"Personalizar legenda\" e gere de novo.";
 
 export async function generateText(prompt: string): Promise<AiResult> {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -37,14 +42,17 @@ export async function generateText(prompt: string): Promise<AiResult> {
     const res = await fetch(`${base}/v1/messages`, {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: AI_MODEL, max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
+      body: JSON.stringify({ model: AI_MODEL, max_tokens: AI_MAX_TOKENS, messages: [{ role: "user", content: prompt }] }),
       signal: AbortSignal.timeout(45_000),
     });
     const body = (await res.json().catch(() => null)) as {
       content?: { type: string; text?: string }[];
+      stop_reason?: string;
       error?: { message?: string };
     } | null;
     if (!res.ok) return { error: explainAiError(res.status, body?.error?.message ?? "") };
+    // Resposta cortada no meio não vira legenda: melhor avisar do que publicar texto incompleto.
+    if (body?.stop_reason === "max_tokens") return { error: TRUNCATED_MSG };
     const text = (body?.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
     return text ? { text } : { error: "a IA devolveu uma resposta vazia. Tente de novo." };
   } catch (e) {
