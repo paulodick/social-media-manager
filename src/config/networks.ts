@@ -25,7 +25,18 @@ export type FormatCfg = {
    * (support.google.com/youtube/answer/72431): vídeo 16:9, recomendado 3840×2160, largura mínima 640 px;
    * Shorts 9:16, recomendado 2160×3840, altura mínima 640 px; JPG ou PNG; até 2 MB pelo celular e 50 MB pelo computador.
    */
-  thumb?: { ratio: "16:9" | "9:16"; minSide: number; side: "width" | "height"; guide: string };
+  thumb?: {
+    ratio: "16:9" | "9:16";
+    minSide: number;
+    side: "width" | "height";
+    guide: string;
+    /** Nome do campo na tela ("miniatura" no YouTube, "capa" no Instagram). */
+    label?: string;
+    /** Opcional: sem capa ligada não aparece aviso (o Instagram usa um quadro do vídeo). */
+    optional?: boolean;
+  };
+  /** Instagram: aceita marcar pessoas (user_tags) e, em `collabs`, convidar coautores (até 3; Stories não aceitam). */
+  people?: { tags: boolean; collabs: boolean };
   /** Este formato tem um campo de título separado da legenda (YouTube, documento do LinkedIn). Ligado = a tela mostra o campo Título. */
   title?: boolean;
   /** Substitui o `cutAt` da rede nesta prévia (ex.: legenda sobre o vídeo vertical, que corta antes do feed). Só aparência. */
@@ -55,9 +66,16 @@ export const NETWORKS: Record<NetworkId, NetworkCfg> = {
     hashtagLimit: 30,
     cutAt: 110,
     formats: {
-      feed: { label: "Feed", folder: "Feed", ratio: "4:5", media: "any", guide: { size: "4:5 · 1080×1350 px", length: "vídeo ideal de 30 a 60 s" } },
-      reels: { label: "Reels", folder: "Reels", ratio: "9:16", media: "video", guide: { size: "9:16 · 1080×1920 px", length: "até 3 min · ideal de 15 a 30 s" } },
-      stories: { label: "Stories", folder: "Stories", ratio: "9:16", media: "any", guide: { size: "9:16 · 1080×1920 px", length: "até 60 s por story · ideal de 7 a 15 s" } },
+      // Capa, marcações e collabs: referência oficial da Meta (POST /<IG_ID>/media, conferida em 2026-11-25):
+      // cover_url só em Reels, JPEG até 8 MB, recomendado 9:16; collaborators até 3 em feed, Reels e carrossel (não em Stories);
+      // user_tags em imagem, vídeo, Reels e Stories (posição x/y obrigatória só em imagem do feed).
+      feed: { label: "Feed", folder: "Feed", ratio: "4:5", media: "any", people: { tags: true, collabs: true }, guide: { size: "4:5 · 1080×1350 px", length: "vídeo ideal de 30 a 60 s" } },
+      reels: {
+        label: "Reels", folder: "Reels", ratio: "9:16", media: "video", people: { tags: true, collabs: true },
+        thumb: { ratio: "9:16", minSide: 640, side: "height", label: "capa", optional: true, guide: "9:16 · 1080×1920 px · JPG ou PNG (o app converte para JPG) · até 8 MB · aparece na aba Reels" },
+        guide: { size: "9:16 · 1080×1920 px", length: "até 3 min · ideal de 15 a 30 s" },
+      },
+      stories: { label: "Stories", folder: "Stories", ratio: "9:16", media: "any", people: { tags: true, collabs: false }, guide: { size: "9:16 · 1080×1920 px", length: "até 60 s por story · ideal de 7 a 15 s" } },
     },
   },
   facebook: {

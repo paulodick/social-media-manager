@@ -8,7 +8,8 @@ import { checkLoginRateLimit, extractClientIp, recordLoginFailure, resetLoginRat
 import { hashPassword, passwordProblem } from "./password";
 import { db } from "./db";
 import { TZ, isDay, isTime, monthOf } from "./dates";
-import { ensureClientFolders, ensureFolderPath, folderUrl, getFolderName, parseDriveUrl, runDriveMoveTest, type MoveTestResult } from "./drive";
+import { ensureClientFolders, ensureFolderPath, folderUrl, getFolderName, listSiblingImages, parseDriveUrl, runDriveMoveTest, type MoveTestResult } from "./drive";
+import { MAX_COLLABS, MAX_USER_TAGS, formatHandles, parseHandles } from "./ig-people";
 import { ensureTargetFolders, folderNames, resolveDrive } from "./post-folders";
 import { formatMovedTargetsNotice, resolveEditRedirect } from "./post-redirect";
 import { insertPostIdempotent, parseSubmissionId } from "./post-submission";
@@ -220,6 +221,7 @@ type PreparedTarget = {
   network: string; format: string; day: string; time: string; caption: string; title: string;
   driveUrl: string; fileId: string | null; meta: MediaMeta | null;
   thumbUrl: string; thumbFileId: string | null; thumbMeta: MediaMeta | null;
+  userTags: string[]; collaborators: string[];
 };
 
 /** Confere um link do Drive (arquivo) e devolve o id e os dados da mídia. Usado pela tela do post para mostrar a prévia antes de salvar. */
@@ -228,10 +230,22 @@ export async function inspectDrive(url: string): Promise<{ fileId: string | null
   return resolveDrive(String(url ?? "").trim().slice(0, 500));
 }
 
+/**
+ * Capas candidatas para o vídeo: imagens na MESMA pasta do vídeo no Drive (é onde quem corta deixa a capa).
+ * As que têm "capa", "cover" ou "thumb" no nome vêm primeiro. Só lê nomes e tamanhos.
+ */
+export async function findCoverCandidates(url: string): Promise<{ name: string; url: string }[]> {
+  await requireAuth();
+  const { fileId } = await resolveDrive(String(url ?? "").trim().slice(0, 500));
+  if (!fileId) return [];
+  return listSiblingImages(fileId);
+}
+
 type ExistingTarget = {
   id: string; network: string; format: string; day: string; post_folder_id: string | null;
   drive_url: string; drive_file_id: string | null; drive_meta: MediaMeta | null;
   thumb_url: string; thumb_file_id: string | null; thumb_meta: MediaMeta | null;
+  user_tags: string[]; collaborators: string[];
   /** Estava confirmado para publicar sozinho antes desta gravação. */
   confirmed: boolean;
   publish_state: string;
@@ -303,6 +317,7 @@ export async function savePost(formData: FormData): Promise<void> {
     ? (
         await pool.query<ExistingTarget>(
           `select id, network, format, post_folder_id, drive_url, drive_file_id, drive_meta, thumb_url, thumb_file_id, thumb_meta,
+                  user_tags, collaborators,
                   (auto_confirmed_at is not null) as confirmed, publish_state, caption, title,
                   to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day,
                   to_char(scheduled_at at time zone '${TZ}', 'HH24:MI') as time
@@ -323,12 +338,30 @@ export async function savePost(formData: FormData): Promise<void> {
       changed(`date__${e.id}`, e.day) ||
       changed(`time__${e.id}`, e.time) ||
       changed(`drive__${e.id}`, e.drive_url) ||
-      changed(`title__${e.id}`, e.title)
+      changed(`title__${e.id}`, e.title) ||
+      changed(`tags__${e.id}`, formatHandles(e.user_tags ?? [])) ||
+      changed(`collabs__${e.id}`, formatHandles(e.collaborators ?? []))
     );
   }).length;
   const edits = existing.filter((e) => sentIds.has(e.id) && !isLocked(e));
   const have = new Set(existing.map((e) => `${e.network}:${e.format}`));
   const fresh = newKeys.filter((k) => !have.has(k));
+
+  // Instagram: @ marcados e collabs (só nos formatos que aceitam; Stories não aceita collab).
+  const people = (key: string, network: string, format: string, now?: { tags: string[]; collabs: string[] }) => {
+    const cfg = isNetwork(network) ? NETWORKS[network].formats[format]?.people : undefined;
+    if (!cfg) return { userTags: [] as string[], collaborators: [] as string[] };
+    const read = (field: string, max: number, what: string, fallback: string[]) => {
+      if (!formData.has(field)) return fallback;
+      const r = parseHandles(text(formData, field, 2000), max, what);
+      if ("error" in r) fail(r.error);
+      return (r as { handles: string[] }).handles;
+    };
+    return {
+      userTags: cfg.tags ? read(`tags__${key}`, MAX_USER_TAGS, "Marcar pessoas", now?.tags ?? []) : [],
+      collaborators: cfg.collabs ? read(`collabs__${key}`, MAX_COLLABS, "Collabs", now?.collabs ?? []) : [],
+    };
+  };
 
   // Data e horário de cada destino (os que já existem e os novos).
   const when = (k: string): { day: string; time: string } => {
@@ -355,7 +388,8 @@ export async function savePost(formData: FormData): Promise<void> {
         thumbMeta = t.meta;
       }
       const title = hasTitle(e.network, e.format) ? text(formData, `title__${e.id}`, 200) : "";
-      return { e, day, time, caption, driveUrl, fileId, meta, thumbUrl, thumbFileId, thumbMeta, title };
+      const { userTags, collaborators } = people(e.id, e.network, e.format, { tags: e.user_tags ?? [], collabs: e.collaborators ?? [] });
+      return { e, day, time, caption, driveUrl, fileId, meta, thumbUrl, thumbFileId, thumbMeta, title, userTags, collaborators };
     }),
   );
 
@@ -371,7 +405,8 @@ export async function savePost(formData: FormData): Promise<void> {
       const thumb = await resolveDrive(thumbUrl);
       const title = hasTitle(network, format) ? text(formData, `title__${key}`, 200) : "";
       const video = await resolveDrive(driveUrl);
-      return { network, format, day, time, caption, title, driveUrl, fileId: video.fileId, meta: video.meta, thumbUrl, thumbFileId: thumb.fileId, thumbMeta: thumb.meta };
+      const { userTags, collaborators } = people(key, network, format);
+      return { network, format, day, time, caption, title, driveUrl, fileId: video.fileId, meta: video.meta, thumbUrl, thumbFileId: thumb.fileId, thumbMeta: thumb.meta, userTags, collaborators };
     }),
   );
 
@@ -447,13 +482,14 @@ export async function savePost(formData: FormData): Promise<void> {
               auto_confirmed_at = case when auto_confirmed_at is not null and (
                   caption is distinct from $1 or scheduled_at is distinct from (($2::date + $3::time) at time zone '${TZ}')
                   or drive_file_id is distinct from $5 or thumb_file_id is distinct from $8 or title is distinct from $10
+                  or user_tags is distinct from $13 or collaborators is distinct from $14
                 ) then null else auto_confirmed_at end,
               caption=$1, scheduled_at=($2::date + $3::time) at time zone '${TZ}',
               drive_url=$4, drive_file_id=$5, drive_meta=$6, thumb_url=$7, thumb_file_id=$8, thumb_meta=$9, title=$10,
-              post_folder_id = $11
+              post_folder_id = $11, user_tags = $13, collaborators = $14
             where id=$12
           returning (auto_confirmed_at is not null) as still`,
-          [u.caption, u.day, u.time, u.driveUrl, u.fileId, u.meta ? JSON.stringify(u.meta) : null, u.thumbUrl, u.thumbFileId, u.thumbMeta ? JSON.stringify(u.thumbMeta) : null, u.title, nextFolderId, u.e.id],
+          [u.caption, u.day, u.time, u.driveUrl, u.fileId, u.meta ? JSON.stringify(u.meta) : null, u.thumbUrl, u.thumbFileId, u.thumbMeta ? JSON.stringify(u.thumbMeta) : null, u.title, nextFolderId, u.e.id, u.userTags, u.collaborators],
         );
         if (u.e.confirmed && upd.rows[0] && !upd.rows[0].still) droppedConfirm++;
         if (status && u.e.id === statusId) {
@@ -477,11 +513,11 @@ export async function savePost(formData: FormData): Promise<void> {
       for (const [i, t] of created.entries()) {
         await c.query(
           `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id,
-                                     thumb_url, thumb_file_id, thumb_meta, title)
-           values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                                     thumb_url, thumb_file_id, thumb_meta, title, user_tags, collaborators)
+           values ($1,$2,$3,($4::date + $5::time) at time zone '${TZ}',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
           [
             savedPostId, t.network, t.format, t.day, t.time, t.caption, t.driveUrl, t.fileId, t.meta ? JSON.stringify(t.meta) : null, folderIds[i],
-            t.thumbUrl, t.thumbFileId, t.thumbMeta ? JSON.stringify(t.thumbMeta) : null, t.title,
+            t.thumbUrl, t.thumbFileId, t.thumbMeta ? JSON.stringify(t.thumbMeta) : null, t.title, t.userTags, t.collaborators,
           ],
         );
       }

@@ -78,6 +78,8 @@ export default async function DayPage({
             thumbUrl: t.thumb_url,
             thumbFileId: t.thumb_file_id,
             thumbMeta: t.thumb_meta,
+            userTags: t.user_tags,
+            collaborators: t.collaborators,
             pathNote,
             folderId: t.post_folder_id,
             publish: canAutoPublish(t.network, t.format)

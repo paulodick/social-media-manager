@@ -415,6 +415,16 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       alter table content_items add column if not exists suggested_caption text not null default '';
     `,
   },
+  {
+    version: 21,
+    sql: `
+      -- 21: Instagram: pessoas marcadas (user_tags) e collabs (collaborators), por destino. A capa do Reels usa as
+      -- colunas de miniatura que já existem (thumb_url, thumb_file_id, thumb_meta).
+      alter table post_targets
+        add column if not exists user_tags text[] not null default '{}',
+        add column if not exists collaborators text[] not null default '{}';
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

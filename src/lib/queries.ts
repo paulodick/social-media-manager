@@ -49,6 +49,9 @@ export type Target = {
   thumb_url: string;
   thumb_file_id: string | null;
   thumb_meta: MediaMeta | null;
+  /** Instagram: @ marcados (sem o @) e collabs convidados. */
+  user_tags: string[];
+  collaborators: string[];
   late: boolean;
   publish_state: "idle" | "publishing" | "published" | "failed" | "drafted";
   external_id: string | null;
@@ -66,7 +69,7 @@ const TARGET_SELECT = `
          to_char(t.scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day,
          to_char(t.scheduled_at at time zone '${TZ}', 'HH24:MI') as time,
          t.caption, t.status, t.drive_url, t.drive_file_id, t.drive_meta,
-         t.thumb_url, t.thumb_file_id, t.thumb_meta,
+         t.thumb_url, t.thumb_file_id, t.thumb_meta, t.user_tags, t.collaborators,
          (t.status <> 'posted' and t.scheduled_at < now()) as late,
          case when t.publish_state = 'publishing' and t.publish_started_at < now() - interval '15 minutes'
               then 'failed' else t.publish_state end as publish_state,

@@ -141,6 +141,16 @@ async function runPublish(t: Target, conn: Connection, auto = false): Promise<vo
             caption: t.caption,
             title: t.target_title,
             media: media as MediaSource,
+            // Capa do Reels: a Meta exige JPEG; o endereço assinado com ?jpg=1 converte na hora (o arquivo do Drive não muda).
+            coverUrl:
+              t.network === "instagram" && t.thumb_file_id && t.thumb_meta && !t.thumb_meta.error
+                ? (() => {
+                    const u = signedMediaUrl(t.thumb_file_id, 3600);
+                    return u ? `${u}?jpg=1` : null;
+                  })()
+                : null,
+            userTags: t.network === "instagram" ? t.user_tags ?? [] : [],
+            collaborators: t.network === "instagram" ? t.collaborators ?? [] : [],
           });
     await pool.query(
       `update post_targets set publish_state='published', status='posted', posted_at=coalesce(posted_at, now()),

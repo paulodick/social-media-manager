@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { NETWORKS, STATUS_LABEL, targetFolders, type NetworkId } from "@/config/networks";
 import { captionChecks, countHashtags, fmtNumber, mediaChecks, thumbChecks, titleChecks, type Check, type MediaMeta } from "@/lib/checks";
 import { dayFolders, dayLabel, isDay } from "@/lib/dates";
-import { deleteTarget, ensureTargetFolder, inspectDrive } from "@/lib/actions";
+import { deleteTarget, ensureTargetFolder, findCoverCandidates, inspectDrive } from "@/lib/actions";
+import { MAX_COLLABS, MAX_USER_TAGS, formatHandles } from "@/lib/ig-people";
 import type { PickerOption } from "@/lib/picker-options";
 import type { PromptClient } from "@/lib/prompt";
 import CaptionTools from "./CaptionTools";
@@ -30,6 +31,9 @@ export type ExistingTarget = {
   thumbUrl: string;
   thumbFileId: string | null;
   thumbMeta: MediaMeta | null;
+  /** Instagram: @ marcados e collabs salvos (sem o @). */
+  userTags?: string[];
+  collaborators?: string[];
   pathNote: string | null;
   folderId: string | null;
   publish?: PublishInfo;
@@ -152,6 +156,33 @@ export default function NetworkRow({
   // O vídeo só toca na prévia quando o arquivo já está ligado a um post (salvo): o app só serve arquivos assim.
   const playable = driveUrl.trim() === savedVideo.url && !!savedVideo.url ? video.fileId : null;
   const thumbPlayable = existing && thumbUrl.trim() === existing.thumbUrl && existing.thumbUrl ? thumb.fileId : null;
+  const thumbLabel = fmt?.thumb?.label ?? "miniatura";
+  const savedTags = formatHandles(existing?.userTags ?? []);
+  const savedCollabs = formatHandles(existing?.collaborators ?? []);
+  const [tagsText, setTagsText] = useState(savedTags);
+  const [collabsText, setCollabsText] = useState(savedCollabs);
+
+  // Capa/miniatura: procura imagens na mesma pasta do vídeo no Drive. Destino novo (ou vídeo trocado) com o campo vazio
+  // recebe a primeira sozinho; destino já salvo só ganha a sugestão, para não "sujar" o formulário sem a pessoa pedir.
+  const [covers, setCovers] = useState<{ name: string; url: string }[]>([]);
+  const videoChanged = driveUrl.trim() !== savedVideo.url;
+  useEffect(() => {
+    if (!fmt?.thumb || !open || !video.fileId || video.busy) {
+      if (!video.fileId) setCovers([]);
+      return;
+    }
+    let live = true;
+    void findCoverCandidates(driveUrl.trim()).then((list) => {
+      if (!live) return;
+      setCovers(list);
+      const isLocked = existing?.publish?.state === "published" || existing?.publish?.state === "publishing";
+      if (list.length && !thumbUrl.trim() && (isNew || videoChanged) && !isLocked) setThumbUrl(list[0].url);
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [video.fileId, video.busy, open]);
 
   const capRef = useRef<HTMLTextAreaElement>(null);
   const moreRef = useRef<HTMLDetailsElement>(null);
@@ -218,15 +249,59 @@ export default function NetworkRow({
 
         {fmt?.thumb && (
           <div className="col">
-            <label className="f" htmlFor={`${id}-t`}>Link da miniatura no Google Drive{isNew ? " (opcional)" : ""}</label>
+            <label className="f" htmlFor={`${id}-t`}>
+              {thumbLabel === "capa" ? "Capa" : "Link da miniatura no Google Drive"}{isNew || fmt.thumb.optional ? " (opcional)" : ""}
+            </label>
             <input id={`${id}-t`} name={`thumb__${k}`} type="text" value={thumbUrl} disabled={off} readOnly={locked}
-              onChange={(e) => setThumbUrl(e.target.value)} placeholder="https://drive.google.com/file/d/…/view" />
+              onChange={(e) => setThumbUrl(e.target.value)} placeholder="Link da imagem no Google Drive" />
+            {!locked && covers.length > 0 && (
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="muted small">Imagens na pasta do vídeo:</span>
+                {covers.slice(0, 8).map((c) => (
+                  <button
+                    key={c.url}
+                    type="button"
+                    className={`chip${thumbUrl.trim() === c.url ? " on" : ""}`}
+                    aria-pressed={thumbUrl.trim() === c.url}
+                    disabled={off}
+                    onClick={() => setThumbUrl(c.url)}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+                {thumbUrl.trim() && (
+                  <button type="button" className="chip" disabled={off} onClick={() => setThumbUrl("")}>Sem {thumbLabel}</button>
+                )}
+              </div>
+            )}
             <span className="muted small">
               {fmt.thumb.guide}
               {thumb.meta?.name ? <> · Arquivo: {thumb.meta.name}</> : null}
               {thumb.meta?.width && thumb.meta?.height ? <> · {fmtNumber(thumb.meta.width)}×{fmtNumber(thumb.meta.height)} px</> : null}
             </span>
           </div>
+        )}
+
+        {fmt?.people && (
+          <div className={fmt.people.collabs ? "grid2" : "col"}>
+            <div className="col">
+              <label className="f" htmlFor={`${id}-tags`}>Marcar pessoas (opcional)</label>
+              <input id={`${id}-tags`} name={`tags__${k}`} type="text" value={tagsText} disabled={off} readOnly={locked}
+                onChange={(e) => setTagsText(e.target.value)} placeholder="@usuario, @outro" autoComplete="off" />
+              <span className="muted small">Até {MAX_USER_TAGS}, separados por vírgula.{format === "feed" ? " Em foto, a marcação fica no centro da imagem." : ""}</span>
+            </div>
+            {fmt.people.collabs && (
+              <div className="col">
+                <label className="f" htmlFor={`${id}-collabs`}>Collab (opcional)</label>
+                <input id={`${id}-collabs`} name={`collabs__${k}`} type="text" value={collabsText} disabled={off} readOnly={locked}
+                  onChange={(e) => setCollabsText(e.target.value)} placeholder="@parceiro" autoComplete="off" />
+                <span className="muted small">Até {MAX_COLLABS} contas. Elas recebem um convite e só aparecem como coautoras depois de aceitar.</span>
+              </div>
+            )}
+          </div>
+        )}
+        {network === "instagram" && format === "stories" && (
+          <span className="muted small">Stories não aceitam collab (regra do Instagram).</span>
         )}
 
         {withTitle && (
@@ -312,8 +387,10 @@ export default function NetworkRow({
                   networkLabel={cfg.label}
                   info={existing.publish}
                   dirty={isTargetDirty(
-                    { caption, title, day: date, time, driveUrl, thumbUrl },
+                    { caption, title, day: date, time, driveUrl, thumbUrl, tags: tagsText, collabs: collabsText },
                     {
+                      tags: savedTags,
+                      collabs: savedCollabs,
                       caption: existing.caption,
                       title: existing.title,
                       day: existing.day,
@@ -347,6 +424,14 @@ export default function NetworkRow({
                     title="Use se você publicou direto na rede (pelo app do celular, por exemplo). Só registra; não publica nada.">
                     Postei manualmente
                   </SubmitButton>
+                )}
+                {network === "instagram" && (existing.thumbUrl || (existing.userTags?.length ?? 0) > 0 || (existing.collaborators?.length ?? 0) > 0) && !posted && (
+                  <p className="muted small" style={{ flexBasis: "100%", margin: 0 }}>
+                    Se postar manualmente, lembre de:
+                    {existing.thumbUrl ? <> escolher a capa <b>{existing.thumbMeta?.name ?? "do Drive"}</b>;</> : null}
+                    {existing.userTags?.length ? <> marcar <b>{formatHandles(existing.userTags)}</b>;</> : null}
+                    {existing.collaborators?.length ? <> convidar como collab <b>{formatHandles(existing.collaborators)}</b>.</> : null}
+                  </p>
                 )}
                 <details className="more" ref={moreRef}>
                   <summary className="btn">Mais ações</summary>

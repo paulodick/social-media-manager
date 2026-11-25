@@ -587,6 +587,37 @@ export async function scanClientCutFolders(
   };
 }
 
+/**
+ * Imagens na mesma pasta de um arquivo (capas que ficam junto do vídeo). As com "capa", "cover" ou "thumb" no nome vêm
+ * primeiro. Até 20.
+ */
+export async function listSiblingImages(fileId: string): Promise<{ name: string; url: string }[]> {
+  if (!driveConfigured() || !SAFE_ID.test(fileId)) return [];
+  try {
+    const r = await api(`/files/${fileId}?fields=parents&supportsAllDrives=true`);
+    if (!r.ok) return [];
+    const parent = ((await r.json()) as { parents?: string[] }).parents?.[0];
+    if (!parent || !SAFE_ID.test(parent)) return [];
+    const qs = new URLSearchParams({
+      q: `'${parent}' in parents and mimeType contains 'image/' and trashed = false`,
+      fields: "files(id,name)",
+      pageSize: "50",
+      includeItemsFromAllDrives: "true",
+      supportsAllDrives: "true",
+    });
+    const l = await api(`/files?${qs.toString()}`);
+    if (!l.ok) return [];
+    const files = ((await l.json()) as { files?: { id: string; name: string }[] }).files ?? [];
+    const score = (n: string) => (/(capa|cover|thumb|miniatura)/i.test(n) ? 0 : 1);
+    return files
+      .sort((a, b) => score(a.name) - score(b.name) || a.name.localeCompare(b.name, "pt-BR", { numeric: true }))
+      .slice(0, 20)
+      .map((f) => ({ name: f.name, url: `https://drive.google.com/file/d/${f.id}/view` }));
+  } catch {
+    return [];
+  }
+}
+
 const MAX_DOC_BYTES = 2 * 1024 * 1024; // 2 MB
 
 /**

@@ -6,6 +6,8 @@
 //    Stories por photo_stories e video_stories.
 // META_GRAPH_BASE e META_GRAPH_VERSION existem para testes com um servidor falso.
 
+import { userTagsParam } from "../ig-people.ts";
+
 export type MediaSource = {
   kind: "video" | "image";
   size: number;
@@ -24,7 +26,24 @@ export type MetaPublishInput = {
   caption: string;
   title?: string;
   media: MediaSource;
+  /** Instagram Reels: endereço público (assinado) da capa em JPEG. */
+  coverUrl?: string | null;
+  /** Instagram: @ marcados e collabs (sem o @). */
+  userTags?: string[];
+  collaborators?: string[];
 };
+
+/**
+ * Extras do Instagram no contêiner: capa (só Reels), marcações (posição obrigatória só em imagem do feed) e collabs
+ * (feed e Reels; Stories não aceitam). Referência: POST /<IG_ID>/media, conferida em 2026-11-25.
+ */
+export function instagramExtras(i: Pick<MetaPublishInput, "format" | "coverUrl" | "userTags" | "collaborators">, kind: "reels" | "image" | "stories") {
+  const out: Record<string, unknown> = {};
+  if (kind === "reels" && i.coverUrl) out.cover_url = i.coverUrl;
+  if (i.userTags?.length) out.user_tags = userTagsParam(i.userTags, kind === "image");
+  if (i.collaborators?.length && kind !== "stories") out.collaborators = i.collaborators.slice(0, 3);
+  return out;
+}
 
 export type MetaPublishResult = { id: string; url: string };
 
@@ -173,7 +192,7 @@ export async function publishInstagram(i: MetaPublishInput): Promise<MetaPublish
     // 1º caminho: a Meta baixa o vídeo pelo endereço assinado do app. Se o vídeo tiver problema, o status do contêiner diz qual.
     if (media.publicUrl) {
       try {
-        const body: Record<string, unknown> = { media_type: type, video_url: media.publicUrl };
+        const body: Record<string, unknown> = { media_type: type, video_url: media.publicUrl, ...instagramExtras(i, stories ? "stories" : "reels") };
         if (!stories && i.caption) body.caption = i.caption;
         const c = (await graph(`${accountId}/media`, token, { body })) as { id?: string };
         id = c.id ?? "";
@@ -184,7 +203,7 @@ export async function publishInstagram(i: MetaPublishInput): Promise<MetaPublish
     // Reserva: envio resumível (upload do arquivo). Criar contêiner que falhou não publica nada.
     if (!id) {
       try {
-        const body: Record<string, unknown> = { media_type: type, upload_type: "resumable" };
+        const body: Record<string, unknown> = { media_type: type, upload_type: "resumable", ...instagramExtras(i, stories ? "stories" : "reels") };
         if (!stories && i.caption) body.caption = i.caption;
         const c = (await graph(`${accountId}/media`, token, { body })) as { id?: string; uri?: string };
         if (!c.id || !c.uri) throw new PublishError("O Instagram não devolveu o endereço de envio do vídeo.");
@@ -197,7 +216,7 @@ export async function publishInstagram(i: MetaPublishInput): Promise<MetaPublish
     }
     container = id;
   } else {
-    const body: Record<string, unknown> = { image_url: needUrl(media) };
+    const body: Record<string, unknown> = { image_url: needUrl(media), ...instagramExtras(i, stories ? "stories" : "image") };
     if (stories) body.media_type = "STORIES";
     else if (i.caption) body.caption = i.caption;
     const c = (await graph(`${accountId}/media`, token, { body })) as { id?: string };

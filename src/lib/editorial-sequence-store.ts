@@ -121,7 +121,7 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       clientId, title, normalizeThemeKey(parsed.topic_tag || title), parsed.guest_name, parsed.topic_tag, transcript,
       parsed.caption_draft, parsed.caption_instagram, parsed.caption_linkedin, driveUrl, bundle.video.id,
       meta.error ? null : JSON.stringify(meta), folder.id, label.slice(0, 300), bundle.parent_id ?? ready.id, bundle.doc?.id ?? null,
-      qualityFlags(transcript, suggested), suggested,
+      qualityFlags(transcript, suggested), suggested, bundle.cover?.id ?? null,
     ];
     const upd = await pool.query(
       // Campos vazios na transcrição não apagam o que a ficha da IA (ou a pessoa) já preencheu.
@@ -132,7 +132,7 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
               caption_instagram=case when $8<>'' then $8 else caption_instagram end,
               caption_linkedin=case when $9<>'' then $9 else caption_linkedin end,
               drive_url=$10, drive_file_id=$11,
-              drive_meta=$12, source_folder_name=$14, ready_folder_parent_id=$15, doc_drive_file_id=$16, quality_flags=$17, suggested_caption=$18,
+              drive_meta=$12, source_folder_name=$14, ready_folder_parent_id=$15, doc_drive_file_id=$16, quality_flags=$17, suggested_caption=$18, cover_drive_file_id=coalesce($19, cover_drive_file_id),
               source_kind='existing_ready', status=case when status='archived' then status else 'ready' end, updated_at=now()
         where client_id=$1 and source_folder_id=$13`,
       values,
@@ -145,8 +145,8 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       await pool.query(
         `insert into content_items (client_id, title, theme_key, guest_name, topic_tag, transcript, caption_draft,
                 caption_instagram, caption_linkedin, drive_url, drive_file_id, drive_meta, source_folder_id,
-                source_folder_name, ready_folder_parent_id, doc_drive_file_id, quality_flags, suggested_caption, source_kind, content_format, status)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'existing_ready','video','ready')`,
+                source_folder_name, ready_folder_parent_id, doc_drive_file_id, quality_flags, suggested_caption, cover_drive_file_id, source_kind, content_format, status)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'existing_ready','video','ready')`,
         values,
       );
       created++;
