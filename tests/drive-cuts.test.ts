@@ -401,3 +401,72 @@ test("prompts e parseAiClassification incluem memória do cliente, referência d
   assert.ok(calp.includes("ALTERNÂNCIA DE ASSUNTOS"));
   assert.ok(calp.includes('convidado: "Prof. Lucio Flavio"'));
 });
+
+test("guestFromEpisodeFolderName tira o convidado do nome do episódio", async () => {
+  const { guestFromEpisodeFolderName, guestFromAncestors } = await import("../src/lib/drive-cuts.ts");
+  assert.equal(guestFromEpisodeFolderName("Ep - 1 Lúcio Flávio"), "Lúcio Flávio");
+  assert.equal(guestFromEpisodeFolderName("Ep -2 Leonardo Milner"), "Leonardo Milner");
+  assert.equal(guestFromEpisodeFolderName("Ep - 3 Philllip Dmitruk"), "Philllip Dmitruk");
+  assert.equal(guestFromEpisodeFolderName("PodBest #1 - Prof. Lúcio Flávio Magalhães"), "Prof. Lúcio Flávio Magalhães");
+  assert.equal(guestFromEpisodeFolderName("Episódio 12: Dra. Ana"), "Dra. Ana");
+  assert.equal(guestFromEpisodeFolderName("PodbestFast 1 - Hospitalar 2026"), "");
+  assert.equal(guestFromEpisodeFolderName("Cortes_Reels"), "");
+  assert.equal(guestFromEpisodeFolderName("01 - O que faz um físico médico hoje"), "");
+  assert.equal(guestFromAncestors(["Ep - 1 Lúcio Flávio", "Cortes_Reels"]), "Lúcio Flávio");
+  assert.equal(guestFromAncestors([]), "");
+});
+
+test("scanClientCutFolders varre a pasta inteira (episódios e subpastas) e ignora ano, Logotipo e Reels Editados", async () => {
+  const F = "application/vnd.google-apps.folder";
+  const drive = await startMockDrive(4074, {
+    tree: [
+      { id: "ROOT_PODREC_0001", name: "PodBest", mimeType: F, parents: [] },
+      { id: "LOGO_PODREC_0001", name: "Logotipo", mimeType: F, parents: ["ROOT_PODREC_0001"] },
+      { id: "LOGO_PODREC_FILE", name: "logo.png", mimeType: "image/png", size: 10, parents: ["LOGO_PODREC_0001"] },
+      { id: "YEAR_PODREC_2026", name: "2026", mimeType: F, parents: ["ROOT_PODREC_0001"] },
+      { id: "MONT_PODREC_0011", name: "11 - Novembro", mimeType: F, parents: ["YEAR_PODREC_2026"] },
+      { id: "YVID_PODREC_0001", name: "postado.mp4", mimeType: "video/mp4", size: 10, parents: ["MONT_PODREC_0011"] },
+      { id: "REEL_PODREC_0001", name: "Reels Editados", mimeType: F, parents: ["ROOT_PODREC_0001"] },
+      { id: "RVID_PODREC_0001", name: "pronto.mp4", mimeType: "video/mp4", size: 10, parents: ["REEL_PODREC_0001"] },
+      // Episódio 1: Ep / Cortes_Reels / 01 - ... (corte sem vídeo, só legenda e capa) e 07 - ... (com vídeo)
+      { id: "EP01_PODREC_0001", name: "Ep - 1 Lúcio Flávio", mimeType: F, parents: ["ROOT_PODREC_0001"] },
+      { id: "CRTS_PODREC_0001", name: "Cortes_Reels", mimeType: F, parents: ["EP01_PODREC_0001"] },
+      { id: "C101_PODREC_0001", name: "01 - Quer ser médico só pra vestir branco", mimeType: F, parents: ["CRTS_PODREC_0001"] },
+      { id: "C101_PODREC_CAPA", name: "capa.jpg", mimeType: "image/jpeg", size: 10, parents: ["C101_PODREC_0001"] },
+      { id: "C101_PODREC_LEGE", name: "Podbest_Ep1_corte01_legenda.txt", mimeType: "text/plain", parents: ["C101_PODREC_0001"], content: "Legenda Instagram: IG 1" },
+      { id: "C101_PODREC_TEXT", name: "Podbest_Ep1_corte01_textos_Instagram_LinkedIn.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", parents: ["C101_PODREC_0001"], content: "x" },
+      { id: "C107_PODREC_0001", name: "07 - Interesse é fome de conhecimento", mimeType: F, parents: ["CRTS_PODREC_0001"] },
+      { id: "C107_PODREC_VIDE", name: "corte07_vertical.mp4", mimeType: "video/mp4", size: 10, parents: ["C107_PODREC_0001"] },
+      // Episódio 2: Ep / 01 - ... direto
+      { id: "EP02_PODREC_0001", name: "Ep -2 Leonardo Milner", mimeType: F, parents: ["ROOT_PODREC_0001"] },
+      { id: "C201_PODREC_0001", name: "01 - Comprar equipamento sem ouvir quem entende", mimeType: F, parents: ["EP02_PODREC_0001"] },
+      { id: "C201_PODREC_VIDE", name: "EP 2 Corte 1.mp4", mimeType: "video/mp4", size: 10, parents: ["C201_PODREC_0001"] },
+      // Pasta vazia não vira corte.
+      { id: "VAZI_PODREC_0001", name: "Rascunhos", mimeType: F, parents: ["ROOT_PODREC_0001"] },
+    ],
+  });
+  process.env.DRIVE_API_BASE = `http://127.0.0.1:${drive.port}`;
+  process.env.DRIVE_TEST_TOKEN = "token-teste";
+  process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify({ client_email: "teste@mock.local", private_key: "fake-key" });
+  try {
+    const { scanClientCutFolders } = await import("../src/lib/drive.ts");
+    const scanned = await scanClientCutFolders("ROOT_PODREC_0001");
+    assert.ok(!("error" in scanned));
+    assert.deepEqual(
+      scanned.cut_folders.map((c) => [...c.path, c.folder_name].join(" / ")),
+      [
+        "Ep - 1 Lúcio Flávio / Cortes_Reels / 01 - Quer ser médico só pra vestir branco",
+        "Ep - 1 Lúcio Flávio / Cortes_Reels / 07 - Interesse é fome de conhecimento",
+        "Ep -2 Leonardo Milner / 01 - Comprar equipamento sem ouvir quem entende",
+      ],
+    );
+    assert.equal(scanned.folders_truncated, false);
+    const c101 = scanned.cut_folders[0];
+    assert.equal(c101.detected_guest, "Lúcio Flávio");
+    assert.equal(c101.detected_topic, "Quer ser médico só pra vestir branco");
+    assert.equal(c101.docs.length, 2, "lê a legenda e os textos por rede");
+    assert.equal(scanned.cut_folders[2].detected_guest, "Leonardo Milner");
+  } finally {
+    await drive.close();
+  }
+});

@@ -41,12 +41,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
 
   // Confere TUDO antes de gravar qualquer item: um ID ruim no meio da lista não pode deixar a importação pela metade
   // (antes os primeiros itens ficavam gravados e a tela mostrava só o erro).
+  // Caminho de cada pasta de corte (episódio etc.), usado também para descobrir o convidado.
+  const cutPaths = new Map<string, string[]>();
   for (const cf of cutFoldersInput) {
     const folderId = String(cf.folder_id ?? "").trim();
     if (!SAFE_DRIVE_ID.test(folderId)) return jsonError("ID de pasta de corte do Drive inválido.", 400);
-    if (!(await folderPathFromRoot(folderId, root))) {
+    const path = await folderPathFromRoot(folderId, root);
+    if (!path) {
       return jsonError(`A pasta ${folderId} não pertence à pasta deste cliente. Nada foi importado.`, 403);
     }
+    cutPaths.set(folderId, path);
   }
   for (const f of filesInput) {
     const fileId = String(f.drive_file_id ?? "").trim();
@@ -76,19 +80,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
 
     const folderName =
       ("name" in folderInfo ? folderInfo.name : String(cf.folder_name ?? "").trim()) || "Corte do Drive";
-    const bundle = groupFolderIntoCutBundle({ id: folderId, name: folderName }, listing.files);
+    const bundle = groupFolderIntoCutBundle({ id: folderId, name: folderName }, listing.files, cutPaths.get(folderId) ?? []);
     if (!bundle) {
       warnings.push(`A pasta "${folderName}" não tinha vídeo, capa nem documento e foi ignorada.`);
       continue;
     }
 
     // Referência principal: lê o texto do .doc/.docx/Google Doc (sem transcrição pesada do vídeo).
-    let docText = "";
-    if (bundle.doc) {
-      const docRes = await readDriveDocumentText(bundle.doc);
-      docText = docRes.text;
+    // Lê todos os textos da pasta (legenda, "textos Instagram LinkedIn", transcrição): as seções por rede podem
+    // estar em arquivos diferentes.
+    const docTexts: string[] = [];
+    for (const d of bundle.docs) {
+      const docRes = await readDriveDocumentText(d);
+      if (docRes.text.trim()) docTexts.push(docRes.text.trim());
       if (docRes.warning) warnings.push(`${folderName}: ${docRes.warning}`);
     }
+    const docText = docTexts.join("\n\n");
 
     const parsed = parseCutDocument({
       folderName,
@@ -111,7 +118,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
         status: "ready",
         title: parsed.title,
         theme_key: normalizeThemeKey(parsed.topic_tag || parsed.title),
-        guest_name: parsed.guest_name,
+        guest_name: parsed.guest_name || bundle.detected_guest,
         topic_tag: parsed.topic_tag,
         cover_idea: parsed.cover_idea,
         cover_drive_file_id: bundle.cover?.id ?? null,

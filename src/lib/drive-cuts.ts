@@ -4,9 +4,13 @@ import type { ListedFile } from "./drive.ts";
 export type DriveCutBundle = {
   folder_id: string;
   folder_name: string;
+  /** Pastas entre a pasta do cliente e esta (ex.: ["Ep - 1 Lúcio Flávio", "Cortes_Reels"]). */
+  path: string[];
   video: ListedFile | null;
   cover: ListedFile | null;
   doc: ListedFile | null;
+  /** Todos os textos da pasta (legenda, textos por rede, transcrição), até 4. */
+  docs: ListedFile[];
   extra_files: ListedFile[];
   skip_video_transcription: boolean;
   detected_guest: string;
@@ -107,9 +111,33 @@ export function inferGuestAndTopicFromFolderName(folderName: string): { guest: s
  * Agrupa os arquivos de uma subpasta de corte (vídeo + capa + .doc) em um único bundle editorial.
  * Retorna null se a subpasta não tiver vídeo, capa nem documento.
  */
+/**
+ * Convidado a partir do nome da pasta do episódio: "Ep - 1 Lúcio Flávio", "Ep -2 Leonardo Milner",
+ * "PodBest #1 - Prof. Lúcio Flávio Magalhães", "Episódio 12: Dra. Ana". Só vale quando o nome começa
+ * com Ep/Episódio/# e número; "PodbestFast 1 - Hospitalar 2026" não vira convidado.
+ */
+export function guestFromEpisodeFolderName(name: string): string {
+  const m = name
+    .trim()
+    .match(/^(?:[\p{L}]+\s*)?(?:#|ep(?:is[oó]dio)?\.?)\s*[-–—]?\s*\d+\s*[-–—:]?\s*(.+)$/iu);
+  const rest = m?.[1]?.trim() ?? "";
+  if (!rest || !/\p{L}/u.test(rest) || rest.length > 80) return "";
+  return rest.slice(0, 120);
+}
+
+/** Convidado pela pasta de episódio mais próxima no caminho (da mais funda para a mais rasa). */
+export function guestFromAncestors(path: string[]): string {
+  for (let i = path.length - 1; i >= 0; i--) {
+    const g = guestFromEpisodeFolderName(path[i]);
+    if (g) return g;
+  }
+  return "";
+}
+
 export function groupFolderIntoCutBundle(
   folder: { id: string; name: string },
   files: ListedFile[],
+  path: string[] = [],
 ): DriveCutBundle | null {
   const videos = files.filter(isVideoFile);
   const images = files.filter(isImageFile);
@@ -138,13 +166,15 @@ export function groupFolderIntoCutBundle(
   return {
     folder_id: folder.id,
     folder_name: folder.name,
+    path,
     video,
     cover,
     doc,
+    docs: (doc ? [doc, ...docs.filter((d) => d.id !== doc.id)] : docs).slice(0, 4),
     extra_files,
     // Nunca envia vídeo completo para transcrição pesada por padrão.
     skip_video_transcription: true,
-    detected_guest: inferred.guest,
+    detected_guest: inferred.guest || guestFromAncestors(path),
     detected_topic: inferred.topic,
   };
 }
