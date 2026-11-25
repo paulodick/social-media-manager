@@ -606,9 +606,15 @@ export async function scanClientCutFolders(
   };
 }
 
-/** Pastas que não são da conta do app e têm `parentId` como pai (busca ampla, até 1000 pastas). */
-async function listForeignChildFolders(parentId: string): Promise<{ id: string; name: string }[]> {
-  const out: { id: string; name: string }[] = [];
+/**
+ * Subpastas diretas de `rootId` que a busca "in parents" não devolve. Acontece com pastas de OUTRA conta colocadas
+ * na pasta do cliente: o Drive deixa a conta do app abri-las, mas não as lista. Caminho: pega as pastas visíveis de
+ * outras contas (busca ampla) e sobe pelos pais (lendo cada pasta, o que funciona) até chegar em `rootId`; a pasta
+ * logo abaixo dele é a subpasta que faltava (ex.: "Ep - 2 Convidado", achada a partir dos cortes dentro dela).
+ */
+async function listForeignChildFolders(rootId: string): Promise<{ id: string; name: string }[]> {
+  const info = new Map<string, { name: string; parent: string | null }>();
+  const foreign: string[] = [];
   let pageToken: string | undefined;
   let seen = 0;
   try {
@@ -622,16 +628,57 @@ async function listForeignChildFolders(parentId: string): Promise<{ id: string; 
       });
       if (pageToken) qs.set("pageToken", pageToken);
       const r = await api(`/files?${qs.toString()}`);
-      if (!r.ok) return out;
+      if (!r.ok) break;
       const j = (await r.json()) as { files?: { id: string; name: string; parents?: string[] }[]; nextPageToken?: string };
-      for (const f of j.files ?? []) if (f.parents?.includes(parentId)) out.push({ id: f.id, name: f.name });
+      for (const f of j.files ?? []) {
+        info.set(f.id, { name: f.name, parent: f.parents?.[0] ?? null });
+        foreign.push(f.id);
+      }
       seen += j.files?.length ?? 0;
       pageToken = j.nextPageToken || undefined;
     } while (pageToken && seen < 1000);
   } catch {
-    // é só uma tentativa extra
+    return [];
   }
-  return out;
+
+  let gets = 0;
+  const lookup = async (id: string): Promise<{ name: string; parent: string | null } | null> => {
+    const hit = info.get(id);
+    if (hit) return hit;
+    if (gets >= 200 || !SAFE_ID.test(id)) return null;
+    gets++;
+    try {
+      const r = await api(`/files/${id}?fields=${encodeURIComponent("id,name,parents")}&supportsAllDrives=true`);
+      if (!r.ok) return null;
+      const f = (await r.json()) as { name: string; parents?: string[] };
+      const v = { name: f.name, parent: f.parents?.[0] ?? null };
+      info.set(id, v);
+      return v;
+    } catch {
+      return null;
+    }
+  };
+
+  const found = new Map<string, string>();
+  const dead = new Set<string>(); // pastas cuja subida já se sabe que não chega ao cliente
+  for (const start of foreign) {
+    const chain: string[] = [];
+    let cur: string | null = start;
+    let top: string | null = null;
+    for (let i = 0; i < 8 && cur && !dead.has(cur); i++) {
+      const node = await lookup(cur);
+      if (!node) break;
+      chain.push(cur);
+      if (node.parent === rootId) {
+        top = cur;
+        break;
+      }
+      cur = node.parent;
+    }
+    if (top) found.set(top, info.get(top)?.name ?? "");
+    else for (const id of chain) dead.add(id);
+  }
+  return [...found].map(([id, name]) => ({ id, name }));
 }
 
 const MAX_DOC_BYTES = 2 * 1024 * 1024; // 2 MB
