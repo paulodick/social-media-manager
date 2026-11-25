@@ -233,6 +233,10 @@ type ExistingTarget = {
   thumb_url: string; thumb_file_id: string | null; thumb_meta: MediaMeta | null;
   /** Estava confirmado para publicar sozinho antes desta gravação. */
   confirmed: boolean;
+  publish_state: string;
+  caption: string;
+  title: string;
+  time: string;
 };
 
 /**
@@ -298,15 +302,30 @@ export async function savePost(formData: FormData): Promise<void> {
     ? (
         await pool.query<ExistingTarget>(
           `select id, network, format, post_folder_id, drive_url, drive_file_id, drive_meta, thumb_url, thumb_file_id, thumb_meta,
-                  (auto_confirmed_at is not null) as confirmed,
-                  to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day
+                  (auto_confirmed_at is not null) as confirmed, publish_state, caption, title,
+                  to_char(scheduled_at at time zone '${TZ}', 'YYYY-MM-DD') as day,
+                  to_char(scheduled_at at time zone '${TZ}', 'HH24:MI') as time
              from post_targets where post_id = $1`,
           [postId],
         )
       ).rows
     : [];
   const sentIds = new Set(formData.getAll("tid").map(String));
-  const edits = existing.filter((e) => sentIds.has(e.id));
+  // Destino que já saiu na rede pelo app (ou está saindo agora) não muda mais: legenda, data e mídia do banco têm de
+  // continuar iguais ao que está publicado. Só a situação de um já publicado ainda pode ser trocada.
+  const isLocked = (e: ExistingTarget) => e.publish_state === "published" || e.publish_state === "publishing";
+  const lockedSent = existing.filter((e) => sentIds.has(e.id) && isLocked(e));
+  const lockedChanged = lockedSent.filter((e) => {
+    const changed = (field: string, now: string) => formData.has(field) && text(formData, field, 70000) !== (now ?? "").trim();
+    return (
+      changed(`caption__${e.id}`, e.caption) ||
+      changed(`date__${e.id}`, e.day) ||
+      changed(`time__${e.id}`, e.time) ||
+      changed(`drive__${e.id}`, e.drive_url) ||
+      changed(`title__${e.id}`, e.title)
+    );
+  }).length;
+  const edits = existing.filter((e) => sentIds.has(e.id) && !isLocked(e));
   const have = new Set(existing.map((e) => `${e.network}:${e.format}`));
   const fresh = newKeys.filter((k) => !have.has(k));
 
@@ -445,6 +464,15 @@ export async function savePost(formData: FormData): Promise<void> {
           );
         }
       }
+      // Situação de um destino já publicado (ex.: voltar para agendado): o conteúdo fica como está.
+      const lockedStatus = status ? lockedSent.find((e) => e.id === statusId && e.publish_state === "published") : undefined;
+      if (lockedStatus) {
+        await c.query(
+          `update post_targets set status=$1, posted_at = case when $1='posted' then coalesce(posted_at, now()) else null end,
+                  auto_confirmed_at = null where id=$2`,
+          [status, lockedStatus.id],
+        );
+      }
       for (const [i, t] of created.entries()) {
         await c.query(
           `insert into post_targets (post_id, network, format, scheduled_at, caption, drive_url, drive_file_id, drive_meta, post_folder_id,
@@ -524,6 +552,13 @@ export async function savePost(formData: FormData): Promise<void> {
     if (movedNotice) notes.push(movedNotice);
     if (droppedConfirm) notes.push(droppedConfirm === 1 ? "Você mudou algo de um post confirmado: a confirmação da publicação automática foi desfeita. Confirme de novo." : `Você mudou algo de ${droppedConfirm} posts confirmados: as confirmações da publicação automática foram desfeitas. Confirme de novo.`);
     if (folderError) notes.push(`Salvo, mas a pasta no Drive não foi criada: ${folderError}`);
+    if (lockedChanged) {
+      notes.push(
+        lockedChanged === 1
+          ? "Um destino já foi publicado pelo app: a legenda, a data e a mídia dele ficaram como estavam."
+          : `${lockedChanged} destinos já foram publicados pelo app: a legenda, a data e a mídia deles ficaram como estavam.`,
+      );
+    }
     redirect(notes.length ? withParam(url, "aviso", notes.join(" ")) : url);
   }
   const dayPath = `/clientes/${clientId}/dia/${created[0]?.day ?? noteDay}`;
@@ -814,7 +849,7 @@ export async function buildCaptionPromptAction(input: CaptionPromptInput): Promi
 
 /**
  * Gera a legenda de um destino pela API. Chamada direto do navegador (botão "Gerar legenda").
- * O tom de voz vem do banco, não do navegador. Só o planejamento e o rascunho vêm da tela.
+ * O tom de voz e as observações do cliente vêm do banco; o planejamento, o rascunho e os tons marcados vêm da tela.
  */
 export async function generateCaption(input: CaptionPromptInput): Promise<AiResult> {
   await requireAuth();

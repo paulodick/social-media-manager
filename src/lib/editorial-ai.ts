@@ -44,7 +44,8 @@ async function callGemini(prompt: string, responseMimeType?: "application/json")
 
   for (let i = 0; i < candidates.length; i++) {
     const model = candidates[i];
-    const url = `${base}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+    // A chave vai no cabeçalho, não no endereço: endereços aparecem em logs de proxies e servidores.
+    const url = `${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     try {
       const payload: Record<string, unknown> = {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -54,18 +55,21 @@ async function callGemini(prompt: string, responseMimeType?: "application/json")
       }
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(45_000),
       });
       const body = (await res.json().catch(() => null)) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
+        candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
         error?: { message?: string };
       } | null;
 
       if (!res.ok) {
         if ((res.status === 404 || res.status === 429 || res.status >= 500) && i < candidates.length - 1) continue;
         return { error: explainGeminiError(res.status, body?.error?.message ?? "") };
+      }
+      if (body?.candidates?.[0]?.finishReason === "MAX_TOKENS") {
+        return { error: "a resposta do Gemini veio cortada por ser longa demais. Tente de novo pedindo um texto mais curto." };
       }
       const parts = body?.candidates?.[0]?.content?.parts ?? [];
       const text = parts

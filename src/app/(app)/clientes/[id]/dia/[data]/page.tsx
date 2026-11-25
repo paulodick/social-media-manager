@@ -19,7 +19,7 @@ export default async function DayPage({
   searchParams,
 }: {
   params: Promise<{ id: string; data: string }>;
-  searchParams: Promise<{ salvo?: string; erro?: string; aviso?: string; ok?: string; pasta?: string; nota?: string }>;
+  searchParams: Promise<{ salvo?: string; erro?: string; aviso?: string; ok?: string; pasta?: string; nota?: string; nav?: string }>;
 }) {
   const { id, data: day } = await params;
   const sp = await searchParams;
@@ -28,10 +28,12 @@ export default async function DayPage({
   if (!found) notFound();
   const { client, networks } = found;
   const onDay = await listTargets({ clientId: id, from: day, to: day });
-  // Dia sem post: a tela para criar é a mesma tela do post, já com a ideia do dia preenchida.
-  if (onDay.length === 0) redirect(`/posts/novo?cliente=${id}&data=${day}`);
+  // Dia sem post aberto pelo calendário: a tela para criar é a mesma tela do post, já com a ideia do dia preenchida.
+  // Pelas setas ‹ › (`nav=1`) o dia vazio é mostrado como está, para dar para continuar andando pelos dias.
+  const empty = onDay.length === 0;
+  if (empty && !sp.nav) redirect(`/posts/novo?cliente=${id}&data=${day}`);
   const note = (await listDayNotes(id, day, day))[day] ?? "";
-  const volta = `/clientes/${id}/dia/${day}`;
+  const volta = `/clientes/${id}/dia/${day}${empty ? "?nav=1" : ""}`;
   const connected = await listConnected(id);
   // Só consulta cada rede quando algum post do dia pode ser publicado pelo app, tudo em paralelo.
   const [health, liHealth, ttHealth] = await Promise.all([
@@ -114,9 +116,9 @@ export default async function DayPage({
           <h1>{dayLabel(day)}</h1>
         </div>
         <div className="row" style={{ gap: 8 }}>
-          <Link href={`/clientes/${id}/dia/${addDays(day, -1)}`} className="btn" aria-label="Dia anterior" style={{ width: 44, padding: 0 }}>‹</Link>
+          <Link href={`/clientes/${id}/dia/${addDays(day, -1)}?nav=1`} className="btn" aria-label="Dia anterior" style={{ width: 44, padding: 0 }}>‹</Link>
           <Link href={`/clientes/${id}?mes=${monthOf(day)}`} className="btn">Voltar ao calendário</Link>
-          <Link href={`/clientes/${id}/dia/${addDays(day, 1)}`} className="btn" aria-label="Próximo dia" style={{ width: 44, padding: 0 }}>›</Link>
+          <Link href={`/clientes/${id}/dia/${addDays(day, 1)}?nav=1`} className="btn" aria-label="Próximo dia" style={{ width: 44, padding: 0 }}>›</Link>
         </div>
       </header>
       <Flash erro={sp.erro} aviso={sp.aviso} ok={sp.ok ?? (sp.pasta ? "Pasta do Drive pronta." : sp.nota ? "Planejamento do dia salvo." : undefined)} />
@@ -124,6 +126,7 @@ export default async function DayPage({
       <ConnectionNotice health={liHealth} clientId={id} quiet provider="linkedin" />
       <ConnectionNotice health={ttHealth} clientId={id} quiet provider="tiktok" />
       <DayNoteCard clientId={id} day={day} volta={volta} initialNote={note} />
+      {empty && <p className="muted">Nenhum post neste dia.</p>}
       {posts.map((p) => (
         <PostEditor
           key={p.postId}

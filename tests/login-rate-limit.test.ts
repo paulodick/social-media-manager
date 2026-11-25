@@ -10,9 +10,16 @@ import {
   resetLoginRateLimit,
 } from "../src/lib/login-rate-limit.ts";
 
-test("extractClientIp prioriza o primeiro IP de x-forwarded-for, depois x-real-ip, depois unknown", () => {
+test("extractClientIp usa o IP gravado pela Cloudflare e, sem ele, o último IP de x-forwarded-for (não forjável)", () => {
   const make = (map: Record<string, string>) => ({ get: (k: string) => map[k.toLowerCase()] ?? null });
-  assert.equal(extractClientIp(make({ "x-forwarded-for": "203.0.113.10, 10.0.0.1" })), "203.0.113.10");
+  // O primeiro item do x-forwarded-for vem do visitante: trocá-lo não pode mudar o IP contado.
+  assert.equal(extractClientIp(make({ "x-forwarded-for": "1.1.1.1, 203.0.113.10" })), "203.0.113.10");
+  assert.equal(extractClientIp(make({ "x-forwarded-for": "9.9.9.9, 203.0.113.10" })), "203.0.113.10");
+  assert.equal(
+    extractClientIp(make({ "cf-connecting-ip": "198.51.100.20", "x-forwarded-for": "6.6.6.6, 172.70.1.1" })),
+    "198.51.100.20",
+  );
+  assert.equal(extractClientIp(make({ "true-client-ip": "198.51.100.21" })), "198.51.100.21");
   assert.equal(extractClientIp(make({ "x-real-ip": "198.51.100.7" })), "198.51.100.7");
   assert.equal(extractClientIp(make({})), "unknown");
 });

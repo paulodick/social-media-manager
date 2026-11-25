@@ -22,12 +22,23 @@ export function clearLoginRateLimit(): void {
   store().clear();
 }
 
-/** Extrai o IP do cliente a partir dos cabeçalhos HTTP (proxy reverso do Render ou acesso direto). */
+/**
+ * Extrai o IP do cliente a partir dos cabeçalhos HTTP.
+ * No Render há Cloudflare na frente, que GRAVA `cf-connecting-ip`/`true-client-ip` com o IP real (o visitante não
+ * consegue forjar). Já o `x-forwarded-for` só recebe IPs ACRESCENTADOS ao fim: o primeiro item é o que o visitante
+ * mandou e pode ser inventado a cada tentativa (o que furava o limite de login). Por isso, sem os cabeçalhos da
+ * Cloudflare, vale o ÚLTIMO item do `x-forwarded-for`, que foi o proxy quem escreveu.
+ */
 export function extractClientIp(h: { get(name: string): string | null }): string {
+  for (const name of ["cf-connecting-ip", "true-client-ip"]) {
+    const v = h.get(name)?.trim();
+    if (v) return v.slice(0, 100);
+  }
   const xff = h.get("x-forwarded-for");
   if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first.slice(0, 100);
+    const parts = xff.split(",").map((p) => p.trim()).filter(Boolean);
+    const last = parts[parts.length - 1];
+    if (last) return last.slice(0, 100);
   }
   const real = h.get("x-real-ip")?.trim();
   if (real) return real.slice(0, 100);

@@ -12,7 +12,7 @@ import {
   listPillars,
   listRecentThemeKeys,
 } from "@/lib/editorial-queries";
-import { extractJsonPayload, isUuid, parseAiCalendar, parseGenerateWeekdays } from "@/lib/editorial-rules";
+import { checkCalendarFitsSlots, extractJsonPayload, isUuid, parseAiCalendar, parseGenerateWeekdays } from "@/lib/editorial-rules";
 import type { ContentItem, SlotView } from "@/lib/editorial-types";
 
 export const dynamic = "force-dynamic";
@@ -124,6 +124,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ clientId: stri
     existingThemeKeys: new Set(recentThemes),
   });
   if (!parsed.ok) return jsonError(parsed.error, 400);
+  const outOfPlan = checkCalendarFitsSlots(parsed.entries, slotsToFill);
+  if (outOfPlan) return jsonError(outOfPlan, 400);
 
   const itemMetaById = new Map<string, AlternationMeta>(
     existingReady.map((e) => [

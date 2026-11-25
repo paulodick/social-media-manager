@@ -214,7 +214,9 @@ test("generateEditorialJson envia responseMimeType application/json e faz fallba
   const srv = createServer(async (req, res) => {
     calls++;
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    receivedKey = url.searchParams.get("key") ?? "";
+    // A chave vai no cabeçalho x-goog-api-key, nunca no endereço.
+    assert.equal(url.searchParams.get("key"), null);
+    receivedKey = String(req.headers["x-goog-api-key"] ?? "");
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
