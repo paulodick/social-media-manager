@@ -21,7 +21,7 @@ import { generateGeminiText } from "./editorial-ai";
 import { buildCaptionPrompt } from "./prompt";
 import { autoBlocker, checkPublishable, startPublish } from "./publisher";
 import { canAutoSchedule } from "./auto-publish";
-import { returnReadyFolders } from "./editorial-sequence-store";
+import { returnReadyFolders, syncPostedFolders } from "./editorial-sequence-store";
 import { listTargets } from "./queries";
 import { removeMetaConnections, removeLinkedinConnection, removeTiktokConnection, saveMetaConnections } from "./connections";
 import { revokeAccess, tiktokConfig } from "./publish/tiktok-oauth";
@@ -533,6 +533,9 @@ export async function savePost(formData: FormData): Promise<void> {
     redirect(`/clientes/${clientId}/dia/${created[0]?.day ?? noteDay}`);
   }
   if (noteDecision.shouldSave) await saveNote(pool, clientId, noteDay, note, noteDecision.replace);
+  // Mudou a situação de um destino (ex.: "Postei manualmente" ou voltou de postado): a pasta do vídeo pronto
+  // vai para "Reels Postados" ou volta para "Reels Editados".
+  const folderMoveWarnings = status && statusId ? await syncPostedFolders([statusId]).catch(() => [] as string[]) : [];
 
   // Assimilação contínua: compara a última legenda gerada pela IA com a versão final salva.
   for (const u of updates) {
@@ -589,6 +592,7 @@ export async function savePost(formData: FormData): Promise<void> {
     if (movedNotice) notes.push(movedNotice);
     if (droppedConfirm) notes.push(droppedConfirm === 1 ? "Você mudou algo de um post confirmado: a confirmação da publicação automática foi desfeita. Confirme de novo." : `Você mudou algo de ${droppedConfirm} posts confirmados: as confirmações da publicação automática foram desfeitas. Confirme de novo.`);
     if (folderError) notes.push(`Salvo, mas a pasta no Drive não foi criada: ${folderError}`);
+    notes.push(...folderMoveWarnings);
     if (lockedChanged) {
       notes.push(
         lockedChanged === 1
@@ -745,6 +749,8 @@ export async function markPosted(formData: FormData): Promise<void> {
     [id],
   );
   if (!upd.rowCount) redirect(withParam(back, "erro", "Este destino está sendo publicado agora. Aguarde concluir."));
+  const folderWarn = await syncPostedFolders([id]).catch(() => [] as string[]);
+  if (folderWarn.length) console.warn(`[reels-postados] ${folderWarn.join(" ")}`);
   revalidatePath("/", "layout");
   redirect(withParam(withParam(back, "feito", id), "antes", row.status));
 }
@@ -760,6 +766,8 @@ export async function undoMarkPosted(formData: FormData): Promise<void> {
     "update post_targets set status=$2, posted_at=null, auto_confirmed_at=null where id=$1 and publish_state <> 'publishing'",
     [id, antes],
   );
+  const folderWarn = await syncPostedFolders([id]).catch(() => [] as string[]);
+  if (folderWarn.length) console.warn(`[reels-postados] ${folderWarn.join(" ")}`);
   revalidatePath("/", "layout");
   redirect(back);
 }

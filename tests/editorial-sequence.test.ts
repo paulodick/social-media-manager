@@ -106,7 +106,7 @@ async function syncAndWait(store: typeof import("../src/lib/editorial-sequence-s
   return { ...res, profiled: res.profiling ? (st?.profiled ?? 0) : res.profiled, warnings: [...res.warnings, ...(res.profiling ? (st?.warnings ?? []) : [])] };
 }
 
-test("Reels Editados → itens prontos com transcrição; aprovar move a pasta para o dia e excluir devolve", { skip: !process.env.DATABASE_URL }, async () => {
+test("Reels Editados → itens prontos; aprovar não move; publicar leva a pasta para Reels Postados e desfazer devolve", { skip: !process.env.DATABASE_URL }, async () => {
   const tree = [
     { id: "ROOT_SEQ_CLIENTE", name: "Cliente Seq", mimeType: FOLDER, parents: [] },
     { id: "PASTA_REELS_SEQ1", name: "Reels Editados", mimeType: FOLDER, parents: ["ROOT_SEQ_CLIENTE"] },
@@ -162,19 +162,47 @@ test("Reels Editados → itens prontos com transcrição; aprovar move a pasta p
     const orphan = await pool.query("select 1 from content_items where client_id = $1 and title = 'Checklist'", [clientId]);
     assert.equal(orphan.rowCount, 0);
 
-    // Aprovar: cria o post e move a pasta "Video 1" para a pasta do dia.
+    // Aprovar: cria o post, mas a pasta continua em "Reels Editados" até a publicação.
     const res = await enqueueSlots(clientId, rows[0].slot_ids, { fallbackTime: "10:00" });
     assert.ok(res.ok, JSON.stringify(res));
     const v1 = tree.find((t) => t.id === "PASTA_SEQ_VIDEO1") as { parents: string[] };
-    assert.notDeepEqual(v1.parents, ["PASTA_REELS_SEQ1"], "a pasta saiu de Reels Editados");
+    assert.deepEqual(v1.parents, ["PASTA_REELS_SEQ1"], "aprovar não move a pasta");
     assert.equal((await store.listAvailableReady(clientId)).length, 0, "vídeo aprovado não entra em outra sequência");
+    if (!res.ok) return;
 
-    // Excluir o destino devolve a pasta.
-    if (res.ok) await pool.query("delete from post_targets where id = any($1::uuid[])", [res.post_target_ids]);
+    // Publicado (pelo app ou "Postei manualmente"): a pasta vai para "Reels Postados / AAAA-MM".
+    await pool.query("update post_targets set status = 'posted', posted_at = now() where id = any($1::uuid[])", [res.post_target_ids]);
+    assert.deepEqual(await store.syncPostedFolders(res.post_target_ids), []);
+    const posted = drive.createdFolders.find((f: { name: string }) => f.name === "Reels Postados") as { id: string; parentId: string } | undefined;
+    assert.ok(posted, "criou a pasta Reels Postados");
+    assert.equal(posted.parentId, "ROOT_SEQ_CLIENTE");
+    const month = drive.createdFolders.find((f: { parentId: string }) => f.parentId === posted.id) as { id: string; name: string };
+    assert.match(month.name, /^\d{4}-\d{2}$/);
+    assert.deepEqual(v1.parents, [month.id], "a pasta do vídeo foi para o mês");
+    // Chamar de novo não move outra vez.
+    assert.deepEqual(await store.syncPostedFolders(res.post_target_ids), []);
+    assert.deepEqual(v1.parents, [month.id]);
+    // A próxima sincronização não acha a pasta em Reels Editados, mas não marca como "sumiu" (foi postada).
+    const s3 = await store.syncReadyVideos(clientId);
+    assert.equal(s3.removed, 0);
+
+    // Desfazer o postado: a pasta volta para onde estava.
+    await pool.query("update post_targets set status = 'draft', posted_at = null where id = any($1::uuid[])", [res.post_target_ids]);
+    assert.deepEqual(await store.syncPostedFolders(res.post_target_ids), []);
+    assert.deepEqual(v1.parents, ["PASTA_REELS_SEQ1"]);
+
+    // Excluir o destino: o vídeo volta a ficar disponível.
+    await pool.query("delete from post_targets where id = any($1::uuid[])", [res.post_target_ids]);
     const warn = await store.returnReadyFolders([ready[0].id]);
     assert.deepEqual(warn, []);
     assert.deepEqual(v1.parents, ["PASTA_REELS_SEQ1"]);
     assert.equal((await store.listAvailableReady(clientId)).length, 1);
+
+    // "Já foi postado" (postado fora do app): vai para Reels Postados e sai da lista.
+    const mark = await store.markReadyPosted(clientId, ready[0].id);
+    assert.ok(mark.ok && !mark.warning, JSON.stringify(mark));
+    assert.deepEqual(v1.parents, [month.id]);
+    assert.equal((await store.listAvailableReady(clientId)).length, 0);
   } finally {
     await pool.query("delete from clients where id = $1", [clientId]);
     await drive.close();
@@ -530,6 +558,59 @@ test("Sincronizar lê Reels Editados em qualquer profundidade (episódio / corte
     assert.match(v.suggested_caption ?? "", /Médico de branco/);
     const row = await pool.query("select ready_folder_parent_id from content_items where id = $1", [v.id]);
     assert.equal(row.rows[0].ready_folder_parent_id, "PASTA_NEST_CORTES", "volta para a pasta de onde saiu");
+  } finally {
+    await pool.query("delete from clients where id = $1", [clientId]);
+    await drive.close();
+  }
+});
+
+test("reorganizeDates: segue a grade da sequência, pula dias aprovados e cabe todos os vídeos prontos", async () => {
+  const { reorganizeDates } = await import("../src/lib/editorial-sequence-run.ts");
+  const params = { start: "2030-01-01", every_days: 2, count: 4, lead_days: 2, targets: [{ network: "instagram", format: "reels", time: "10:00" }] };
+  // A grade começou antes: continua no mesmo passo (dias ímpares), a partir de `from`.
+  assert.deepEqual(
+    reorganizeDates({ params, from: "2030-01-04", locked: new Set(["2030-01-05"]), draftCount: 2, readyCount: 0 }),
+    ["2030-01-07", "2030-01-09"],
+  );
+  // Mais vídeos prontos que rascunhos: aumenta para caber todos.
+  assert.equal(reorganizeDates({ params, from: "2030-01-01", locked: new Set(), draftCount: 2, readyCount: 5 }).length, 5);
+  // Nunca passa do limite.
+  assert.equal(reorganizeDates({ params, from: "2030-01-01", locked: new Set(), draftCount: 1, readyCount: 99 }).length, 30);
+});
+
+test("Sincronizar: vídeo que saiu de Reels Editados sai da lista e volta se a pasta voltar", { skip: !process.env.DATABASE_URL }, async () => {
+  const tree = [
+    { id: "ROOT_GONE_CLIENT", name: "Cliente Gone", mimeType: FOLDER, parents: [] },
+    { id: "PASTA_REELS_GONE", name: "Reels Editados", mimeType: FOLDER, parents: ["ROOT_GONE_CLIENT"] },
+    { id: "PASTA_GONE_VID01", name: "Video 1", mimeType: FOLDER, parents: ["PASTA_REELS_GONE"] },
+    { id: "VIDEO_GONE_ARQ01", name: "a.mp4", mimeType: "video/mp4", size: 5000, parents: ["PASTA_GONE_VID01"] },
+    { id: "PASTA_GONE_VID02", name: "Video 2", mimeType: FOLDER, parents: ["PASTA_REELS_GONE"] },
+    { id: "VIDEO_GONE_ARQ02", name: "b.mp4", mimeType: "video/mp4", size: 5000, parents: ["PASTA_GONE_VID02"] },
+    { id: "PASTA_GONE_OUTRA", name: "Outra", mimeType: FOLDER, parents: ["ROOT_GONE_CLIENT"] },
+  ];
+  const drive = await startMockDrive(4076, { tree });
+  process.env.DRIVE_API_BASE = `http://127.0.0.1:${drive.port}`;
+  process.env.DRIVE_TEST_TOKEN = "token-teste";
+  process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify({ client_email: "teste@mock.local", private_key: "fake-key" });
+  const { db } = await import("../src/lib/db.ts");
+  const store = await import("../src/lib/editorial-sequence-store.ts");
+  const pool = await db();
+  const clientId = (
+    await pool.query<{ id: string }>("insert into clients (name, drive_folder_id) values ($1, 'ROOT_GONE_CLIENT') returning id", [`Teste Gone ${Date.now()}`])
+  ).rows[0].id;
+  try {
+    assert.equal((await store.syncReadyVideos(clientId)).created, 2);
+    assert.equal((await store.listAvailableReady(clientId)).length, 2);
+    // A pessoa tira "Video 2" de Reels Editados no Drive.
+    (tree.find((t) => t.id === "PASTA_GONE_VID02") as { parents: string[] }).parents = ["PASTA_GONE_OUTRA"];
+    const s2 = await store.syncReadyVideos(clientId);
+    assert.equal(s2.removed, 1);
+    assert.equal((await store.listAvailableReady(clientId)).length, 1);
+    // Volta para a pasta: volta para a lista.
+    (tree.find((t) => t.id === "PASTA_GONE_VID02") as { parents: string[] }).parents = ["PASTA_REELS_GONE"];
+    const s3 = await store.syncReadyVideos(clientId);
+    assert.equal(s3.removed, 0);
+    assert.equal((await store.listAvailableReady(clientId)).length, 2);
   } finally {
     await pool.query("delete from clients where id = $1", [clientId]);
     await drive.close();

@@ -425,6 +425,19 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         add column if not exists collaborators text[] not null default '{}';
     `,
   },
+  {
+    version: 22,
+    sql: `
+      -- 22: vídeo pronto publicado vai para "Reels Postados / AAAA-MM" (ready_posted_at); pasta que sumiu de
+      -- "Reels Editados" sai da lista (ready_missing_at); últimos parâmetros da sequência, para a sincronização
+      -- reorganizar os rascunhos sozinha quando entra ou sai vídeo.
+      alter table content_items
+        add column if not exists ready_posted_at timestamptz,
+        add column if not exists ready_missing_at timestamptz;
+      alter table clients
+        add column if not exists sequence_params jsonb;
+    `,
+  },
 ];
 
 type G = typeof globalThis & { _smmPool?: Pool; _smmReady?: Promise<void> };

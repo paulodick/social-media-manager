@@ -28,6 +28,7 @@ type SyncReply = {
   folder: string | null;
   created: number;
   updated: number;
+  removed?: number;
   warnings: string[];
   profiled?: number;
   profile_pending?: number;
@@ -35,15 +36,28 @@ type SyncReply = {
   error?: string;
 };
 
-type Profiling = { running: boolean; profiled: number; pending: number; warnings: string[]; finished_at: string | null } | null;
+type Profiling = {
+  running: boolean;
+  profiled: number;
+  pending: number;
+  warnings: string[];
+  finished_at: string | null;
+  reorganizing?: boolean;
+  reorganize_note?: string;
+} | null;
 
 /** Passou disso desde a última leitura, o Editorial sincroniza sozinho ao abrir. */
 const AUTO_SYNC_MS = 24 * 60 * 60 * 1000;
 
 function syncSummary(j: SyncReply, auto: boolean): string {
   const parts = [`${j.created} vídeo(s) novo(s)`, `${j.updated} atualizado(s)`];
+  if (j.removed) parts.push(`${j.removed} saíram da pasta (postados ou movidos)`);
   if (j.profiled !== undefined) parts.push(`${j.profiled} interpretado(s) pela IA`);
-  const ai = j.profiling ? " A IA está lendo os vídeos e montando as fichas; a lista atualiza sozinha." : "";
+  const ai = j.profiling
+    ? (j.created || j.removed)
+      ? " A IA está lendo os vídeos novos e depois reorganiza os rascunhos da sequência; a lista atualiza sozinha."
+      : " A IA está lendo os vídeos e montando as fichas; a lista atualiza sozinha."
+    : "";
   return `${auto ? "Sincronizado automaticamente. " : ""}"${j.folder}": ${parts.join(", ")}.${ai}${j.warnings.length ? ` ${j.warnings.join(" ")}` : ""}`;
 }
 
@@ -174,13 +188,47 @@ export default function SequencePanel({
     return j;
   }
 
-  // Enquanto a IA faz as fichas em segundo plano, atualiza a lista a cada 5 s.
+  // Enquanto a IA faz as fichas (e reorganiza) em segundo plano, atualiza a lista a cada 5 s. Quando termina,
+  // atualiza o calendário também (os rascunhos podem ter mudado de dia).
   useEffect(() => {
     if (!profiling?.running) return;
-    const t = setInterval(() => void load(), 5000);
+    const t = setInterval(async () => {
+      const j = await load();
+      if (j && !j.profiling?.running) router.refresh();
+    }, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profiling?.running, clientId]);
+
+  async function markPosted(v: ReadyInfo) {
+    setBusy("approve");
+    setErr("");
+    setMsg("");
+    try {
+      const res = await fetch(`/api/editorial/clients/${clientId}/sequence/posted`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: v.id }),
+      });
+      const j = (await res.json()) as { error?: string; warning?: string | null; reorganizing?: boolean };
+      if (!res.ok) {
+        setErr(j.error ?? "Não foi possível marcar.");
+        return;
+      }
+      setMsg(
+        `"${v.theme || v.title}" saiu da lista${j.warning ? `, mas ${j.warning}` : ' e a pasta foi para "Reels Postados"'}.` +
+          (j.reorganizing ? " Os rascunhos da sequência estão sendo reorganizados." : ""),
+      );
+      const after = await load();
+      if (j.reorganizing && after && !after.profiling?.running) {
+        setProfiling({ running: true, profiled: 0, pending: 0, warnings: [], finished_at: null, reorganizing: true });
+      }
+    } catch {
+      setErr("Falha ao falar com o servidor.");
+    } finally {
+      setBusy("");
+    }
+  }
 
   useEffect(() => {
     void (async () => {
@@ -300,7 +348,9 @@ export default function SequencePanel({
           <span className="muted small" style={{ maxWidth: "70ch" }}>
             <b>Sincronizar conteúdos</b> lê a pasta <b>Reels Editados</b> (vídeo + transcrição e/ou legenda sugerida em .txt, Google Doc ou .docx) e a IA faz a
             ficha de cada vídeo: tema, resumo, pilar, gancho e legendas. Depois ela cria pautas novas com temas que faltam e decide a
-            ordem para não repetir. Nada vira post até você aprovar; ao aprovar, a pasta do vídeo vai para a pasta do dia.
+            ordem para não repetir. Ao sincronizar de novo, vídeos novos entram e os rascunhos são reorganizados (o que já foi
+            aprovado não muda de dia). Nada vira post até você aprovar. Quando o vídeo é publicado, a pasta dele vai para{" "}
+            <b>Reels Postados</b> e sai da lista.
           </span>
         </div>
         <button type="button" className="btn" onClick={() => sync()} disabled={!!busy}>
@@ -310,8 +360,13 @@ export default function SequencePanel({
 
       {profiling?.running && (
         <p className="alert" role="status">
-          A IA está lendo os vídeos e montando as fichas ({profiling.profiled} pronta(s) até agora). Pode continuar usando o app.
+          {profiling.reorganizing
+            ? "A IA está reorganizando os rascunhos da sequência com os vídeos de agora. Pode continuar usando o app."
+            : `A IA está lendo os vídeos e montando as fichas (${profiling.profiled} pronta(s) até agora). Pode continuar usando o app.`}
         </p>
+      )}
+      {profiling && !profiling.running && profiling.reorganize_note && (
+        <p className="alert ok" role="status">{profiling.reorganize_note}</p>
       )}
       {profiling && !profiling.running && profiling.warnings.length > 0 && (
         <p className="alert warn">{profiling.warnings.join(" ")}</p>
@@ -358,9 +413,13 @@ export default function SequencePanel({
                     {v.drive_url && (
                       <a className="btn" href={v.drive_url} target="_blank" rel="noreferrer">Ver vídeo no Drive</a>
                     )}
+                    <button type="button" className="btn" onClick={() => markPosted(v)} disabled={!!busy}>
+                      Já foi postado
+                    </button>
                   </div>
                   <span className="muted small">
                     Ao aprovar este vídeo na sequência, o post já sai com essas legendas (Instagram e LinkedIn), e você pode editar antes de publicar.
+                    Se ele já foi postado fora do app, use "Já foi postado": a pasta vai para Reels Postados e ele sai da lista.
                   </span>
                 </div>
               </details>

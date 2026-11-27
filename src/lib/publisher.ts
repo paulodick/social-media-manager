@@ -11,6 +11,7 @@ import { AUTO_WINDOW_MIN, canAutoSchedule } from "./auto-publish";
 import { captionChecks, titleChecks } from "./checks";
 import { isNetwork } from "../config/networks";
 import { notifyProblem } from "./notify";
+import { syncPostedFolders } from "./editorial-sequence-store";
 
 /** Redes que o app já sabe publicar sozinho. As outras seguem manuais. */
 export const AUTO_PUBLISH_NETWORKS = ["instagram", "facebook", "linkedin", "tiktok"] as const;
@@ -157,6 +158,9 @@ async function runPublish(t: Target, conn: Connection, auto = false): Promise<vo
               external_id=$2, external_url=$3, publish_error='' where id=$1`,
       [t.id, r.id, r.url],
     );
+    // Primeira publicação do vídeo pronto: a pasta sai de "Reels Editados" e vai para "Reels Postados".
+    const folderWarn = await syncPostedFolders([t.id]).catch(() => [] as string[]);
+    if (folderWarn.length) console.warn(`[reels-postados] ${folderWarn.join(" ")}`);
   } catch (e) {
     // Nunca registrar o token. A mensagem de PublishError já vem em português e sem dados sensíveis.
     const msg = e instanceof PublishError || e instanceof Error ? e.message : "Erro desconhecido ao publicar.";

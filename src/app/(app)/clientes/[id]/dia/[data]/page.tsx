@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import DayNoteCard from "@/components/DayNoteCard";
+import PlannedSlots from "@/components/PlannedSlots";
 import PostEditor, { type EditorTarget } from "@/components/PostEditor";
 import { BackLink, Flash } from "@/components/ui";
 import { acceptedFolders, isNetwork, targetFolders } from "@/config/networks";
 import { DEFAULT_POST_TIME, addDays, dayFolders, dayLabel, isDay, monthOf, weekStart } from "@/lib/dates";
-import { folderPathFromRoot } from "@/lib/drive";
+import { folderPathFromRoot, normalizeFolderName } from "@/lib/drive";
 import { activeAiProvider } from "@/lib/ai";
 import ConnectionNotice from "@/components/ConnectionNotice";
 import { clientLinkedinHealth, clientMetaHealth, clientTiktokHealth } from "@/lib/connection-health";
+import { listPlannedGroups } from "@/lib/editorial-queries";
 import { getClient, listConnected, listDayNotes, listTargets } from "@/lib/queries";
 import { canAutoPublish } from "@/lib/publisher";
 import { canAutoSchedule, whenLabel } from "@/lib/auto-publish";
@@ -28,10 +30,12 @@ export default async function DayPage({
   if (!found) notFound();
   const { client, networks } = found;
   const onDay = await listTargets({ clientId: id, from: day, to: day });
+  // Planejado pela sequência e ainda não aprovado: aparece no topo do dia, com Aprovar.
+  const planned = await listPlannedGroups(id, day, day);
   // Dia sem post aberto pelo calendário: a tela para criar é a mesma tela do post, já com a ideia do dia preenchida.
   // Pelas setas ‹ › (`nav=1`) o dia vazio é mostrado como está, para dar para continuar andando pelos dias.
   const empty = onDay.length === 0;
-  if (empty && !sp.nav) redirect(`/posts/novo?cliente=${id}&data=${day}`);
+  if (empty && planned.length === 0 && !sp.nav) redirect(`/posts/novo?cliente=${id}&data=${day}`);
   const note = (await listDayNotes(id, day, day))[day] ?? "";
   const volta = `/clientes/${id}/dia/${day}${empty ? "?nav=1" : ""}`;
   const connected = await listConnected(id);
@@ -57,7 +61,12 @@ export default async function DayPage({
             const actual = await folderPathFromRoot(t.drive_file_id, client.drive_folder_id);
             if (actual === null) {
               pathNote = `O arquivo não está dentro da pasta do cliente. Deveria estar em ${expected.join(" / ")}.`;
-            } else if (!accepted.includes(actual.join("/")) && !accepted.includes(actual.slice(0, -1).join("/"))) {
+            } else if (
+              !accepted.includes(actual.join("/")) &&
+              !accepted.includes(actual.slice(0, -1).join("/")) &&
+              // Vídeo pronto do editorial: fica em "Reels Editados" até ser postado e depois em "Reels Postados".
+              !["reelseditados", "reelspostados"].includes(normalizeFolderName(actual[0] ?? ""))
+            ) {
               // Também vale uma subpasta dentro da pasta certa (ex.: a pasta "Vídeo 3" que o editorial moveu para o dia).
               pathNote = `O arquivo está em ${actual.join(" / ") || "(raiz da pasta do cliente)"}, mas deveria estar em ${expected.join(" / ")}.`;
             }
@@ -129,7 +138,8 @@ export default async function DayPage({
       <ConnectionNotice health={liHealth} clientId={id} quiet provider="linkedin" />
       <ConnectionNotice health={ttHealth} clientId={id} quiet provider="tiktok" />
       <DayNoteCard clientId={id} day={day} volta={volta} initialNote={note} />
-      {empty && <p className="muted">Nenhum post neste dia.</p>}
+      <PlannedSlots clientId={id} groups={planned} mode="day" />
+      {empty && planned.length === 0 && <p className="muted">Nenhum post neste dia.</p>}
       {posts.map((p) => (
         <PostEditor
           key={p.postId}

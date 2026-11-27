@@ -1,15 +1,38 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import CopyButton from "@/components/CopyButton";
 import ToneSelector from "@/components/ToneSelector";
 import { NETWORKS, STATUS_LABEL, isNetwork } from "@/config/networks";
-import { DEFAULT_POST_TIME } from "@/lib/dates";
-import type { ContentFormat, ContentItem, ContentSourceKind, ContentStatus, Pillar, SlotView } from "@/lib/editorial-types";
+import type { ContentFormat, ContentItem, ContentStatus, Pillar, SlotView } from "@/lib/editorial-types";
 
+const FORMAT_LABEL: Record<ContentFormat, string> = {
+  video: "Vídeo",
+  carousel: "Carrossel",
+  static_image: "Imagem única",
+};
+
+const STATUS_TEXT: Record<ContentStatus, string> = {
+  idea: "Ideia",
+  drafting: "Em produção",
+  ready: "Pronto",
+  archived: "Arquivado",
+};
+
+function fmtDay(day: string): string {
+  const [y, m, d] = day.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+/**
+ * Tela de um conteúdo do editorial, enxuta. Vídeo pronto (da Reels Editados): resumo para conferir, gancho e as
+ * duas legendas. Pauta nova (a gravar): tema, convidado, ideia de capa, roteiro (gancho, desenvolvimento,
+ * chamada) e as legendas. O resto (tom, ângulo, brief, formato, situação, link) fica recolhido em "Mais detalhes".
+ */
 export default function EditorialItemForm({
   clientId,
-  clientNetworks,
   pillars,
   initialItem,
   initialSlots,
@@ -21,36 +44,28 @@ export default function EditorialItemForm({
   initialSlots: SlotView[];
 }) {
   const router = useRouter();
+  const ready = initialItem.source_kind === "existing_ready";
   const [title, setTitle] = useState(initialItem.title);
   const [pillarId, setPillarId] = useState(initialItem.pillar_id ?? "");
-  const [sourceKind, setSourceKind] = useState<ContentSourceKind>(initialItem.source_kind);
   const [contentFormat, setContentFormat] = useState<ContentFormat>(initialItem.content_format ?? "video");
   const [status, setStatus] = useState<ContentStatus>(initialItem.status);
-  const [themeKey, setThemeKey] = useState(initialItem.theme_key);
   const [guestName, setGuestName] = useState(initialItem.guest_name ?? "");
   const [topicTag, setTopicTag] = useState(initialItem.topic_tag ?? "");
   const [coverIdea, setCoverIdea] = useState(initialItem.cover_idea ?? "");
-  const [hook, setHook] = useState(initialItem.hook);
+  // Um gancho só: o "Gancho (0–3s)" do roteiro era o mesmo campo com outro nome.
+  const [hook, setHook] = useState(initialItem.hook || initialItem.script_hook || "");
   const [angle, setAngle] = useState(initialItem.angle);
   const [brief, setBrief] = useState(initialItem.brief);
-  const [script, setScript] = useState(initialItem.script);
-  const [scriptHook, setScriptHook] = useState(initialItem.script_hook ?? "");
   const [scriptDev, setScriptDev] = useState(initialItem.script_dev ?? "");
   const [scriptCta, setScriptCta] = useState(initialItem.script_cta ?? "");
-  const [transcript, setTranscript] = useState(initialItem.transcript);
-  const [captionDraft, setCaptionDraft] = useState(initialItem.caption_draft);
-  const [captionInstagram, setCaptionInstagram] = useState(initialItem.caption_instagram ?? "");
+  // A antiga "Legenda base" (rascunho único) aparece no Instagram quando nenhuma das duas legendas foi escrita.
+  const [captionInstagram, setCaptionInstagram] = useState(
+    initialItem.caption_instagram || (!initialItem.caption_linkedin ? initialItem.caption_draft : "") || "",
+  );
   const [captionLinkedin, setCaptionLinkedin] = useState(initialItem.caption_linkedin ?? "");
   const [tones, setTones] = useState<string[]>(initialItem.tones);
   const [driveUrl, setDriveUrl] = useState(initialItem.drive_url);
-
-  const [slots, setSlots] = useState<SlotView[]>(initialSlots);
-  const availableNets = clientNetworks.filter(isNetwork);
-  const firstNet = availableNets[0] ?? "instagram";
-  const [slotDay, setSlotDay] = useState("");
-  const [slotTime, setSlotTime] = useState(DEFAULT_POST_TIME);
-  const [slotNet, setSlotNet] = useState<string>(firstNet);
-  const [slotFmt, setSlotFmt] = useState<string>(Object.keys(NETWORKS[firstNet].formats)[0] ?? "reels");
+  const [editingData, setEditingData] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [refining, setRefining] = useState(false);
@@ -59,6 +74,8 @@ export default function EditorialItemForm({
   const [manualRefineJson, setManualRefineJson] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+
+  const pillarName = pillars.find((p) => p.id === pillarId)?.name ?? "";
 
   async function refineWithAi(mode: "ai" | "prompt_only" = "ai", useManual = false) {
     setRefining(true);
@@ -71,8 +88,8 @@ export default function EditorialItemForm({
         body: JSON.stringify({
           suggestion,
           current_brief: brief,
-          current_caption: captionDraft,
-          current_script: script,
+          current_caption: captionInstagram,
+          current_script: initialItem.script,
           mode,
           manual_json: useManual ? manualRefineJson : undefined,
         }),
@@ -93,25 +110,25 @@ export default function EditorialItemForm({
       };
       if (j.prompt) setRefinePrompt(j.prompt);
       if (!res.ok) {
-        setErr(j.error ?? "Não foi possível recriar com base no assunto.");
+        setErr(j.error ?? "A IA não conseguiu refazer agora. Tente de novo.");
         return;
       }
       if (!j.draft) {
-        setMsg("Pedido gerado abaixo. Copie, cole no Gemini/Claude e aplique o JSON.");
+        setMsg("Copie o pedido abaixo, cole na IA de sua preferência e cole a resposta no campo de baixo.");
         return;
       }
       if (j.draft.title) setTitle(j.draft.title);
-      if (j.draft.hook) setHook(j.draft.hook);
+      if (j.draft.script_hook || j.draft.hook) setHook(j.draft.script_hook || j.draft.hook);
       if (j.draft.angle) setAngle(j.draft.angle);
       if (j.draft.brief) setBrief(j.draft.brief);
-      if (j.draft.script_hook) setScriptHook(j.draft.script_hook);
       if (j.draft.script_dev) setScriptDev(j.draft.script_dev);
       if (j.draft.script_cta) setScriptCta(j.draft.script_cta);
-      if (j.draft.caption_draft) setCaptionDraft(j.draft.caption_draft);
+      if (j.draft.caption_draft && !captionInstagram.trim()) setCaptionInstagram(j.draft.caption_draft);
       setManualRefineJson("");
-      setMsg("Rascunho evoluído pelo Gemini! Revise os campos abaixo e clique em Salvar alterações.");
+      setRefinePrompt("");
+      setMsg("Roteiro refeito pela IA. Revise e clique em Salvar.");
     } catch {
-      setErr("Falha de conexão ao recriar com base no assunto.");
+      setErr("Falha ao falar com o servidor.");
     } finally {
       setRefining(false);
     }
@@ -129,70 +146,42 @@ export default function EditorialItemForm({
         body: JSON.stringify({
           title,
           pillar_id: pillarId || null,
-          source_kind: sourceKind,
           content_format: contentFormat,
           status,
-          theme_key: themeKey,
+          // Chave anti-repetição sai do assunto (ou do título): a pessoa não precisa preencher.
+          theme_key: topicTag.trim() || title,
+          guest_name: guestName,
+          topic_tag: topicTag,
+          cover_idea: coverIdea,
           hook,
+          script_hook: hook,
           angle,
           brief,
-          script,
-          script_hook: scriptHook,
           script_dev: scriptDev,
           script_cta: scriptCta,
-          transcript,
-          caption_draft: captionDraft,
+          caption_instagram: captionInstagram,
+          caption_linkedin: captionLinkedin,
           tones,
           drive_url: driveUrl,
         }),
       });
       const j = (await res.json()) as { item?: ContentItem; error?: string };
       if (!res.ok || !j.item) {
-        setErr(j.error ?? "Erro ao salvar item.");
+        setErr(j.error ?? "Não foi possível salvar.");
         return;
       }
-      setThemeKey(j.item.theme_key);
-      setMsg("Item salvo com sucesso.");
+      setEditingData(false);
+      setMsg("Salvo.");
+      router.refresh();
     } catch {
-      setErr("Falha de conexão ao salvar o item.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addSlot(e: React.FormEvent) {
-    e.preventDefault();
-    if (!slotDay) return;
-    setBusy(true);
-    setErr("");
-    try {
-      const res = await fetch(`/api/editorial/clients/${clientId}/schedule`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content_item_id: initialItem.id,
-          planned_day: slotDay,
-          planned_time: slotTime || null,
-          network: slotNet,
-          format: slotFmt,
-        }),
-      });
-      const j = (await res.json()) as { slot?: SlotView; error?: string };
-      if (!res.ok || !j.slot) {
-        setErr(j.error ?? "Não foi possível agendar.");
-        return;
-      }
-      setSlots((prev) => [...prev, j.slot!]);
-      setSlotDay("");
-    } catch {
-      setErr("Falha ao agendar horário.");
+      setErr("Falha ao falar com o servidor.");
     } finally {
       setBusy(false);
     }
   }
 
   async function removeItem() {
-    if (!window.confirm("Excluir este item editorial? Destinos já enviados à fila não serão apagados.")) return;
+    if (!window.confirm("Excluir este conteúdo? Posts que já estão no calendário não serão apagados.")) return;
     setBusy(true);
     setErr("");
     setMsg("");
@@ -200,301 +189,232 @@ export default function EditorialItemForm({
       const res = await fetch(`/api/editorial/items/${initialItem.id}`, { method: "DELETE" });
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
-        setErr(j.error ?? "Não foi possível excluir o item.");
+        setErr(j.error ?? "Não foi possível excluir.");
         return;
       }
       router.push(`/clientes/${clientId}/editorial`);
     } catch {
-      setErr("Falha de conexão ao excluir o item.");
+      setErr("Falha ao falar com o servidor.");
     } finally {
       setBusy(false);
     }
   }
 
-  const formats = isNetwork(slotNet) ? Object.entries(NETWORKS[slotNet].formats) : [];
+  const captions = (
+    <div className="grid2" style={{ gap: 12 }}>
+      <div className="col" style={{ gap: 6 }}>
+        <label className="f" htmlFor="it-cap-ig">Legenda do Instagram</label>
+        <textarea id="it-cap-ig" className="auto-grow" value={captionInstagram} onChange={(e) => setCaptionInstagram(e.target.value)} rows={6} />
+        {captionInstagram.trim() && <div><CopyButton text={captionInstagram} label="Copiar" /></div>}
+      </div>
+      <div className="col" style={{ gap: 6 }}>
+        <label className="f" htmlFor="it-cap-li">Legenda do LinkedIn</label>
+        <textarea id="it-cap-li" className="auto-grow" value={captionLinkedin} onChange={(e) => setCaptionLinkedin(e.target.value)} rows={6} />
+        {captionLinkedin.trim() && <div><CopyButton text={captionLinkedin} label="Copiar" /></div>}
+      </div>
+    </div>
+  );
+
+  const hookField = (
+    <label className="f">
+      <span>Gancho (a primeira frase, para prender nos 3 primeiros segundos)</span>
+      <input type="text" value={hook} onChange={(e) => setHook(e.target.value)} maxLength={240} />
+    </label>
+  );
+
+  const identity = (
+    <>
+      <label className="f">
+        <span>Título (só para você se achar)</span>
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={160} required />
+      </label>
+      <div className="grid2" style={{ gap: 12 }}>
+        <label className="f">
+          <span>Assunto</span>
+          <input type="text" value={topicTag} onChange={(e) => setTopicTag(e.target.value)} maxLength={120} placeholder="Ex.: manutenção preventiva de tomógrafo" />
+        </label>
+        <label className="f">
+          <span>Convidado</span>
+          <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} maxLength={120} placeholder="Deixe vazio se não houver" />
+        </label>
+        <label className="f">
+          <span>Pilar</span>
+          <select value={pillarId} onChange={(e) => setPillarId(e.target.value)}>
+            <option value="">Sem pilar</option>
+            {pillars.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </>
+  );
 
   return (
     <div className="col" style={{ gap: 20 }}>
       {err && <p className="alert err" role="alert">{err}</p>}
       {msg && <p className="alert ok" role="status">{msg}</p>}
 
-      <form onSubmit={saveItem} className="card col" style={{ gap: 14 }}>
-        <div className="row between">
-          <h2>Dados do conteúdo</h2>
-          <button type="button" className="btn danger" onClick={removeItem} disabled={busy}>
-            Excluir item
-          </button>
-        </div>
-
-        <label className="f">
-          <span>Título interno</span>
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={160} required />
-        </label>
-
-        <div className="grid2" style={{ gap: 12 }}>
-          <label className="f">
-            <span>Pilar</span>
-            <select value={pillarId} onChange={(e) => setPillarId(e.target.value)}>
-              <option value="">Sem pilar</option>
-              {pillars.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="f">
-            <span>Formato do conteúdo</span>
-            <select value={contentFormat} onChange={(e) => setContentFormat(e.target.value as ContentFormat)}>
-              <option value="video">Vídeo (falando para a câmera)</option>
-              <option value="carousel">Carrossel</option>
-              <option value="static_image">Estático (imagem única)</option>
-            </select>
-          </label>
-          <label className="f">
-            <span>Origem</span>
-            <select value={sourceKind} onChange={(e) => setSourceKind(e.target.value as ContentSourceKind)}>
-              <option value="needs_creation">Criar / Gravar</option>
-              <option value="existing_ready">Pronto (acervo)</option>
-            </select>
-          </label>
-          <label className="f">
-            <span>Status</span>
-            <select value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
-              <option value="idea">Ideia</option>
-              <option value="drafting">Em produção</option>
-              <option value="ready">Pronto</option>
-              <option value="archived">Arquivado</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="grid2" style={{ gap: 12 }}>
-          <label className="f">
-            <span>Chave do tema (anti-repetição)</span>
-            <input type="text" value={themeKey} onChange={(e) => setThemeKey(e.target.value)} maxLength={80} />
-          </label>
-          <label className="f">
-            <span>Link do arquivo no Google Drive</span>
-            <input
-              type="text"
-              value={driveUrl}
-              onChange={(e) => setDriveUrl(e.target.value)}
-              placeholder="https://drive.google.com/file/d/..."
-            />
-          </label>
-        </div>
-
-        <div className="grid2" style={{ gap: 12 }}>
-          <label className="f">
-            <span>Convidado / Participante (alternância no calendário)</span>
-            <input
-              type="text"
-              value={guestName}
-              onChange={(e) => setGuestName(e.target.value)}
-              maxLength={120}
-              placeholder="Ex.: Prof. Lucio Flavio, Leonardo Milner..."
-            />
-          </label>
-          <label className="f">
-            <span>Assunto / Tag principal</span>
-            <input
-              type="text"
-              value={topicTag}
-              onChange={(e) => setTopicTag(e.target.value)}
-              maxLength={120}
-              placeholder="Ex.: IA na Medicina, Gestão de Clínicas..."
-            />
-          </label>
-        </div>
-
-        <label className="f">
-          <span>Ideia / referência de capa</span>
-          <input
-            type="text"
-            value={coverIdea}
-            onChange={(e) => setCoverIdea(e.target.value)}
-            maxLength={300}
-            placeholder="Ex.: A IA vai substituir o médico? (foto do convidado em destaque)"
-          />
-        </label>
-
-        <div className="grid2" style={{ gap: 12 }}>
-          <label className="f">
-            <span>Legenda base — Instagram (opcional)</span>
-            <textarea
-              className="auto-grow"
-              value={captionInstagram}
-              onChange={(e) => setCaptionInstagram(e.target.value)}
-              rows={3}
-              placeholder="Rascunho específico para Instagram / Reels (extraído do .doc)"
-            />
-          </label>
-          <label className="f">
-            <span>Legenda base — LinkedIn (opcional)</span>
-            <textarea
-              className="auto-grow"
-              value={captionLinkedin}
-              onChange={(e) => setCaptionLinkedin(e.target.value)}
-              rows={3}
-              placeholder="Rascunho específico para LinkedIn (extraído do .doc)"
-            />
-          </label>
-        </div>
-
-        <div className="grid2" style={{ gap: 12 }}>
-          <label className="f">
-            <span>Gancho inicial (Hook)</span>
-            <input type="text" value={hook} onChange={(e) => setHook(e.target.value)} maxLength={240} />
-          </label>
-          <label className="f">
-            <span>Ângulo editorial</span>
-            <input type="text" value={angle} onChange={(e) => setAngle(e.target.value)} maxLength={300} />
-          </label>
-        </div>
-
-        <label className="f">
-          <span>Rascunho / Brief (vira a descrição da legenda na fila)</span>
-          <textarea className="auto-grow" value={brief} onChange={(e) => setBrief(e.target.value)} rows={3} />
-        </label>
-
-        <div className="col" style={{ gap: 10, padding: 12, border: "1px solid var(--line-strong)", borderRadius: 10, background: "var(--soft)" }}>
-          <label className="f">
-            <span>Sugestão / direcionamento para evoluir o rascunho (opcional)</span>
-            <input
-              type="text"
-              value={suggestion}
-              onChange={(e) => setSuggestion(e.target.value)}
-              placeholder="Ex.: focar em economia de manutenção; dar um exemplo prático de hospital; abrir com pergunta."
-              maxLength={500}
-            />
-          </label>
-          <div className="row" style={{ gap: 8 }}>
-            <button
-              type="button"
-              className="btn primary"
-              onClick={() => refineWithAi("ai")}
-              disabled={refining || busy}
-            >
-              {refining ? "Recriando com Gemini..." : "Recriar com base no assunto"}
-            </button>
-          </div>
-          {refinePrompt && (
+      <form onSubmit={saveItem} className="card col" style={{ gap: 16 }}>
+        {ready ? (
+          <>
             <div className="col" style={{ gap: 8 }}>
-              <label className="f">
-                <span>Pedido estruturado (copiar e colar)</span>
-                <textarea rows={4} readOnly value={refinePrompt} />
-              </label>
-              <label className="f">
-                <span>Colar JSON retornado pela IA</span>
-                <textarea
-                  rows={3}
-                  value={manualRefineJson}
-                  onChange={(e) => setManualRefineJson(e.target.value)}
-                  placeholder='{"hook":"...","brief":"..."}'
-                />
-              </label>
-              <div>
-                <button
-                  type="button"
-                  className="btn dark"
-                  onClick={() => refineWithAi("prompt_only", true)}
-                  disabled={!manualRefineJson.trim() || refining}
-                >
-                  Aplicar JSON no rascunho
+              <div className="row" style={{ gap: 8 }}>
+                <span className="tag">Vídeo pronto</span>
+                {topicTag && <span className="chip">{topicTag}</span>}
+                {guestName && <span className="chip">Convidado: {guestName}</span>}
+                {pillarName && <span className="chip">{pillarName}</span>}
+                {status === "archived" && <span className="tag">Arquivado</span>}
+              </div>
+              {initialItem.source_folder_name && <span className="muted small">Pasta: {initialItem.source_folder_name}</span>}
+              <div className="row" style={{ gap: 8 }}>
+                {initialItem.drive_url && (
+                  <a className="btn" href={initialItem.drive_url} target="_blank" rel="noreferrer">Ver vídeo no Drive</a>
+                )}
+                {initialItem.cover_drive_file_id && (
+                  <a className="btn" href={`https://drive.google.com/file/d/${initialItem.cover_drive_file_id}/view`} target="_blank" rel="noreferrer">
+                    Ver capa no Drive
+                  </a>
+                )}
+                <button type="button" className="btn" onClick={() => setEditingData((v) => !v)} aria-expanded={editingData}>
+                  {editingData ? "Fechar dados" : "Corrigir título, assunto ou convidado"}
                 </button>
               </div>
             </div>
-          )}
-        </div>
+            {editingData && <div className="col" style={{ gap: 12 }}>{identity}</div>}
+            {hookField}
+            {captions}
+            {initialItem.transcript.trim() && (
+              <details>
+                <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>Ver transcrição do vídeo</summary>
+                <p className="small" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{initialItem.transcript}</p>
+              </details>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="row" style={{ gap: 8 }}>
+              <span className="tag" style={{ background: "var(--accent)", color: "#fff" }}>Pauta para gravar</span>
+            </div>
+            {identity}
+            <label className="f">
+              <span>Ideia de capa</span>
+              <input type="text" value={coverIdea} onChange={(e) => setCoverIdea(e.target.value)} maxLength={300} placeholder="Ex.: pergunta grande sobre a foto do convidado" />
+            </label>
+            <fieldset className="col" style={{ gap: 10, border: "1px solid var(--line)", borderRadius: 10, padding: 12, margin: 0 }}>
+              <legend className="f" style={{ padding: "0 4px" }}>Roteiro</legend>
+              {hookField}
+              <label className="f">
+                <span>O que falar (tópicos)</span>
+                <textarea className="auto-grow" value={scriptDev} onChange={(e) => setScriptDev(e.target.value)} rows={3} placeholder={"- Tópico 1\n- Tópico 2"} />
+              </label>
+              <label className="f">
+                <span>Chamada no final</span>
+                <input type="text" value={scriptCta} onChange={(e) => setScriptCta(e.target.value)} placeholder="Ex.: chame no WhatsApp do plantão 24h" />
+              </label>
+              <div className="row" style={{ gap: 8, alignItems: "flex-end" }}>
+                <label className="f" style={{ flex: "1 1 260px" }}>
+                  <span>Pedir para a IA refazer o roteiro (opcional: diga o que mudar)</span>
+                  <input type="text" value={suggestion} onChange={(e) => setSuggestion(e.target.value)} maxLength={500} placeholder="Ex.: abrir com uma pergunta, dar um exemplo de hospital" />
+                </label>
+                <button type="button" className="btn" onClick={() => refineWithAi("ai")} disabled={refining || busy}>
+                  {refining ? "A IA está escrevendo…" : "Refazer com IA"}
+                </button>
+              </div>
+              {refinePrompt && (
+                <div className="col" style={{ gap: 8 }}>
+                  <label className="f">
+                    <span>Pedido para a IA (copie e cole)</span>
+                    <textarea rows={4} readOnly value={refinePrompt} />
+                  </label>
+                  <label className="f">
+                    <span>Resposta da IA (JSON)</span>
+                    <textarea rows={3} value={manualRefineJson} onChange={(e) => setManualRefineJson(e.target.value)} />
+                  </label>
+                  <div>
+                    <button type="button" className="btn" onClick={() => refineWithAi("prompt_only", true)} disabled={!manualRefineJson.trim() || refining}>
+                      Aplicar resposta
+                    </button>
+                  </div>
+                </div>
+              )}
+            </fieldset>
+            {captions}
+          </>
+        )}
 
-        <div className="col" style={{ gap: 10, padding: 12, border: "1px solid var(--line)", borderRadius: 10, background: "var(--soft)" }}>
-          <strong className="small">Roteiro de vídeo estruturado</strong>
-          <label className="f">
-            <span>Gancho (0–3s)</span>
-            <input type="text" value={scriptHook} onChange={(e) => setScriptHook(e.target.value)} placeholder="Primeira frase de impacto para prender atenção..." />
-          </label>
-          <label className="f">
-            <span>Desenvolvimento (tópicos objetivos para falar)</span>
-            <textarea className="auto-grow" value={scriptDev} onChange={(e) => setScriptDev(e.target.value)} rows={3} placeholder="- Tópico 1&#10;- Tópico 2" />
-          </label>
-          <label className="f">
-            <span>Chamada para Ação (CTA)</span>
-            <input type="text" value={scriptCta} onChange={(e) => setScriptCta(e.target.value)} placeholder="O que a pessoa deve fazer ao final?" />
-          </label>
-          <label className="f">
-            <span>Roteiro completo / notas livres</span>
-            <textarea className="auto-grow" value={script} onChange={(e) => setScript(e.target.value)} rows={3} />
-          </label>
-        </div>
+        <details>
+          <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>Mais detalhes (opcional)</summary>
+          <div className="col" style={{ gap: 12, marginTop: 12 }}>
+            <ToneSelector initial={tones} onChange={setTones} />
+            <label className="f">
+              <span>Ângulo editorial</span>
+              <input type="text" value={angle} onChange={(e) => setAngle(e.target.value)} maxLength={300} />
+            </label>
+            <label className="f">
+              <span>Resumo / brief (vira a descrição da legenda no post)</span>
+              <textarea className="auto-grow" value={brief} onChange={(e) => setBrief(e.target.value)} rows={3} />
+            </label>
+            <div className="grid2" style={{ gap: 12 }}>
+              <label className="f">
+                <span>Formato</span>
+                <select value={contentFormat} onChange={(e) => setContentFormat(e.target.value as ContentFormat)}>
+                  {(Object.keys(FORMAT_LABEL) as ContentFormat[]).map((k) => (
+                    <option key={k} value={k}>{FORMAT_LABEL[k]}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="f">
+                <span>Situação</span>
+                <select value={status} onChange={(e) => setStatus(e.target.value as ContentStatus)}>
+                  {(Object.keys(STATUS_TEXT) as ContentStatus[]).map((k) => (
+                    <option key={k} value={k}>{STATUS_TEXT[k]}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="f">
+              <span>Link do arquivo no Google Drive</span>
+              <input type="text" value={driveUrl} onChange={(e) => setDriveUrl(e.target.value)} placeholder="https://drive.google.com/file/d/..." />
+            </label>
+            <div>
+              <button type="button" className="btn danger" onClick={removeItem} disabled={busy}>Excluir conteúdo</button>
+            </div>
+          </div>
+        </details>
 
-        <label className="f">
-          <span>Transcrição / notas do arquivo existente</span>
-          <textarea className="auto-grow" value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={3} />
-        </label>
-
-        <ToneSelector initial={tones} onChange={setTones} />
-
-        <label className="f">
-          <span>Rascunho de legenda</span>
-          <textarea className="auto-grow" value={captionDraft} onChange={(e) => setCaptionDraft(e.target.value)} rows={4} />
-        </label>
-
-        <div>
-          <button type="submit" className="btn primary" disabled={busy}>
-            {busy ? "Salvando..." : "Salvar alterações"}
-          </button>
+        <div className="savebar">
+          <button type="submit" className="btn primary" disabled={busy}>{busy ? "Salvando…" : "Salvar"}</button>
         </div>
       </form>
 
-      <section className="card col" style={{ gap: 12 }}>
-        <h2>Datas planejadas na agenda</h2>
-        <div className="ed-list">
-          {slots.length === 0 && <span className="muted small">Ainda não agendado em nenhum dia.</span>}
-          {slots.map((s) => {
-            const netLabel = isNetwork(s.network) ? NETWORKS[s.network].label : s.network;
-            const fmtLabel = isNetwork(s.network) ? (NETWORKS[s.network].formats[s.format]?.label ?? s.format) : s.format;
-            const stLabel = s.target ? (STATUS_LABEL[s.target.status as keyof typeof STATUS_LABEL] ?? s.target.status) : null;
-            return (
-              <div key={s.id} className="ed-item-card">
-                <span>
-                  <strong>{s.day}</strong> {s.time ?? "--:--"} · {netLabel} / {fmtLabel}
-                </span>
-                <span className="muted small">{stLabel ? `Na fila (${stLabel})` : "Planejado"}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        <form onSubmit={addSlot} className="row" style={{ gap: 8 }}>
-          <input type="date" value={slotDay} onChange={(e) => setSlotDay(e.target.value)} required />
-          <input type="time" value={slotTime} onChange={(e) => setSlotTime(e.target.value)} />
-          <select
-            value={slotNet}
-            onChange={(e) => {
-              const n = e.target.value;
-              setSlotNet(n);
-              if (isNetwork(n)) setSlotFmt(Object.keys(NETWORKS[n].formats)[0] ?? "");
-            }}
-          >
-            {(availableNets.length ? availableNets : (Object.keys(NETWORKS) as (keyof typeof NETWORKS)[])).map((n) => (
-              <option key={n} value={n}>
-                {NETWORKS[n].label}
-              </option>
-            ))}
-          </select>
-          <select value={slotFmt} onChange={(e) => setSlotFmt(e.target.value)}>
-            {formats.map(([k, f]) => (
-              <option key={k} value={k}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className="btn" disabled={busy}>
-            Agendar dia
-          </button>
-        </form>
-      </section>
+      {initialSlots.length > 0 && (
+        <section className="card col" style={{ gap: 10 }} aria-labelledby="it-when">
+          <h2 id="it-when">No calendário</h2>
+          <ul className="col" style={{ listStyle: "none", margin: 0, padding: 0, gap: 6 }}>
+            {initialSlots.map((s) => {
+              const netLabel = isNetwork(s.network) ? NETWORKS[s.network].label : s.network;
+              const fmtLabel = isNetwork(s.network) ? (NETWORKS[s.network].formats[s.format]?.label ?? s.format) : s.format;
+              const state = s.target
+                ? (STATUS_LABEL[s.target.status as keyof typeof STATUS_LABEL] ?? s.target.status)
+                : s.plan_status === "approved"
+                  ? "Aprovado"
+                  : "Planejado (falta aprovar)";
+              return (
+                <li key={s.id} className="row between" style={{ gap: 8 }}>
+                  <span>
+                    <strong>{fmtDay(s.day)}</strong> {s.time ?? ""} · {netLabel} {fmtLabel}
+                  </span>
+                  <span className="row small" style={{ gap: 8 }}>
+                    <span className="muted">{state}</span>
+                    <Link href={`/clientes/${clientId}/dia/${s.day}?nav=1`}>Abrir o dia</Link>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }
