@@ -31,13 +31,13 @@ export default async function EditorialItemPage({
   return (
     <main id="conteudo" tabIndex={-1} className="main">
       <div className="col" style={{ gap: 6 }}>
-        <BackLink href={`/clientes/${id}/editorial`}>← Voltar para o Editorial de {clientData.client.name}</BackLink>
+        <BackLink href={`/clientes/${id}/editorial`}>← Voltar para Conteúdos de {clientData.client.name}</BackLink>
         <header className="row" style={{ flexWrap: "nowrap" }}>
           <ClientAvatar client={clientData.client} size="md" />
           <div className="col" style={{ gap: 0 }}>
             <h1>{item.title}</h1>
             <span className="muted small">
-              {item.source_kind === "existing_ready" ? "Conteúdo pronto (acervo)" : "Conteúdo a criar / gravar"}
+              {item.source_kind === "existing_ready" ? "Vídeo pronto" : "Pauta para gravar"}
             </span>
           </div>
         </header>
@@ -51,7 +51,8 @@ export default async function EditorialItemPage({
         initialSlots={slots}
       />
 
-      <VisualAssetEditor itemId={item.id} initialAssets={assets} />
+      {/* Slides e imagens só fazem sentido em carrossel e imagem única (ou se já houver algum cadastrado). */}
+      {(item.content_format !== "video" || assets.length > 0) && <VisualAssetEditor itemId={item.id} initialAssets={assets} />}
     </main>
   );
 }

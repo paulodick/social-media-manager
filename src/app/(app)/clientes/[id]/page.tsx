@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import PlannedSlots from "@/components/PlannedSlots";
 import { ClientAvatar, Flash, NetDot } from "@/components/ui";
 import { NETWORKS, NETWORK_IDS, STATUS_LABEL, isNetwork } from "@/config/networks";
 import { addMonths, dayLabel, isMonth, monthGrid, monthLabel, monthOf, todaySP } from "@/lib/dates";
+import { listPlannedGroups } from "@/lib/editorial-queries";
 import { getClient, listDayNotes, listTargets, type Target } from "@/lib/queries";
 
 const WEEK = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -37,6 +39,12 @@ export default async function ClientCalendar({
   const notes = await listDayNotes(id, cells[0].day, cells[cells.length - 1].day);
   const byDay = new Map<string, Target[]>();
   for (const t of targets) byDay.set(t.day, [...(byDay.get(t.day) ?? []), t]);
+  // O que a sequência planejou e ainda não foi aprovado aparece no mesmo calendário, tracejado.
+  // Com filtro de situação, só aparece no filtro "Rascunho" (é o que vira ao aprovar).
+  const plannedAll = status && status !== "draft" ? [] : await listPlannedGroups(id, cells[0].day, cells[cells.length - 1].day);
+  const planned = rede ? plannedAll.filter((g) => g.networks.some((n) => n.network === rede)) : plannedAll;
+  const plannedByDay = new Map<string, typeof planned>();
+  for (const g of planned) plannedByDay.set(g.day, [...(plannedByDay.get(g.day) ?? []), g]);
 
   const href = (over: { mes?: string; rede?: string; status?: string }) => {
     const q = new URLSearchParams();
@@ -71,7 +79,7 @@ export default async function ClientCalendar({
       <nav className="tabs" aria-label="Seções do cliente">
         <Link href={`/clientes/${id}`} className="on">Calendário</Link>
         <Link href={`/clientes/${id}/semana`}>Semana</Link>
-        <Link href={`/clientes/${id}/editorial`}>Editorial</Link>
+        <Link href={`/clientes/${id}/editorial`}>Conteúdos</Link>
         <Link href={`/clientes/${id}/editar`}>Cadastro e redes</Link>
       </nav>
 
@@ -106,9 +114,12 @@ export default async function ClientCalendar({
         <span className="row" style={{ gap: 8 }}><span className="mini scheduled" style={{ width: 22, height: 14, padding: 0 }} />Agendado</span>
         <span className="row" style={{ gap: 8 }}><span className="mini posted" style={{ width: 22, height: 14, padding: 0 }} />Postado</span>
         <span className="row" style={{ gap: 8 }}><span className="mini late" style={{ width: 22, height: 14, padding: 0 }} />Atrasado</span>
-        <span className="row" style={{ gap: 8 }}><span className="mini note" style={{ width: 22, height: 14, minHeight: 0, padding: 0 }} />Planejamento</span>
-        <span>Clique em um dia para abrir os posts e a prévia.</span>
+        <span className="row" style={{ gap: 8 }}><span className="mini planned" style={{ width: 22, height: 14, minHeight: 0, padding: 0 }} />Planejado (falta aprovar)</span>
+        <span className="row" style={{ gap: 8 }}><span className="mini note" style={{ width: 22, height: 14, minHeight: 0, padding: 0 }} />Ideia do dia</span>
+        <span>Clique em um dia para abrir os posts, a prévia e o que está planejado.</span>
       </div>
+
+      <PlannedSlots clientId={id} groups={planned} mode="bar" />
 
       <div className="cal">
         <div className="cal-in">
@@ -116,15 +127,18 @@ export default async function ClientCalendar({
           <div className="cal-body">
             {cells.map((c) => {
               const list = byDay.get(c.day) ?? [];
+              const plan = plannedByDay.get(c.day) ?? [];
               const note = notes[c.day];
-              // Dia só com ideia (sem posts): abre direto o Novo post, com a ideia já preenchida. Com posts, abre o dia.
-              const href = list.length === 0 && note ? `/posts/novo?cliente=${id}&data=${c.day}` : `/clientes/${id}/dia/${c.day}`;
+              // Dia só com ideia (sem posts nem planejado): abre direto o Novo post, com a ideia já preenchida.
+              // Com posts ou planejado, abre o dia.
+              const href =
+                list.length === 0 && plan.length === 0 && note ? `/posts/novo?cliente=${id}&data=${c.day}` : `/clientes/${id}/dia/${c.day}`;
               return (
                 <Link
                   key={c.day}
                   href={href}
                   className={`cell ${c.inMonth ? "" : "out"} ${c.day === today ? "today" : ""}`}
-                  aria-label={`${dayLabel(c.day)}, ${list.length} ${list.length === 1 ? "post" : "posts"}${note ? `, planejamento: ${note}` : ""}`}
+                  aria-label={`${dayLabel(c.day)}, ${list.length} ${list.length === 1 ? "post" : "posts"}${plan.length ? `, ${plan.length} planejado(s) sem aprovar` : ""}${note ? `, ideia: ${note}` : ""}`}
                 >
                   <span className="n">{c.inMonth ? c.n : `${c.n}/${c.day.slice(5, 7)}`}</span>
                   {note && (
@@ -140,6 +154,14 @@ export default async function ClientCalendar({
                     </span>
                   ))}
                   {list.length > 4 && <span className="muted small">+{list.length - 4} mais</span>}
+                  {plan.slice(0, Math.max(0, 4 - list.length)).map((g) => (
+                    <span key={g.key} className="mini planned" title={`Planejado (falta aprovar): ${g.title}`}>
+                      {g.networks.slice(0, 2).map((n) => <NetDot key={n.network + n.format} network={n.network} />)}
+                      {g.time && <span style={{ fontVariantNumeric: "tabular-nums" }}>{g.time}</span>}
+                      <span className="t">{g.title}</span>
+                    </span>
+                  ))}
+                  {list.length < 4 && plan.length > 4 - list.length && <span className="muted small">+{plan.length - (4 - list.length)} planejado(s)</span>}
                 </Link>
               );
             })}

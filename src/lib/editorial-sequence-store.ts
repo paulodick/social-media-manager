@@ -1,8 +1,11 @@
 // Sequência de postagem: leitura dos vídeos prontos em "Reels Editados", gravação do plano da IA e
-// movimento das pastas "Vídeo N" para o dia da postagem (e de volta). As partes puras ficam em editorial-sequence.ts.
+// movimento da pasta do vídeo para "Reels Postados" quando ele é publicado (e de volta, se desfizer). As partes puras ficam em editorial-sequence.ts.
 import type { MediaMeta } from "./checks.ts";
 import { db } from "./db.ts";
 import {
+  POSTED_VIDEOS_FOLDER,
+  READY_VIDEOS_FOLDER,
+  ensureFolderPath,
   scanClientCutFolders,
   findReadyVideosFolder,
   getFileMeta,
@@ -13,6 +16,7 @@ import { parseCutDocument } from "./drive-cuts.ts";
 import { editorialAiConfigured, generateEditorialJson } from "./editorial-ai.ts";
 import { extractJsonPayload, normalizeThemeKey } from "./editorial-rules.ts";
 import type { ReadyVideo, SequenceEntry } from "./editorial-sequence.ts";
+import { reorganizeDraftSequence } from "./editorial-sequence-run.ts";
 import {
   buildReadyProfilePrompt,
   classifyTextFile,
@@ -30,6 +34,8 @@ export type SyncResult = {
   folder: string | null;
   created: number;
   updated: number;
+  /** Vídeos que estavam na lista e sumiram de "Reels Editados" (postados ou tirados de lá à mão). */
+  removed?: number;
   warnings: string[];
   /** Vídeos que a IA interpretou nesta sincronização (ficha nova ou refeita porque a transcrição mudou). */
   profiled?: number;
@@ -82,8 +88,10 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
   const warnings: string[] = [];
   if (scan.folders_truncated) warnings.push(`"${ready.name}" tem pastas demais: só as primeiras 300 foram lidas.`);
   for (const e of scan.empty_folders) warnings.push(`${e}: ainda sem vídeo, ficou de fora.`);
+  const seen: string[] = [];
   for (const bundle of scan.cut_folders) {
     const folder = { id: bundle.folder_id, name: bundle.folder_name };
+    if (bundle.video) seen.push(folder.id);
     const label = [...bundle.path, bundle.folder_name].join(" / ");
     if (!bundle.video) {
       warnings.push(`${label}: ainda sem vídeo, ficou de fora.`);
@@ -133,7 +141,8 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
               caption_linkedin=case when $9<>'' then $9 else caption_linkedin end,
               drive_url=$10, drive_file_id=$11,
               drive_meta=$12, source_folder_name=$14, ready_folder_parent_id=$15, doc_drive_file_id=$16, quality_flags=$17, suggested_caption=$18, cover_drive_file_id=coalesce($19, cover_drive_file_id),
-              source_kind='existing_ready', status=case when status='archived' then status else 'ready' end, updated_at=now()
+              source_kind='existing_ready', status=case when status='archived' then status else 'ready' end,
+              ready_missing_at=null, updated_at=now()
         where client_id=$1 and source_folder_id=$13`,
       values,
     );
@@ -155,8 +164,21 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
       else throw e;
     }
   }
+  // Vídeo que estava na lista e não está mais em "Reels Editados" (foi postado, ou a pessoa tirou a pasta de lá):
+  // sai da lista de disponíveis. Se a leitura foi cortada no limite de pastas, não dá para saber, então não mexe.
+  let removed = 0;
+  if (!scan.folders_truncated) {
+    const gone = await pool.query(
+      `update content_items set ready_missing_at = now(), updated_at = now()
+        where client_id = $1 and source_kind = 'existing_ready' and ready_folder_parent_id is not null
+          and ready_folder_moved_to is null and ready_posted_at is null and ready_missing_at is null
+          and source_folder_id is not null and not (source_folder_id = any($2::text[]))`,
+      [clientId, seen],
+    );
+    removed = gone.rowCount ?? 0;
+  }
   await pool.query("update clients set ready_synced_at = now() where id = $1", [clientId]);
-  return { folder: ready.name, created, updated, warnings };
+  return { folder: ready.name, created, updated, removed, warnings };
 }
 
 /**
@@ -166,18 +188,34 @@ export async function syncReadyVideos(clientId: string): Promise<SyncResult> {
 export async function syncContents(clientId: string): Promise<SyncResult> {
   const res = await syncReadyVideos(clientId);
   if (!res.folder) return res;
+  // Entrou ou saiu vídeo: depois das fichas, a parte em rascunho da sequência é reorganizada sozinha.
+  const changed = res.created > 0 || (res.removed ?? 0) > 0;
   if (!editorialAiConfigured()) {
     res.warnings.push("Sem chave de IA (Gemini ou Anthropic), os vídeos foram lidos mas não interpretados (sem ficha nem legenda).");
+    if (changed) {
+      const r = await reorganizeDraftSequence(clientId);
+      if (r.note) res.warnings.push(r.note);
+    }
     return res;
   }
-  // A IA leva de segundos a minutos por vídeo: a leitura da pasta volta já, e as fichas são feitas em segundo plano
-  // (a tela acompanha por profilingStatus).
-  startProfiling(clientId);
+  // A IA leva de segundos a minutos por vídeo: a leitura da pasta volta já, e as fichas (e a reorganização)
+  // são feitas em segundo plano (a tela acompanha por profilingStatus).
+  startProfiling(clientId, { reorganize: changed });
   res.profiling = true;
   return res;
 }
 
-export type ProfilingStatus = { running: boolean; profiled: number; pending: number; warnings: string[]; finished_at: string | null };
+export type ProfilingStatus = {
+  running: boolean;
+  profiled: number;
+  pending: number;
+  warnings: string[];
+  finished_at: string | null;
+  /** A IA está refazendo a ordem dos rascunhos (depois das fichas). */
+  reorganizing?: boolean;
+  /** O que a reorganização fez (ou por que não fez). */
+  reorganize_note?: string;
+};
 type G = typeof globalThis & { _smmProfiling?: Map<string, ProfilingStatus> };
 const profilingMap = (): Map<string, ProfilingStatus> => ((globalThis as G)._smmProfiling ??= new Map());
 
@@ -185,11 +223,21 @@ export function profilingStatus(clientId: string): ProfilingStatus | null {
   return profilingMap().get(clientId) ?? null;
 }
 
-/** Faz as fichas em segundo plano, em rodadas, até não sobrar vídeo pendente (no máximo 5 rodadas). */
-export function startProfiling(clientId: string): void {
+/**
+ * Faz as fichas em segundo plano, em rodadas, até não sobrar vídeo pendente (no máximo 5 rodadas). Com
+ * `reorganize`, depois refaz a ordem dos rascunhos da sequência com os vídeos disponíveis agora.
+ */
+export function startProfiling(clientId: string, opts: { reorganize?: boolean } = {}): void {
   const map = profilingMap();
-  if (map.get(clientId)?.running) return;
-  const st: ProfilingStatus = { running: true, profiled: 0, pending: 0, warnings: [], finished_at: null };
+  const cur = map.get(clientId);
+  if (cur?.running) {
+    // Já está rodando: se agora também precisa reorganizar, a rodada atual faz isso no fim.
+    if (opts.reorganize) (cur as ProfilingStatus & { _wantReorganize?: boolean })._wantReorganize = true;
+    return;
+  }
+  const st: ProfilingStatus & { _wantReorganize?: boolean } = {
+    running: true, profiled: 0, pending: 0, warnings: [], finished_at: null, _wantReorganize: !!opts.reorganize,
+  };
   map.set(clientId, st);
   void (async () => {
     try {
@@ -203,10 +251,21 @@ export function startProfiling(clientId: string): void {
     } catch (e) {
       st.warnings = [`a IA parou no meio: ${e instanceof Error ? e.message : String(e)}`];
       console.error("[fichas]", e);
-    } finally {
-      st.running = false;
-      st.finished_at = new Date().toISOString();
     }
+    if (st._wantReorganize) {
+      st.reorganizing = true;
+      try {
+        const r = await reorganizeDraftSequence(clientId);
+        st.reorganize_note = r.note;
+      } catch (e) {
+        st.reorganize_note = "A ordem dos rascunhos não foi refeita (falha inesperada). A sequência anterior continua valendo.";
+        console.error("[sequencia]", e);
+      } finally {
+        st.reorganizing = false;
+      }
+    }
+    st.running = false;
+    st.finished_at = new Date().toISOString();
   })();
 }
 
@@ -338,8 +397,11 @@ export async function listAvailableReady(clientId: string): Promise<ReadyVideo[]
        left join content_pillars p on p.id = i.pillar_id
       where i.client_id = $1 and i.source_kind = 'existing_ready' and i.status = 'ready'
         and i.ready_folder_parent_id is not null and i.ready_folder_moved_to is null
+        and i.ready_posted_at is null and i.ready_missing_at is null
         and not exists (select 1 from editorial_schedule s where s.content_item_id = i.id
                           and (s.post_target_id is not null or s.plan_status = 'approved'))
+        and not exists (select 1 from post_targets t join posts p on p.id = t.post_id
+                         where p.client_id = i.client_id and t.status = 'posted' and t.drive_file_id = i.drive_file_id)
       order by i.source_folder_name, i.created_at`,
     [clientId],
   );
@@ -482,23 +544,114 @@ export async function readSequence(clientId: string, from: string): Promise<Sequ
   return rows.sort((a, b) => a.day.localeCompare(b.day));
 }
 
-/**
- * Depois de aprovar (post criado), move a pasta "Vídeo N" de "Reels Editados" para a pasta do post no dia.
- * Falha do Drive vira aviso: o post já está ligado ao vídeo pelo ID e funciona de qualquer jeito.
- */
-export async function moveReadyFolderToDay(itemId: string, dayFolderId: string | null): Promise<string | null> {
-  if (!dayFolderId) return null;
+type ArchiveRow = {
+  id: string;
+  root: string | null;
+  source_folder_id: string;
+  ready_folder_parent_id: string;
+  ready_folder_moved_to: string | null;
+  ready_posted_at: Date | null;
+  source_folder_name: string;
+  posted: boolean;
+  linked: boolean;
+};
+
+const ARCHIVE_SELECT = `
+  select i.id, c.drive_folder_id as root, i.source_folder_id, i.ready_folder_parent_id, i.ready_folder_moved_to,
+         i.ready_posted_at, i.source_folder_name,
+         exists (select 1 from post_targets t join posts p on p.id = t.post_id
+                  where p.client_id = i.client_id and t.status = 'posted'
+                    and ((t.drive_file_id is not null and t.drive_file_id = i.drive_file_id)
+                         or exists (select 1 from editorial_schedule s where s.content_item_id = i.id and s.post_target_id = t.id))) as posted,
+         exists (select 1 from post_targets t join posts p on p.id = t.post_id
+                  where p.client_id = i.client_id
+                    and ((t.drive_file_id is not null and t.drive_file_id = i.drive_file_id)
+                         or exists (select 1 from editorial_schedule s where s.content_item_id = i.id and s.post_target_id = t.id))) as linked
+    from content_items i join clients c on c.id = i.client_id
+   where i.source_kind = 'existing_ready' and i.source_folder_id is not null and i.ready_folder_parent_id is not null`;
+
+/** Mês da pasta de postados (horário de São Paulo, calculado no banco). */
+async function postedMonth(): Promise<string> {
   const pool = await db();
-  const r = await pool.query<{ source_folder_id: string | null; ready_folder_parent_id: string | null; ready_folder_moved_to: string | null; source_folder_name: string }>(
-    "select source_folder_id, ready_folder_parent_id, ready_folder_moved_to, source_folder_name from content_items where id = $1",
-    [itemId],
+  const r = await pool.query<{ m: string }>("select to_char(now() at time zone 'America/Sao_Paulo', 'YYYY-MM') as m");
+  return r.rows[0].m;
+}
+
+/** Move a pasta do vídeo para "Reels Postados / AAAA-MM". Devolve um aviso se o Drive recusar. */
+async function moveToPosted(it: ArchiveRow): Promise<string | null> {
+  if (!it.root) return null;
+  const dest = await ensureFolderPath(it.root, [POSTED_VIDEOS_FOLDER, await postedMonth()]);
+  if ("error" in dest) return `A pasta "${it.source_folder_name}" não foi para "${POSTED_VIDEOS_FOLDER}": ${dest.error}`;
+  const from = it.ready_folder_moved_to ?? it.ready_folder_parent_id;
+  if (from !== dest.id) {
+    const res = await moveItem(it.source_folder_id, from, dest.id);
+    if ("error" in res) return `A pasta "${it.source_folder_name}" não foi para "${POSTED_VIDEOS_FOLDER}": ${res.error}`;
+  }
+  const pool = await db();
+  await pool.query(
+    "update content_items set ready_posted_at = now(), ready_folder_moved_to = $2, ready_missing_at = null, updated_at = now() where id = $1",
+    [it.id, dest.id],
   );
-  const it = r.rows[0];
-  if (!it?.source_folder_id || !it.ready_folder_parent_id || it.ready_folder_moved_to) return null;
-  const res = await moveItem(it.source_folder_id, it.ready_folder_parent_id, dayFolderId);
-  if ("error" in res) return `A pasta "${it.source_folder_name}" não foi movida para o dia: ${res.error}`;
-  await pool.query("update content_items set ready_folder_moved_to = $2, updated_at = now() where id = $1", [itemId, dayFolderId]);
   return null;
+}
+
+/** Devolve a pasta para onde ela estava em "Reels Editados". */
+async function moveBackToReady(it: ArchiveRow): Promise<string | null> {
+  if (it.ready_folder_moved_to) {
+    const res = await moveItem(it.source_folder_id, it.ready_folder_moved_to, it.ready_folder_parent_id);
+    if ("error" in res) return `A pasta "${it.source_folder_name}" não voltou para "${READY_VIDEOS_FOLDER}": ${res.error}`;
+  }
+  const pool = await db();
+  await pool.query(
+    "update content_items set ready_posted_at = null, ready_folder_moved_to = null, ready_missing_at = null, updated_at = now() where id = $1",
+    [it.id],
+  );
+  return null;
+}
+
+/**
+ * Depois que um destino muda de situação (publicado pelo app, publicado sozinho, "Postei manualmente", desfazer):
+ * o vídeo pronto ligado a ele (pelo editorial ou pelo mesmo arquivo do Drive) vai para "Reels Postados" na primeira
+ * publicação e volta para "Reels Editados" se nenhum destino dele continuar postado. Falha do Drive vira aviso:
+ * o post continua ligado ao vídeo pelo ID e funciona de qualquer jeito.
+ */
+export async function syncPostedFolders(targetIds: string[]): Promise<string[]> {
+  const ids = targetIds.filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+  if (!ids.length) return [];
+  const pool = await db();
+  const r = await pool.query<ArchiveRow>(
+    `${ARCHIVE_SELECT}
+       and i.id in (
+         select i2.id from post_targets t join posts p on p.id = t.post_id
+           join content_items i2 on i2.client_id = p.client_id
+          where t.id = any($1::uuid[])
+            and ((t.drive_file_id is not null and i2.drive_file_id = t.drive_file_id)
+                 or exists (select 1 from editorial_schedule s where s.content_item_id = i2.id and s.post_target_id = t.id)))`,
+    [ids],
+  );
+  const warnings: string[] = [];
+  for (const it of r.rows) {
+    let w: string | null = null;
+    if (it.posted && !it.ready_posted_at) w = await moveToPosted(it);
+    else if (!it.posted && it.ready_posted_at && it.linked) w = await moveBackToReady(it);
+    if (w) warnings.push(w);
+  }
+  return warnings;
+}
+
+/** Botão "Já foi postado" na lista de vídeos: tira o vídeo da lista e manda a pasta para "Reels Postados". */
+export async function markReadyPosted(clientId: string, itemId: string): Promise<{ ok: true; warning: string | null } | { ok: false; error: string }> {
+  const pool = await db();
+  const r = await pool.query<ArchiveRow>(`${ARCHIVE_SELECT} and i.id = $1 and i.client_id = $2`, [itemId, clientId]);
+  const it = r.rows[0];
+  if (!it) return { ok: false, error: "Vídeo não encontrado." };
+  if (it.ready_posted_at) return { ok: true, warning: null };
+  const w = await moveToPosted(it);
+  if (w) {
+    // O Drive recusou: o vídeo sai da lista mesmo assim (a pessoa disse que já foi postado).
+    await pool.query("update content_items set ready_posted_at = now(), updated_at = now() where id = $1", [it.id]);
+  }
+  return { ok: true, warning: w };
 }
 
 /**
@@ -523,7 +676,7 @@ export async function returnReadyFolders(itemIds: string[]): Promise<string[]> {
       continue;
     }
     await pool.query(
-      `update content_items set ready_folder_moved_to = null, updated_at = now() where id = $1`,
+      `update content_items set ready_folder_moved_to = null, ready_posted_at = null, updated_at = now() where id = $1`,
       [it.id],
     );
     // O plano volta a rascunho para o vídeo poder entrar de novo numa sequência.

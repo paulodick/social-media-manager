@@ -128,7 +128,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         <section className="card" aria-labelledby="mover">
           <h2 id="mover">Testar mover pastas no Drive</h2>
           <p className="muted small" style={{ maxWidth: "70ch" }}>
-            Confere se o app consegue mover as pastas de vídeos prontos (<b>Reels Editados</b>) para a pasta do dia da postagem.
+            Confere se o app consegue mover as pastas de vídeos prontos (<b>Reels Editados</b>) para <b>Reels Postados</b> quando o vídeo é publicado.
             Só move de verdade uma subpasta <b>vazia</b>, e logo a devolve. Pastas com vídeo não são tocadas.
           </p>
           <DriveMoveTest clients={driveClients} />

@@ -916,3 +916,45 @@ export async function reorderEditorialSlots(
   }
   return { ok: true, slots: updated };
 }
+
+/**
+ * O que a sequência (ou o planejamento) pôs no calendário e ainda não virou post: um grupo por conteúdo e dia,
+ * com todas as redes. Só de hoje em diante (o planejado que passou do dia não interessa mais).
+ */
+export async function listPlannedGroups(clientId: string, from: string, to: string): Promise<{
+  key: string;
+  day: string;
+  itemId: string;
+  title: string;
+  kind: "ready" | "new" | "";
+  reason: string;
+  time: string | null;
+  networks: { network: string; format: string }[];
+  slotIds: string[];
+}[]> {
+  if (!isUuid(clientId)) return [];
+  const pool = await db();
+  const r = await pool.query(
+    `select to_char(s.planned_day, 'YYYY-MM-DD') as day, s.content_item_id as item_id, i.title,
+            max(s.sequence_kind) as kind, max(s.ai_reason) as reason, min(to_char(s.planned_time, 'HH24:MI')) as time,
+            array_agg(s.network order by s.network) as nets, array_agg(s.format order by s.network) as fmts,
+            array_agg(s.id::text order by s.network) as ids
+       from editorial_schedule s join content_items i on i.id = s.content_item_id
+      where s.client_id = $1 and s.planned_day >= greatest($2::date, (now() at time zone '${TZ}')::date)
+        and s.planned_day <= $3::date and s.status = 'planned' and s.post_target_id is null
+      group by s.planned_day, s.content_item_id, i.title
+      order by s.planned_day, min(s.planned_time) nulls last`,
+    [clientId, from, to],
+  );
+  return r.rows.map((x) => ({
+    key: `${x.item_id}|${x.day}`,
+    day: x.day,
+    itemId: x.item_id,
+    title: x.title,
+    kind: x.kind === "ready" || x.kind === "new" ? x.kind : "",
+    reason: x.reason ?? "",
+    time: x.time,
+    networks: (x.nets as string[]).map((n, i) => ({ network: n, format: (x.fmts as string[])[i] })),
+    slotIds: x.ids,
+  }));
+}

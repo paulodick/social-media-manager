@@ -685,6 +685,8 @@ export function normalizeFolderName(name: string): string {
 
 /** Nomes aceitos para a pasta dos vídeos prontos de cada cliente. */
 export const READY_VIDEOS_FOLDER = "Reels Editados";
+/** Para onde vai a pasta do vídeo pronto depois de publicado (dentro da pasta do cliente, por mês: AAAA-MM). */
+export const POSTED_VIDEOS_FOLDER = "Reels Postados";
 
 /** Acha a pasta "Reels Editados" (ou variação do nome) dentro da pasta do cliente. */
 export async function findReadyVideosFolder(clientFolderId: string): Promise<{ id: string; name: string } | null | { error: string }> {

@@ -114,6 +114,7 @@ button.chip { cursor: pointer; }
 .mini.scheduled { border-color: #f3c9a8; background: var(--accent-soft); color: #7a2a06; }
 .mini.posted { border-color: #b9dcc6; background: var(--ok-bg); color: var(--ok-ink); }
 .mini.late { border-color: #f0b4ad; background: var(--bad-bg); color: var(--bad-ink); }
+.mini.planned { border: 1.5px dashed #3347D6; background: #f1f3fd; color: #1f2c8a; font-style: italic; }
 
 .phones { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 28px; }
 .phone { width: 276px; height: 560px; border: 9px solid var(--ink); border-radius: 40px; overflow: hidden; position: relative; background: #0b0f17; flex: none; }

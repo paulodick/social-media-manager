@@ -6,7 +6,7 @@ import SubmitButton from "./SubmitButton";
 
 const VERDICT: Record<MoveTestResult["verdict"], { cls: string; text: string }> = {
   move: { cls: "ok", text: "O app consegue mover as pastas. O editorial pode mover a pasta do vídeo para o dia da postagem." },
-  shortcut: { cls: "warn", text: "O Drive não deixa o app mover essas pastas. O editorial vai criar um atalho na pasta do dia e deixar o original no lugar." },
+  shortcut: { cls: "warn", text: "O Drive não deixa o app mover essas pastas. Os vídeos publicados continuam em Reels Editados, mas saem da lista do app do mesmo jeito." },
   setup: { cls: "warn", text: "Falta preparar a pasta antes do teste." },
 };
 
