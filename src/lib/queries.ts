@@ -195,6 +195,9 @@ export async function fileIsLinked(fileId: string): Promise<{ name?: string } | 
      union all
      select drive_meta as meta from content_items where drive_file_id = $1
      union all
+     -- Capa do vídeo pronto (imagem da mesma pasta, achada na sincronização de Reels Editados).
+     select null::jsonb as meta from content_items where cover_drive_file_id = $1
+     union all
      select drive_meta as meta from content_visual_asset_slides where drive_file_id = $1
      limit 1`,
     [fileId],
